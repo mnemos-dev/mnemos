@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+
+# Mnemos runtime data
+.chromadb/
+*.db
+.mine_log.json
+
+# Secrets
+*.env
+.env*
+*credentials*
