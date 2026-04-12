@@ -1,6 +1,7 @@
 """Palace — Wing/Room/Hall structure management with recycle."""
 from __future__ import annotations
 
+import re
 import shutil
 from datetime import date
 from pathlib import Path
@@ -8,6 +9,21 @@ from typing import List, Optional
 
 from mnemos.config import MnemosConfig
 from mnemos.obsidian import write_drawer_file, parse_drawer_file
+
+
+def _sanitize_name(name: str) -> str:
+    """Sanitize a wing/room name for use as a directory name.
+
+    Removes characters invalid on Windows (: * ? \" < > |) and
+    replaces spaces with hyphens.
+    """
+    # Remove Windows-invalid chars
+    name = re.sub(r'[<>:"/\\|?*]', '', name)
+    # Replace spaces and multiple hyphens
+    name = name.strip().replace(' ', '-')
+    name = re.sub(r'-+', '-', name)
+    # Truncate to reasonable length
+    return name[:60] or "unnamed"
 
 
 class Palace:
@@ -35,6 +51,7 @@ class Palace:
         Returns:
             Path to the wing directory.
         """
+        name = _sanitize_name(name)
         wing_dir = self.config.wings_dir / name
         wing_dir.mkdir(parents=True, exist_ok=True)
 
@@ -65,6 +82,8 @@ class Palace:
             Path to the room directory.
         """
         # Ensure wing exists
+        wing = _sanitize_name(wing)
+        room = _sanitize_name(room)
         wing_dir = self.config.wings_dir / wing
         if not wing_dir.exists():
             self.create_wing(wing)
@@ -125,6 +144,11 @@ class Palace:
         Returns:
             Path to the created drawer file.
         """
+        # Sanitize names for filesystem safety
+        wing = _sanitize_name(wing)
+        room = _sanitize_name(room)
+        hall = _sanitize_name(hall)
+
         # Ensure wing + room (and hall subdir) exist
         room_dir = self.config.wings_dir / wing / room
         if not room_dir.exists():
