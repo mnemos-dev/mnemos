@@ -4,15 +4,17 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from mnemos.config import MnemosConfig, load_config
-from mnemos.graph import KnowledgeGraph
-from mnemos.miner import Miner
-from mnemos.palace import Palace
-from mnemos.search import SearchEngine
-from mnemos.stack import MemoryStack
-from mnemos.watcher import VaultWatcher
+
+if TYPE_CHECKING:
+    from mnemos.graph import KnowledgeGraph
+    from mnemos.miner import Miner
+    from mnemos.palace import Palace
+    from mnemos.search import SearchEngine
+    from mnemos.stack import MemoryStack
+    from mnemos.watcher import VaultWatcher
 
 
 # ---------------------------------------------------------------------------
@@ -28,6 +30,13 @@ class MnemosApp:
     """
 
     def __init__(self, config: MnemosConfig, chromadb_in_memory: bool = False) -> None:
+        # Lazy imports to avoid slow chromadb import at server startup
+        from mnemos.graph import KnowledgeGraph
+        from mnemos.miner import Miner
+        from mnemos.palace import Palace
+        from mnemos.search import SearchEngine
+        from mnemos.stack import MemoryStack
+
         self.config = config
         self.palace = Palace(config)
         self.search_engine = SearchEngine(config, in_memory=chromadb_in_memory)
@@ -351,8 +360,15 @@ def create_mcp_server(config: Optional[MnemosConfig] = None):
     if config is None:
         config = load_config()
 
-    app = MnemosApp(config)
-    app.palace.ensure_structure()
+    # Lazy init: create app on first tool call to avoid slow ChromaDB
+    # startup blocking the MCP handshake
+    _app_holder: list[Optional[MnemosApp]] = [None]
+
+    def _get_app() -> MnemosApp:
+        if _app_holder[0] is None:
+            _app_holder[0] = MnemosApp(config)
+            _app_holder[0].palace.ensure_structure()
+        return _app_holder[0]
 
     mcp = FastMCP("mnemos", instructions="Obsidian-native AI memory palace")
 
@@ -369,7 +385,7 @@ def create_mcp_server(config: Optional[MnemosConfig] = None):
         limit: int = 5,
     ) -> str:
         """Search the memory palace using semantic similarity."""
-        results = app.handle_search(query=query, wing=wing, room=room, hall=hall, limit=limit)
+        results = _get_app().handle_search(query=query, wing=wing, room=room, hall=hall, limit=limit)
         return json.dumps(results, ensure_ascii=False)
 
     # ------------------------------------------------------------------
@@ -385,7 +401,7 @@ def create_mcp_server(config: Optional[MnemosConfig] = None):
         importance: float = 0.5,
     ) -> str:
         """Add a memory fragment to the palace and index it for search."""
-        result = app.handle_add(text=text, wing=wing, room=room, hall=hall, importance=importance)
+        result = _get_app().handle_add(text=text, wing=wing, room=room, hall=hall, importance=importance)
         return json.dumps(result, ensure_ascii=False)
 
     # ------------------------------------------------------------------
@@ -399,7 +415,7 @@ def create_mcp_server(config: Optional[MnemosConfig] = None):
         use_llm: bool = False,
     ) -> str:
         """Mine a file or directory and extract memory fragments."""
-        result = app.handle_mine(path=path, mode=mode, use_llm=use_llm)
+        result = _get_app().handle_mine(path=path, mode=mode, use_llm=use_llm)
         return json.dumps(result, ensure_ascii=False)
 
     # ------------------------------------------------------------------
@@ -409,7 +425,7 @@ def create_mcp_server(config: Optional[MnemosConfig] = None):
     @mcp.tool()
     def mnemos_status() -> str:
         """Return current status of the memory palace."""
-        result = app.handle_status()
+        result = _get_app().handle_status()
         return json.dumps(result, ensure_ascii=False)
 
     # ------------------------------------------------------------------
@@ -422,7 +438,7 @@ def create_mcp_server(config: Optional[MnemosConfig] = None):
         wing: Optional[str] = None,
     ) -> str:
         """Recall memory at the specified stack level (L0, L1, L2)."""
-        result = app.handle_recall(level=level, wing=wing)
+        result = _get_app().handle_recall(level=level, wing=wing)
         return json.dumps(result, ensure_ascii=False)
 
     # ------------------------------------------------------------------
@@ -435,7 +451,7 @@ def create_mcp_server(config: Optional[MnemosConfig] = None):
         as_of: Optional[str] = None,
     ) -> str:
         """Query the knowledge graph for an entity's relations."""
-        result = app.handle_graph(entity=entity, as_of=as_of)
+        result = _get_app().handle_graph(entity=entity, as_of=as_of)
         return json.dumps(result, ensure_ascii=False)
 
     # ------------------------------------------------------------------
@@ -449,7 +465,7 @@ def create_mcp_server(config: Optional[MnemosConfig] = None):
         to_date: Optional[str] = None,
     ) -> str:
         """Return the temporal timeline of an entity's relations."""
-        result = app.handle_timeline(entity=entity, from_date=from_date, to_date=to_date)
+        result = _get_app().handle_timeline(entity=entity, from_date=from_date, to_date=to_date)
         return json.dumps(result, ensure_ascii=False)
 
     # ------------------------------------------------------------------
@@ -459,19 +475,13 @@ def create_mcp_server(config: Optional[MnemosConfig] = None):
     @mcp.tool()
     def mnemos_wake_up() -> str:
         """Load identity + wings summary for LLM context injection."""
-        result = app.handle_wake_up()
+        result = _get_app().handle_wake_up()
         return json.dumps(result, ensure_ascii=False)
 
     # ------------------------------------------------------------------
     # Start watcher if enabled
     # ------------------------------------------------------------------
 
-    if config.watcher_enabled and config.vault_path:
-        try:
-            watcher = VaultWatcher(config=config, on_change=app.on_vault_change)
-            watcher.start()
-        except Exception:
-            # Watcher failure must not prevent server startup
-            pass
+    # Watcher starts lazily with the app on first tool call
 
     return mcp

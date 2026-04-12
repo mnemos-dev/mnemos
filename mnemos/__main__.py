@@ -1,16 +1,20 @@
-"""Entry point for running Mnemos as a module: python -m mnemos."""
-import argparse
-
-from mnemos.config import load_config
-from mnemos.server import create_mcp_server
+"""Entry point for running Mnemos as a module: python -m mnemos.server"""
+import sys
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Mnemos MCP Server")
-    parser.add_argument("--vault", type=str, default=None, help="Path to Obsidian vault")
-    args = parser.parse_args()
+    # Parse --vault before heavy imports
+    vault_path = None
+    args = sys.argv[1:]
+    if "--vault" in args:
+        idx = args.index("--vault")
+        if idx + 1 < len(args):
+            vault_path = args[idx + 1]
 
-    config = load_config(args.vault)
+    from mnemos.config import load_config
+    config = load_config(vault_path)
+
+    from mnemos.server import create_mcp_server
     mcp = create_mcp_server(config)
     mcp.run(transport="stdio")
 
