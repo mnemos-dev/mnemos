@@ -1,0 +1,207 @@
+"""Tests for mnemos.palace — Wing/Room/Hall structure management with recycle."""
+from __future__ import annotations
+
+from datetime import date
+from pathlib import Path
+
+import pytest
+
+from mnemos.config import MnemosConfig
+from mnemos.palace import Palace
+
+
+# ---------------------------------------------------------------------------
+# test_ensure_structure
+# ---------------------------------------------------------------------------
+
+
+def test_ensure_structure(config: MnemosConfig) -> None:
+    """ensure_structure() creates Wings/, Identity/, and _recycled/ directories."""
+    palace = Palace(config)
+    palace.ensure_structure()
+
+    assert config.wings_dir.exists()
+    assert config.identity_full_path.exists()
+    assert config.recycled_full_path.exists()
+
+
+# ---------------------------------------------------------------------------
+# test_create_wing
+# ---------------------------------------------------------------------------
+
+
+def test_create_wing(config: MnemosConfig) -> None:
+    """create_wing() creates wing dir and a _wing.md summary file."""
+    palace = Palace(config)
+    palace.ensure_structure()
+
+    wing_path = palace.create_wing("ProcureTrack")
+
+    assert wing_path.is_dir()
+    assert wing_path.name == "ProcureTrack"
+    assert (wing_path / "_wing.md").exists()
+
+
+# ---------------------------------------------------------------------------
+# test_create_room
+# ---------------------------------------------------------------------------
+
+
+def test_create_room(config: MnemosConfig) -> None:
+    """create_room() creates room dir, _room.md, and hall subdirs."""
+    palace = Palace(config)
+    palace.ensure_structure()
+    palace.create_wing("ProcureTrack")
+
+    room_path = palace.create_room("ProcureTrack", "Supabase")
+
+    assert room_path.is_dir()
+    assert room_path.name == "Supabase"
+    assert (room_path / "_room.md").exists()
+
+    # Each configured hall must exist as a subdir
+    for hall in config.halls:
+        assert (room_path / hall).is_dir(), f"Hall subdir missing: {hall}"
+
+
+# ---------------------------------------------------------------------------
+# test_add_drawer
+# ---------------------------------------------------------------------------
+
+
+def test_add_drawer(config: MnemosConfig) -> None:
+    """add_drawer() creates a .md file in the correct hall directory."""
+    palace = Palace(config)
+    palace.ensure_structure()
+
+    drawer_path = palace.add_drawer(
+        wing="ProcureTrack",
+        room="Supabase",
+        hall="decisions",
+        text="RLS is mandatory on all tables.",
+        source="Sessions/2026-04-10-procuretrack.md",
+        importance=5,
+        entities=["Supabase", "RLS"],
+        language="en",
+    )
+
+    # File must exist inside the correct hall directory
+    assert drawer_path.exists()
+    assert drawer_path.suffix == ".md"
+    expected_dir = config.wings_dir / "ProcureTrack" / "Supabase" / "decisions"
+    assert drawer_path.parent == expected_dir
+
+    # Filename must start with today's date
+    today = date.today().isoformat()
+    assert drawer_path.name.startswith(today)
+
+    # Wing and room auto-created if they didn't exist
+    assert (config.wings_dir / "ProcureTrack").is_dir()
+    assert (config.wings_dir / "ProcureTrack" / "Supabase").is_dir()
+
+
+# ---------------------------------------------------------------------------
+# test_list_wings
+# ---------------------------------------------------------------------------
+
+
+def test_list_wings(config: MnemosConfig) -> None:
+    """list_wings() returns all wing directory names."""
+    palace = Palace(config)
+    palace.ensure_structure()
+
+    palace.create_wing("ProcureTrack")
+    palace.create_wing("Mnemos")
+
+    wings = palace.list_wings()
+
+    assert isinstance(wings, list)
+    assert "ProcureTrack" in wings
+    assert "Mnemos" in wings
+    assert len(wings) == 2
+
+
+# ---------------------------------------------------------------------------
+# test_list_drawers
+# ---------------------------------------------------------------------------
+
+
+def test_list_drawers(config: MnemosConfig) -> None:
+    """list_drawers() returns drawer .md files, excluding _wing.md/_room.md."""
+    palace = Palace(config)
+    palace.ensure_structure()
+
+    # Add two drawers in the same wing/room
+    palace.add_drawer(
+        wing="ProcureTrack",
+        room="Supabase",
+        hall="decisions",
+        text="RLS is mandatory.",
+        source="src1.md",
+        importance=5,
+        entities=[],
+        language="en",
+    )
+    palace.add_drawer(
+        wing="ProcureTrack",
+        room="Supabase",
+        hall="facts",
+        text="auth.uid() isolates users.",
+        source="src2.md",
+        importance=3,
+        entities=["auth.uid()"],
+        language="en",
+    )
+
+    all_drawers = palace.list_drawers()
+    assert len(all_drawers) == 2
+
+    # Filter by wing
+    wing_drawers = palace.list_drawers(wing="ProcureTrack")
+    assert len(wing_drawers) == 2
+
+    # Filter by wing + room
+    room_drawers = palace.list_drawers(wing="ProcureTrack", room="Supabase")
+    assert len(room_drawers) == 2
+
+    # _wing.md and _room.md must NOT appear
+    names = [p.name for p in all_drawers]
+    assert "_wing.md" not in names
+    assert "_room.md" not in names
+
+
+# ---------------------------------------------------------------------------
+# test_recycle_drawer
+# ---------------------------------------------------------------------------
+
+
+def test_recycle_drawer(config: MnemosConfig) -> None:
+    """recycle_drawer() moves the drawer to _recycled/ with a date prefix."""
+    palace = Palace(config)
+    palace.ensure_structure()
+
+    drawer_path = palace.add_drawer(
+        wing="ProcureTrack",
+        room="Supabase",
+        hall="decisions",
+        text="Decision to be recycled.",
+        source="src.md",
+        importance=4,
+        entities=[],
+        language="tr",
+    )
+
+    assert drawer_path.exists()
+
+    recycled_path = palace.recycle_drawer(drawer_path)
+
+    # Original must be gone
+    assert not drawer_path.exists()
+
+    # Recycled file must exist in _recycled/
+    assert recycled_path.exists()
+    assert recycled_path.parent == config.recycled_full_path
+
+    # Must have a date prefix
+    today = date.today().isoformat()
+    assert recycled_path.name.startswith(today)
