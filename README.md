@@ -2,7 +2,7 @@
 <p align="center"><strong>Obsidian-native AI memory palace with semantic search</strong></p>
 <p align="center">Your AI's memory lives in your Obsidian vault. Human-readable. Searchable. Yours.</p>
 <p align="center">
-  <a href="https://github.com/kavunkarpuz-debug/mnemos/blob/main/LICENSE">
+  <a href="https://github.com/mnemos-dev/mnemos/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License">
   </a>
   <a href="https://www.python.org/downloads/">
@@ -32,7 +32,7 @@
 
 ```bash
 # Install
-pip install git+https://github.com/kavunkarpuz-debug/mnemos.git
+pip install git+https://github.com/mnemos-dev/mnemos.git
 
 # Initialize your vault
 mnemos init
@@ -180,7 +180,7 @@ Claude Code / Cursor / ChatGPT
 Contributions welcome! This project is built from scratch (not a fork) — inspired by [MemPalace](https://github.com/MemPalace/mempalace)'s palace architecture.
 
 ```bash
-git clone https://github.com/kavunkarpuz-debug/mnemos.git
+git clone https://github.com/mnemos-dev/mnemos.git
 cd mnemos
 pip install -e ".[dev,llm]"
 pytest tests/ -v
