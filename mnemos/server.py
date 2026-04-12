@@ -126,12 +126,17 @@ class MnemosApp:
         path: str,
         mode: str = "auto",
         use_llm: bool = False,
+        external: bool = False,
     ) -> dict:
         """Mine files at *path*, create drawers, index them, update mine_log.
 
         *path* may be a file or directory. Relative paths are resolved against
         config.vault_path. Already-processed files (checked via mtime) are
         skipped.
+
+        If *external* is True, this is a read-only source outside the vault.
+        Files are mined once and never watched. The source files are never
+        modified — only drawers are created in the palace.
 
         Returns:
             dict with keys: files_scanned, drawers_created, entities_found, skipped
@@ -413,9 +418,14 @@ def create_mcp_server(config: Optional[MnemosConfig] = None):
         path: str,
         mode: str = "auto",
         use_llm: bool = False,
+        external: bool = False,
     ) -> str:
-        """Mine a file or directory and extract memory fragments."""
-        result = _get_app().handle_mine(path=path, mode=mode, use_llm=use_llm)
+        """Mine a file or directory and extract memory fragments.
+
+        Set external=True for read-only sources outside the vault (e.g. Claude
+        Memory). External sources are mined once and never watched or modified.
+        """
+        result = _get_app().handle_mine(path=path, mode=mode, use_llm=use_llm, external=external)
         return json.dumps(result, ensure_ascii=False)
 
     # ------------------------------------------------------------------

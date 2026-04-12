@@ -33,6 +33,7 @@ class MiningSource:
 
     path: str
     mode: str = "session"  # session | topic | chat
+    external: bool = False  # True = outside vault, read-only, no watcher
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +181,7 @@ def load_config(vault_path: Optional[str] = None) -> MnemosConfig:
             MiningSource(
                 path=src.get("path", ""),
                 mode=src.get("mode", "session"),
+                external=src.get("external", False),
             )
             for src in raw["mining_sources"]
             if isinstance(src, dict)
