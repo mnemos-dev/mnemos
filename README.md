@@ -32,7 +32,7 @@
 
 ```bash
 # Install
-pip install git+https://github.com/mnemos-dev/mnemos.git
+pip install mnemos-dev
 
 # Initialize your vault
 mnemos init

@@ -2,8 +2,11 @@
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.wheel]
+packages = ["mnemos"]
+
 [project]
-name = "mnemos"
+name = "mnemos-dev"
 version = "0.1.0"
 description = "Obsidian-native AI memory palace with semantic search"
 readme = "README.md"
