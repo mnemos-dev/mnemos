@@ -127,3 +127,55 @@ def test_recycle_removes_from_index(config: MnemosConfig) -> None:
     assert drawer_id not in found_ids_after, (
         f"Drawer '{drawer_id}' should NOT be in search results after recycle"
     )
+
+
+# ---------------------------------------------------------------------------
+# test_full_pipeline_dual_collection
+# ---------------------------------------------------------------------------
+
+
+def test_full_pipeline_dual_collection(config: MnemosConfig, sample_conversation: Path) -> None:
+    """Full pipeline: mine -> raw + mined indexed -> search both."""
+    app = MnemosApp(config, chromadb_in_memory=True)
+    app.palace.ensure_structure()
+
+    result = app.handle_mine(path=str(sample_conversation))
+    assert result["drawers_created"] > 0
+
+    # Raw collection has content
+    raw_count = app.search_engine._raw_collection.count()
+    assert raw_count > 0
+
+    # Search raw
+    raw_results = app.handle_search("ChromaDB cosine similarity", collection="raw")
+    assert len(raw_results) > 0
+
+    # Search mined
+    mined_results = app.handle_search("storage engine decision", collection="mined")
+    assert len(mined_results) > 0
+
+    # Search both (RRF)
+    both_results = app.handle_search("ChromaDB decision", collection="both")
+    assert len(both_results) > 0
+
+
+# ---------------------------------------------------------------------------
+# test_exchange_pair_mining_preserves_context
+# ---------------------------------------------------------------------------
+
+
+def test_exchange_pair_mining_preserves_context(config: MnemosConfig, sample_conversation: Path) -> None:
+    """Exchange pairs keep question+answer together."""
+    app = MnemosApp(config, chromadb_in_memory=True)
+    app.palace.ensure_structure()
+
+    app.handle_mine(path=str(sample_conversation))
+
+    results = app.handle_search("ChromaDB cosine", collection="mined")
+    assert len(results) > 0
+    found_text = results[0]["text"]
+    assert (
+        "storage engine" in found_text.lower()
+        or "ChromaDB" in found_text
+        or "chromadb" in found_text.lower()
+    )

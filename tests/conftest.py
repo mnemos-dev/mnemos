@@ -104,6 +104,38 @@ def sample_session_en(tmp_vault: Path) -> Path:
 
 
 @pytest.fixture()
+def sample_conversation(tmp_vault: Path) -> Path:
+    """Sample conversation transcript for testing exchange-pair mining."""
+    note = tmp_vault / "Sessions" / "2026-04-12-conversation.md"
+    note.write_text(
+        textwrap.dedent(
+            """\
+            ---
+            date: 2026-04-12
+            project: Mnemos
+            tags: [architecture, decisions]
+            ---
+
+            > What storage engine should we use?
+            We decided to use ChromaDB for vector search because it supports
+            cosine similarity and has a good Python API. The trade-off was
+            complexity vs performance.
+
+            > What about the file format?
+            We went with Obsidian markdown because it's human-readable and
+            integrates with the existing Obsidian ecosystem. The decision is final.
+
+            > Any problems so far?
+            There was a bug with the watcher ignoring deleted files. The fix
+            was to check the event type before processing. Got it working now.
+            """
+        ),
+        encoding="utf-8",
+    )
+    return note
+
+
+@pytest.fixture()
 def sample_topic(tmp_vault: Path) -> Path:
     """Topic note about ProcureTrack (Next.js 14 + Supabase)."""
     note = tmp_vault / "Topics" / "ProcureTrack.md"
