@@ -148,13 +148,16 @@ def _extract_wikilinks(text: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def chunk_exchanges(transcript: str, max_chunk: int = 3000) -> list[str] | None:
+def chunk_exchanges(transcript: str, max_chunk: int = 800) -> list[str] | None:
     """Split transcript into exchange pairs.
 
     Returns None if not a conversation (<3 '>' markers).
     Chunk boundary at exchange boundaries.
     If single exchange > max_chunk, split response but keep user question
     in first chunk. Nothing is discarded.
+
+    Default max_chunk=800 to fit within embedding model limits
+    (all-MiniLM-L6-v2: 256 tokens ~ 1000 chars).
     """
     # Count '>' markers at line start
     gt_count = sum(1 for line in transcript.splitlines() if line.strip().startswith(">"))

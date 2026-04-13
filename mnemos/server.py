@@ -214,19 +214,28 @@ class MnemosApp:
                 drawers_created += 1
                 entities_found += len(frag.get("entities", []))
 
-            # Index raw file content into the raw collection
+            # Index raw file content into the raw collection (chunked for embedding limits)
             raw_text = filepath.read_text(encoding="utf-8", errors="replace")
-            raw_doc_id = self.search_engine.raw_doc_id(filepath_str)
-            self.search_engine.index_raw(
-                doc_id=raw_doc_id,
-                text=raw_text,
-                metadata={
-                    "wing": fragments[0]["wing"] if fragments else "General",
-                    "room": fragments[0]["room"] if fragments else "general",
-                    "source_path": filepath_str,
-                    "language": fragments[0]["language"] if fragments else "en",
-                },
-            )
+            raw_meta = {
+                "wing": fragments[0]["wing"] if fragments else "General",
+                "room": fragments[0]["room"] if fragments else "general",
+                "source_path": filepath_str,
+                "language": fragments[0]["language"] if fragments else "en",
+            }
+            # Chunk raw text to fit embedding model limits (~256 tokens = ~800 chars)
+            from mnemos.miner import chunk_text
+            raw_chunks = chunk_text(raw_text, chunk_size=800, overlap=100)
+            if not raw_chunks:
+                raw_chunks = [raw_text] if raw_text.strip() else []
+            for chunk_idx, raw_chunk in enumerate(raw_chunks):
+                raw_doc_id = self.search_engine.raw_doc_id(
+                    filepath_str, chunk_index=chunk_idx if len(raw_chunks) > 1 else None,
+                )
+                self.search_engine.index_raw(
+                    doc_id=raw_doc_id,
+                    text=raw_chunk,
+                    metadata={**raw_meta, "chunk_index": chunk_idx},
+                )
 
             # Mark file as processed
             self._mine_log[filepath_str] = time.time()

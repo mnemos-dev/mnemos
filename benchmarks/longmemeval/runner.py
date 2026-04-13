@@ -252,7 +252,13 @@ def _extract_ids(
 
     for result in search_results:
         meta = result.get("metadata") or {}
-        source_path = meta.get("source_path") or result.get("source_path") or ""
+        # Try source_path first, then source (mined fragments use "source")
+        source_path = (
+            meta.get("source_path")
+            or meta.get("source")
+            or result.get("source_path")
+            or ""
+        )
         if source_path:
             stem = Path(source_path).stem
             sid = stem_to_id.get(stem, stem)

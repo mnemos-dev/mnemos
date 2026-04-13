@@ -303,11 +303,13 @@ class SearchEngine:
         unique document is the sum of ``1/(k+rank)`` across collections.
         Results are sorted by descending RRF score and truncated to *limit*.
         """
+        # Fetch more candidates than limit for better RRF quality
+        fetch_n = min(limit * 3, 30)
         mined_results = self._search_collection(
-            self._collection, query, wing, room, hall, exclude_wing, limit
+            self._collection, query, wing, room, hall, exclude_wing, fetch_n
         )
         raw_results = self._search_collection(
-            self._raw_collection, query, wing, room, hall, exclude_wing, limit
+            self._raw_collection, query, wing, room, hall, exclude_wing, fetch_n
         )
 
         # Map doc_id → {drawer_id, text, metadata, rrf_ranks}
