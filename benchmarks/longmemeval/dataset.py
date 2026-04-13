@@ -82,21 +82,33 @@ def load_dataset(
     if auto_download and (not local_dir.exists() or not any(local_dir.iterdir())):
         download_dataset(subset=subset)
 
-    # Try to load a JSONL file first (common HF format for this dataset).
-    for candidate in [
+    # Try to load files — check multiple naming conventions.
+    # HuggingFace may download files without extensions.
+    candidates = [
         local_dir / f"{split}.jsonl",
         local_dir / f"{split}.json",
         local_dir / "data" / f"{split}.jsonl",
         local_dir / "data" / f"{split}.json",
-    ]:
-        if candidate.exists():
-            return _parse_jsonl(candidate)
+        # HF snapshot_download often saves extensionless files named after the subset
+        local_dir / subset,
+    ]
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_file():
+            return _parse_json(candidate)
 
     # Fall back: try every .jsonl / .json in the directory tree.
     for path in sorted(local_dir.rglob("*.jsonl")):
         return _parse_jsonl(path)
     for path in sorted(local_dir.rglob("*.json")):
         return _parse_json(path)
+
+    # Last resort: try any file that looks like data (no extension, large)
+    for path in sorted(local_dir.iterdir()):
+        if path.is_file() and not path.name.startswith(".") and path.stat().st_size > 1000:
+            try:
+                return _parse_json(path)
+            except (json.JSONDecodeError, ValueError):
+                continue
 
     raise FileNotFoundError(
         f"No dataset files found in {local_dir}.\n"
@@ -152,7 +164,8 @@ def _normalise(raw: dict[str, Any]) -> dict[str, Any]:
     )
     # session_ids may be a list or a single string
     raw_session_ids = (
-        raw.get("session_ids")
+        raw.get("answer_session_ids")
+        or raw.get("session_ids")
         or raw.get("relevant_session_ids")
         or raw.get("evidence_session_ids")
         or []
@@ -160,7 +173,30 @@ def _normalise(raw: dict[str, Any]) -> dict[str, Any]:
     if isinstance(raw_session_ids, str):
         raw_session_ids = [raw_session_ids]
 
+    # LongMemEval uses haystack_sessions (list of session lists) +
+    # haystack_session_ids (parallel list of IDs)
     conversations = raw.get("conversations") or raw.get("sessions") or []
+    if not conversations and "haystack_sessions" in raw:
+        hs_ids = raw.get("haystack_session_ids", [])
+        hs_sessions = raw.get("haystack_sessions", [])
+        for i, (sid, messages) in enumerate(zip(hs_ids, hs_sessions)):
+            if isinstance(messages, list):
+                # Each message may be a dict with role/content or a plain string
+                parts: list[str] = []
+                for m in messages:
+                    if isinstance(m, dict):
+                        role = m.get("role", "user")
+                        text = m.get("content", "")
+                        if role == "user":
+                            parts.append(f"> {text}")
+                        else:
+                            parts.append(str(text))
+                    else:
+                        parts.append(str(m))
+                content = "\n\n".join(parts)
+            else:
+                content = str(messages)
+            conversations.append({"session_id": sid, "content": content})
 
     return {
         "question": question,
