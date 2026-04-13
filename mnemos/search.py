@@ -162,11 +162,22 @@ class SearchEngine:
         wings: dict[str, int] = {}
 
         if total > 0:
-            all_items = self._collection.get(include=["metadatas"])
-            for meta in all_items["metadatas"]:
-                wing_name = meta.get("wing", "")
-                if wing_name:
-                    wings[wing_name] = wings.get(wing_name, 0) + 1
+            batch_size = 500
+            offset = 0
+            while offset < total:
+                batch = self._collection.get(
+                    include=["metadatas"],
+                    limit=batch_size,
+                    offset=offset,
+                )
+                metas = batch["metadatas"]
+                if not metas:
+                    break
+                for meta in metas:
+                    wing_name = meta.get("wing", "")
+                    if wing_name:
+                        wings[wing_name] = wings.get(wing_name, 0) + 1
+                offset += batch_size
 
         return {"total_drawers": total, "wings": wings, "raw_documents": raw_total}
 

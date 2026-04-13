@@ -1,6 +1,7 @@
 """Mnemos MCP server — MnemosApp core logic + FastMCP tool registration."""
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from pathlib import Path
@@ -393,15 +394,12 @@ def create_mcp_server(config: Optional[MnemosConfig] = None):
     if config is None:
         config = load_config()
 
-    # Lazy init: create app on first tool call to avoid slow ChromaDB
-    # startup blocking the MCP handshake
-    _app_holder: list[Optional[MnemosApp]] = [None]
+    # Eager init: create app at startup so tool calls don't block
+    _app = MnemosApp(config)
+    _app.palace.ensure_structure()
 
     def _get_app() -> MnemosApp:
-        if _app_holder[0] is None:
-            _app_holder[0] = MnemosApp(config)
-            _app_holder[0].palace.ensure_structure()
-        return _app_holder[0]
+        return _app
 
     mcp = FastMCP("mnemos", instructions="Obsidian-native AI memory palace")
 
