@@ -8,7 +8,11 @@ from typing import Any
 import yaml
 
 from mnemos.config import MnemosConfig
+from mnemos.entity_detector import EntityDetector
+from mnemos.normalizer import detect_format, normalize_text
 from mnemos.obsidian import parse_frontmatter
+from mnemos.prose import extract_prose
+from mnemos.room_detector import detect_room
 
 # ---------------------------------------------------------------------------
 # Pattern directory
@@ -134,18 +138,163 @@ def _build_pattern_map(
     return compiled
 
 
-def _score_room(body: str, language: str) -> str:
-    """Guess a room name from the first H2 heading found in the body."""
-    heading_match = re.search(r"^##\s+(.+)", body, re.MULTILINE)
-    if heading_match:
-        # Normalise: lowercase, replace spaces with hyphens
-        return heading_match.group(1).strip().lower().replace(" ", "-")
-    return "general"
-
-
 def _extract_wikilinks(text: str) -> list[str]:
     """Return all [[Target]] wikilink targets from text."""
     return re.findall(r"\[\[([^\]]+)\]\]", text)
+
+
+# ---------------------------------------------------------------------------
+# Exchange-pair chunking
+# ---------------------------------------------------------------------------
+
+
+def chunk_exchanges(transcript: str, max_chunk: int = 3000) -> list[str] | None:
+    """Split transcript into exchange pairs.
+
+    Returns None if not a conversation (<3 '>' markers).
+    Chunk boundary at exchange boundaries.
+    If single exchange > max_chunk, split response but keep user question
+    in first chunk. Nothing is discarded.
+    """
+    # Count '>' markers at line start
+    gt_count = sum(1 for line in transcript.splitlines() if line.strip().startswith(">"))
+    if gt_count < 3:
+        return None
+
+    # Split into exchanges: each exchange starts with a ">" line
+    lines = transcript.splitlines()
+    exchanges: list[str] = []
+    current: list[str] = []
+
+    for line in lines:
+        if line.strip().startswith(">") and current:
+            exchanges.append("\n".join(current))
+            current = [line]
+        else:
+            current.append(line)
+    if current:
+        exchanges.append("\n".join(current))
+
+    # Now group exchanges into chunks respecting max_chunk
+    chunks: list[str] = []
+    buffer = ""
+
+    for exchange in exchanges:
+        candidate = (buffer + "\n\n" + exchange).strip() if buffer else exchange
+        if len(candidate) <= max_chunk:
+            buffer = candidate
+        else:
+            # If buffer is non-empty, flush it
+            if buffer:
+                chunks.append(buffer)
+
+            # Check if this single exchange exceeds max_chunk
+            if len(exchange) > max_chunk:
+                # Split the exchange: find the user question (first > line(s))
+                ex_lines = exchange.splitlines()
+                user_lines: list[str] = []
+                response_lines: list[str] = []
+                in_user = True
+                for el in ex_lines:
+                    if in_user and el.strip().startswith(">"):
+                        user_lines.append(el)
+                    else:
+                        in_user = False
+                        response_lines.append(el)
+
+                user_part = "\n".join(user_lines)
+                response_text = "\n".join(response_lines)
+
+                # First sub-chunk: user question + beginning of response
+                remaining_space = max_chunk - len(user_part) - 2  # for \n\n
+                if remaining_space > 0:
+                    first_resp = response_text[:remaining_space]
+                    chunks.append((user_part + "\n" + first_resp).strip())
+                    rest = response_text[remaining_space:]
+                else:
+                    chunks.append(user_part)
+                    rest = response_text
+
+                # Remaining sub-chunks
+                while rest:
+                    part = rest[:max_chunk]
+                    chunks.append(part.strip())
+                    rest = rest[max_chunk:]
+
+                buffer = ""
+            else:
+                buffer = exchange
+
+    if buffer:
+        chunks.append(buffer)
+
+    return chunks if chunks else None
+
+
+# ---------------------------------------------------------------------------
+# Segment classification (scoring + disambiguation)
+# ---------------------------------------------------------------------------
+
+
+def classify_segment(
+    text: str, language: str, min_confidence: float = 0.3
+) -> tuple[str | None, float]:
+    """Score text against hall markers, return (hall, confidence).
+
+    1. Count marker hits per hall
+    2. Length bonus: >500 char +2, 200-500 +1
+    3. Confidence = min(1.0, max_score / 5.0)
+    4. Disambiguation: problem + resolution markers → events
+    5. Below min_confidence → (None, 0.0)
+    """
+    pattern_file = _PATTERNS_DIR / f"{language}.yaml"
+    if not pattern_file.exists():
+        pattern_file = _PATTERNS_DIR / "en.yaml"
+    raw = _load_yaml(pattern_file)
+
+    text_lower = text.lower()
+    scores: dict[str, int] = {}
+
+    for hall, phrases in raw.items():
+        if not isinstance(phrases, list):
+            continue
+        count = 0
+        for phrase in phrases:
+            if phrase.lower() in text_lower:
+                count += 1
+        scores[hall] = count
+
+    # Length bonus
+    length_bonus = 0
+    if len(text) > 500:
+        length_bonus = 2
+    elif len(text) >= 200:
+        length_bonus = 1
+
+    # Apply length bonus to all halls with hits
+    for hall in scores:
+        if scores[hall] > 0:
+            scores[hall] += length_bonus
+
+    if not scores or max(scores.values()) == 0:
+        return (None, 0.0)
+
+    max_score = max(scores.values())
+    best_hall = max(scores, key=lambda h: scores[h])
+    confidence = min(1.0, max_score / 5.0)
+
+    # Disambiguation: problem + resolution markers → events
+    problem_score = scores.get("problems", 0)
+    event_score = scores.get("events", 0)
+    if problem_score > 0 and event_score > 0:
+        # If both problem and event/resolution markers are present, it's an event
+        best_hall = "events"
+        confidence = min(1.0, (problem_score + event_score) / 5.0)
+
+    if confidence < min_confidence:
+        return (None, 0.0)
+
+    return (best_hall, confidence)
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +306,7 @@ class Miner:
     """Hybrid regex mining engine.
 
     Loads language pattern files at init time and uses them to classify
-    text paragraphs into hall categories (decisions, facts, events, …).
+    text paragraphs into hall categories (decisions, facts, events, ...).
     """
 
     def __init__(self, config: MnemosConfig) -> None:
@@ -176,6 +325,9 @@ class Miner:
         base_file = _PATTERNS_DIR / "base.yaml"
         self._base: dict[str, Any] = _load_yaml(base_file) if base_file.exists() else {}
 
+        # Entity detector instance
+        self._entity_detector = EntityDetector()
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -188,65 +340,87 @@ class Miner:
         """
         meta, body = parse_frontmatter(filepath)
 
-        # Detect language from body
+        # 1. Detect format
+        fmt = detect_format(body)
+
+        # 2. If conversation format → normalize to transcript
+        if fmt != "plain_text":
+            body = normalize_text(body)
+
+        # 3. Detect language from body
         language = detect_language(body)
 
-        # --- Wing resolution ---
-        # 1. frontmatter "project" field
-        # 2. CamelCase entities from filepath
-        # 3. fallback "General"
+        # 4. Wing resolution
+        # frontmatter "project" > path entities > "General"
         wing: str = meta.get("project") or ""
         if not wing:
             path_entities = extract_entities_from_path(filepath)
             wing = path_entities[0] if path_entities else "General"
 
-        # --- Room resolution ---
-        # 1. first item of frontmatter "tags" list
-        # 2. first H2 heading
-        # 3. fallback "general"
+        # 5. Room detection (room_detector instead of old logic)
+        # Override with frontmatter tags if available
         tags = meta.get("tags") or []
         if isinstance(tags, list) and tags:
             room = str(tags[0])
         else:
-            room = _score_room(body, language)
+            room = detect_room(filepath, body)
 
-        # --- Entity extraction ---
-        # From path + frontmatter values + wikilinks in body
-        entities: list[str] = extract_entities_from_path(filepath)
+        # 6. Entity detection (EntityDetector + merge)
+        path_entities = extract_entities_from_path(filepath)
+        detected = self._entity_detector.detect(body)
+        wikilinks = _extract_wikilinks(body)
+
+        entities: list[str] = list(path_entities)
+        entities.extend(detected.get("persons", []))
+        entities.extend(detected.get("projects", []))
         # Add wikilinks
-        entities.extend(_extract_wikilinks(body))
-        # Add string values from meta (project, tags items)
+        entities.extend(wikilinks)
+        # Add frontmatter values
         if meta.get("project"):
             entities.append(str(meta["project"]))
         for tag in tags:
             entities.append(str(tag))
-        # Deduplicate
+        # Deduplicate, preserve order
         entities = list(dict.fromkeys(entities))
 
         source = str(filepath)
 
-        # --- Regex mining per paragraph ---
-        paragraphs = [p.strip() for p in re.split(r"\n{2,}", body) if p.strip()]
+        # 7. Filter prose (remove code lines)
+        prose_body = extract_prose(body)
+
+        # 8. Chunk
+        exchange_chunks = chunk_exchanges(prose_body)
+
+        if exchange_chunks is not None:
+            # Conversation → exchange-pair chunking
+            raw_chunks = exchange_chunks
+        else:
+            # Non-conversation → paragraph splitting
+            paragraphs = [p.strip() for p in re.split(r"\n{2,}", prose_body) if p.strip()]
+            raw_chunks = paragraphs if paragraphs else [prose_body]
+
+        # 9. Classify each chunk
         results: list[dict[str, Any]] = []
+        for chunk in raw_chunks:
+            if not chunk.strip():
+                continue
+            hall, confidence = classify_segment(chunk, language)
+            if hall is None:
+                hall = "facts"  # fallback
 
-        patterns = self._lang_patterns.get(language, {})
+            results.append(
+                {
+                    "wing": wing,
+                    "room": room,
+                    "hall": hall,
+                    "text": chunk,
+                    "entities": entities,
+                    "language": language,
+                    "source": source,
+                }
+            )
 
-        for para in paragraphs:
-            hall = self._classify_paragraph(para, patterns)
-            if hall:
-                results.append(
-                    {
-                        "wing": wing,
-                        "room": room,
-                        "hall": hall,
-                        "text": para,
-                        "entities": entities,
-                        "language": language,
-                        "source": source,
-                    }
-                )
-
-        # --- Fallback: chunk whole body as "facts" if no regex hits ---
+        # Fallback: if still no results, chunk whole body as "facts"
         if not results:
             chunks = chunk_text(body)
             if not chunks:
@@ -265,19 +439,3 @@ class Miner:
                 )
 
         return results
-
-    # ------------------------------------------------------------------
-    # Internal
-    # ------------------------------------------------------------------
-
-    def _classify_paragraph(
-        self,
-        text: str,
-        patterns: dict[str, list[re.Pattern[str]]],
-    ) -> str | None:
-        """Return the first hall whose patterns match *text*, or None."""
-        for hall, compiled_patterns in patterns.items():
-            for pattern in compiled_patterns:
-                if pattern.search(text):
-                    return hall
-        return None
