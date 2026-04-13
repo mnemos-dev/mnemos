@@ -11,6 +11,9 @@
   <a href="https://github.com/MemPalace/mempalace">
     <img src="https://img.shields.io/badge/inspired%20by-MemPalace-purple.svg" alt="Inspired by MemPalace">
   </a>
+  <a href="https://github.com/mnemos-dev/mnemos/releases">
+    <img src="https://img.shields.io/badge/version-0.2.0-orange.svg" alt="v0.2.0">
+  </a>
 </p>
 
 ---
@@ -67,7 +70,7 @@ Mnemos exposes 8 tools via [Model Context Protocol](https://modelcontextprotocol
 
 | Tool | Description |
 |------|-------------|
-| `mnemos_search` | Semantic search with wing/room/hall filters |
+| `mnemos_search` | Semantic search with wing/room/hall filters + dual collection (raw/mined/both) |
 | `mnemos_add` | Add a new memory |
 | `mnemos_mine` | Extract memories from files or directories |
 | `mnemos_status` | Palace statistics |
@@ -80,19 +83,43 @@ Works with **Claude Code**, **Cursor**, **ChatGPT**, and any MCP-compatible clie
 
 ## Mining
 
-Mnemos extracts memories using a hybrid approach:
+Mnemos extracts memories using a 10-step pipeline:
 
-1. **Regex patterns** — detects decisions, problems, events, preferences in Turkish and English
-2. **Claude API** (optional) — catches what regex misses, works in any language
+1. **Format detection** — auto-detects Claude Code JSONL, ChatGPT JSON, Slack JSON, or plain markdown
+2. **Conversation normalization** — converts chat exports to standard transcript format
+3. **Prose extraction** — filters out code blocks, shell commands, and non-human text
+4. **Exchange-pair chunking** — keeps questions and answers together (conversations)
+5. **Room detection** — 72+ folder/keyword patterns across 13 categories
+6. **Entity detection** — heuristic person/project classification
+7. **172 regex markers** — 87 English + 85 Turkish across 4 halls (decisions, preferences, problems, events)
+8. **Scoring + disambiguation** — confidence-based classification with problem-to-milestone detection
+9. **Claude API** (optional) — catches what regex misses, works in any language
 
 ```bash
 # Mine your session notes
 mnemos mine Sessions/
 
+# Mine conversation exports (auto-detected)
+mnemos mine ~/chatgpt-export.json
+mnemos mine ~/.claude/projects/my-project/conversations/
+
+# Rebuild all indexes from scratch
+mnemos mine Sessions/ --rebuild
+
 # Use Claude API for better extraction
-pip install mnemos[llm]
+pip install mnemos-dev[llm]
 mnemos mine Sessions/ --llm
 ```
+
+### Conversation Formats
+
+| Format | Source | Auto-detected |
+|--------|--------|:---:|
+| Claude Code JSONL | `~/.claude/projects/*/conversations/` | Yes |
+| Claude.ai JSON | claude.ai export | Yes |
+| ChatGPT JSON | chatgpt.com export | Yes |
+| Slack JSON | Slack workspace export | Yes |
+| Plain text / Markdown | Any `.md` or `.txt` | Yes |
 
 ### External Sources (Read-Only)
 
@@ -166,14 +193,47 @@ Claude Code / Cursor / ChatGPT
   +-----|------|------+
         |      |
    ChromaDB   SQLite
-   (vectors)  (knowledge graph)
-        |      |
-        v      v
+   (dual)     (knowledge graph)
+    |    |
+  raw  mined       ← Reciprocal Rank Fusion merge
+    |    |
+    v    v
   +-----------------------+
   |   Obsidian Vault      |
   |   (.md files = truth) |
   +-----------------------+
 ```
+
+## Benchmarks
+
+Mnemos uses [LongMemEval](https://huggingface.co/datasets/xiaowu0162/LongMemEval) (500 questions across 54 conversation sessions) for recall measurement.
+
+```bash
+pip install mnemos-dev[benchmark]
+
+# Run benchmark (all 500 questions)
+mnemos benchmark longmemeval
+
+# Quick test (first 10 questions)
+mnemos benchmark longmemeval --limit 10
+
+# Test specific mode
+mnemos benchmark longmemeval --mode raw-only
+```
+
+| Mode | Description |
+|------|-------------|
+| `raw-only` | Search only raw (verbatim) collection |
+| `mined-only` | Search only mined (classified) collection |
+| `combined` | Both collections with RRF merge (default) |
+
+## Roadmap
+
+- **v0.1** — Core palace architecture, 8 MCP tools, basic regex mining
+- **v0.2** — Phase 0: Foundation (dual collection, 5 conversation formats, 172 markers, benchmark)
+- **v0.3** — Phase 1: AI Engine (Claude API mining, reranking, contradiction detection)
+- **v0.4** — Phase 2: Automation (session hooks, memory lifecycle, knowledge graph)
+- **v0.5** — Phase 3: Ecosystem (specialist agents, multi-source connectors, Obsidian plugin)
 
 ## Contributing
 
