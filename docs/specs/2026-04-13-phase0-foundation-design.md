@@ -93,7 +93,19 @@ class SearchEngine:
         """
         collection="raw"   -> sadece raw'da ara
         collection="mined" -> sadece mined'da ara
-        collection="both"  -> ikisinde de ara, skorla birlestir, dedup
+        collection="both"  -> ikisinde de ara, RRF ile birlestir
+
+        Merge stratejisi: Reciprocal Rank Fusion (RRF)
+        - Her collection'dan top-N sonuc al
+        - RRF skoru = sum(1 / (k + rank)) her collection icin, k=60
+        - Ayni source_path'e sahip sonuclari dedup et (en yuksek RRF skorunu tut)
+        - Nihai liste RRF skoruna gore sirala
+
+        Neden RRF:
+        - Weighted merge'de skor kalibrasyon sorunu var (raw vs mined skorlar karsilastirilamaz)
+        - Raw-first yaklasimda mined'in yapisal avantaji kaybolur
+        - RRF rank-based, skor-agnostic — farkli collection'lardan gelen
+          sonuclari adil sekilde birlestirir
         """
 ```
 
@@ -109,6 +121,16 @@ class SearchEngine:
 - Mevcut mine edilen dosyalar icin raw collection bos baslar
 - `mnemos mine --rebuild` komutu: mine_log sifirlanir, tum kaynaklar tekrar taranir, hem raw hem mined doldurulur
 - Rebuild islemi mevcut drawer .md dosyalarini silmez — ayni icerik upsert ile guncellenir
+
+### Atomic Rebuild
+
+`--rebuild` crash-safe olmali:
+1. Yeni gecici collection'lar olustur (`mnemos_raw_new`, `mnemos_mined_new`)
+2. Tum kaynaklari gecici collection'lara mine et
+3. Basarili bitince eski collection'lari sil, gecici olanlari yeniden adlandir
+4. Crash olursa eski collection'lar dokunulmamis kalir — gecici olanlar temizlenir
+
+Bu buyuk vault'larda (1000+ dosya) rebuild sirasinda veri kaybi riskini ortadan kaldirir.
 
 ---
 
@@ -213,14 +235,19 @@ Mevcut: Paragraf bazli bolme (baglam kayboluyor)
 Yeni: Conversation transcript'lerde soru+cevap birlikte chunk'lanir
 
 ```python
-def chunk_exchanges(transcript: str, chunk_size: int = 800) -> list[str]:
+def chunk_exchanges(transcript: str, max_chunk: int = 3000) -> list[str]:
     """Transcript'i exchange pair'lerine bol.
 
     - '>' ile baslayan satirlar user turn
     - Sonraki satirlar assistant response
-    - Bir exchange chunk_size'i asarsa, response parcalanir
+    - Chunk boundary'si her zaman exchange sinirinda kesilir
+    - Tek bir exchange max_chunk'i asarsa, response parcalanir
       ama user sorusu her zaman ilk chunk'ta kalir
     - Hicbir sey atilmaz — her karakter korunur
+
+    NOT: Chunk size dynamic — exchange boundary'de kesilir.
+    800 char degil, max 3000 char. Cogu exchange 1000-2500 char
+    arasinda oldugundan genelde bolunmeden kalir.
     """
 ```
 
@@ -309,7 +336,7 @@ Turkce eklentiler:
 ### 0.6.4: General Extractor (115+ Marker)
 
 Mevcut: 4 hall, ~25 EN pattern, ~24 TR pattern = 49 toplam
-Yeni: 5 hall, MemPalace seviyesinde marker'lar + Turkce karsiliklari
+Yeni: 4 hall (emotional Phase 1'e ertelendi), MemPalace seviyesinde marker'lar + Turkce karsiliklari
 
 ```yaml
 # mnemos/patterns/en.yaml (guncellenecek)
@@ -408,38 +435,12 @@ events:  # 33 marker (milestones)
   - "tagged"
   - "published"
 
-emotional:  # 28 marker (YENi hall)
-  - "love"
-  - "hate"
-  - "scared"
-  - "proud"
-  - "frustrated"
-  - "excited"
-  - "worried"
-  - "happy"
-  - "sad"
-  - "angry"
-  - "relieved"
-  - "I feel"
-  - "I'm sorry"
-  - "thank you"
-  - "amazing"
-  - "terrible"
-  - "awesome"
-  - "nightmare"
-  - "dream"
-  - "stressed"
-  - "burned out"
-  - "grateful"
-  - "disappointed"
-  - "surprised"
-  - "overwhelmed"
-  - "confident"
-  - "nervous"
-  - "hopeful"
+  # NOT: emotional hall Phase 0'da eklenmeyecek.
+  # "love", "thank you", "amazing" gibi generic marker'lar false positive patlatir.
+  # Phase 1'de Claude API ile akilli classification yapilacak.
 ```
 
-Turkce marker'lar da ayni oranda genisletilecek (~100 pattern).
+Turkce marker'lar da ayni oranda genisletilecek (~80 pattern, emotional haric).
 
 ### 0.6.5: Scoring + Disambiguation
 
@@ -453,8 +454,8 @@ def classify_segment(text: str, patterns: dict) -> tuple[str, float]:
     2. Uzunluk bonusu: >500 char +2, 200-500 +1
     3. Confidence = min(1.0, max_score / 5.0)
     4. Disambiguation:
-       - Problem + "fixed/solved" -> events (milestone)
-       - Problem + pozitif sentiment -> events veya emotional
+       - Problem + "fixed/solved/got it working" -> events (milestone)
+       - Problem + pozitif sentiment -> events
     5. min_confidence = 0.3 altindakileri at
     """
 ```
@@ -491,14 +492,22 @@ benchmarks/
 └── README.md
 ```
 
-### Pipeline
+### Pipeline — Full Pipeline Test
+
+Benchmark sadece ChromaDB degil, **tam Mnemos pipeline'ini** test eder:
 
 1. HuggingFace'den 500 soru + ~53 conversation session indir
-2. Conversation'lari normalizer'dan gecir -> markdown
-3. Mnemos'a mine et (raw + mined)
-4. Her soru icin `mnemos_search` cagir
+2. Conversation'lari normalizer'dan gecir (format detection + normalize)
+3. **Full mine pipeline**: normalize -> exchange-pair chunk -> room detect -> entity detect -> classify -> Obsidian .md yaz -> ChromaDB index (raw + mined)
+4. Her soru icin `mnemos_search` cagir (MnemosApp.handle_search uzerinden)
 5. Ground-truth cevap top-K sonuclarda mi kontrol et
 6. Recall@5, Recall@10, NDCG@10 hesapla
+
+NOT: Benchmark full pipeline test eder cunku:
+- Sadece ChromaDB testi gercek kullanım recall'ini olcmez
+- Normalizer hatalari, chunking kayiplari, room misclassification
+  gibi sorunlar ancak full pipeline'da ortaya cikar
+- MemPalace da ayni sekilde full pipeline test ediyor
 
 ### Test Modlari
 
@@ -557,8 +566,7 @@ mnemos benchmark results
 - [ ] Exchange-pair chunking calisiyor (soru+cevap birlikte)
 - [ ] Room detection 72+ pattern ile calisiyor
 - [ ] Entity detection heuristic scoring ile calisiyor
-- [ ] General extractor 115+ EN marker + ~100 TR marker ile calisiyor
-- [ ] Emotional hall eklenmis
+- [ ] General extractor 87+ EN marker + ~80 TR marker ile calisiyor (emotional haric 4 hall)
 - [ ] Code line filtering calisiyor
 - [ ] Scoring + disambiguation calisiyor (min_confidence=0.3)
 - [ ] LongMemEval benchmark calisiyor ve Recall@5 >= %95
