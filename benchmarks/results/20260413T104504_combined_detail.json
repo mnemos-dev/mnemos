@@ -1,0 +1,184 @@
+[
+  {
+    "question_index": 1,
+    "query": "What degree did I graduate with?",
+    "ground_truth_ids": [
+      "answer_280352e9"
+    ],
+    "retrieved_ids": [
+      "89c1cdfa_1",
+      "sharegpt_RFTmtPA_0",
+      "sharegpt_KmMXLp3_0",
+      "sharegpt_2o1zvbh_11",
+      "6e015703",
+      "sharegpt_VAELSB3_0"
+    ],
+    "recall_at_5": 0.0,
+    "recall_at_10": 0.0,
+    "ndcg_at_10": 0.0
+  },
+  {
+    "question_index": 2,
+    "query": "How long is my daily commute to work?",
+    "ground_truth_ids": [
+      "answer_40a90d51"
+    ],
+    "retrieved_ids": [
+      "2ae4f277_1",
+      "answer_40a90d51",
+      "7ff89315_3",
+      "5cd6ab1b",
+      "2ae4f277_2",
+      "6e015703",
+      "38e4b795_2",
+      "3418b277_3"
+    ],
+    "recall_at_5": 1.0,
+    "recall_at_10": 1.0,
+    "ndcg_at_10": 0.6309297535714575
+  },
+  {
+    "question_index": 3,
+    "query": "Where did I redeem a $5 coupon on coffee creamer?",
+    "ground_truth_ids": [
+      "answer_d61669c7"
+    ],
+    "retrieved_ids": [
+      "05dce0ef",
+      "answer_d61669c7",
+      "4774287c_1",
+      "aae4411b_2",
+      "bdf735de_2",
+      "5209e813_2"
+    ],
+    "recall_at_5": 1.0,
+    "recall_at_10": 1.0,
+    "ndcg_at_10": 0.6309297535714575
+  },
+  {
+    "question_index": 4,
+    "query": "What play did I attend at the local community theater?",
+    "ground_truth_ids": [
+      "answer_355c48bb"
+    ],
+    "retrieved_ids": [
+      "0a699029_4",
+      "b17c7f18",
+      "c133623d",
+      "7045db85_1",
+      "answer_355c48bb",
+      "64767b7f",
+      "2eceeb9d_1"
+    ],
+    "recall_at_5": 1.0,
+    "recall_at_10": 1.0,
+    "ndcg_at_10": 0.38685280723454163
+  },
+  {
+    "question_index": 5,
+    "query": "What is the name of the playlist I created on Spotify?",
+    "ground_truth_ids": [
+      "answer_3e012175"
+    ],
+    "retrieved_ids": [
+      "394f846b",
+      "ultrachat_460185",
+      "3ea9f765",
+      "71f2f490_2",
+      "sharegpt_bph7DTk_7",
+      "193c23bd_2",
+      "ultrachat_144730"
+    ],
+    "recall_at_5": 0.0,
+    "recall_at_10": 0.0,
+    "ndcg_at_10": 0.0
+  },
+  {
+    "question_index": 6,
+    "query": "What was my last name before I changed it?",
+    "ground_truth_ids": [
+      "answer_f6168136"
+    ],
+    "retrieved_ids": [
+      "4679a05c",
+      "0e3d8491_1",
+      "01bd9def",
+      "answer_f6168136",
+      "5df2f487",
+      "7d5d65c4_1"
+    ],
+    "recall_at_5": 1.0,
+    "recall_at_10": 1.0,
+    "ndcg_at_10": 0.43067655807339306
+  },
+  {
+    "question_index": 7,
+    "query": "Where do I take yoga classes?",
+    "ground_truth_ids": [
+      "answer_9398da02"
+    ],
+    "retrieved_ids": [
+      "answer_9398da02",
+      "07d1915d_1",
+      "3418b277_3",
+      "ultrachat_577747",
+      "fc6549b2",
+      "de5634fc_2"
+    ],
+    "recall_at_5": 1.0,
+    "recall_at_10": 1.0,
+    "ndcg_at_10": 1.0
+  },
+  {
+    "question_index": 8,
+    "query": "What color did I repaint my bedroom walls?",
+    "ground_truth_ids": [
+      "answer_feb5200f"
+    ],
+    "retrieved_ids": [
+      "79f74d4e_1",
+      "e5bb44ef",
+      "3548cae3",
+      "sharegpt_5V5H2HN_0",
+      "sharegpt_jVow2vn_0",
+      "b546cb39_2"
+    ],
+    "recall_at_5": 0.0,
+    "recall_at_10": 0.0,
+    "ndcg_at_10": 0.0
+  },
+  {
+    "question_index": 9,
+    "query": "When did I volunteer at the local animal shelter's fundraising dinner?",
+    "ground_truth_ids": [
+      "answer_59547700"
+    ],
+    "retrieved_ids": [
+      "answer_59547700",
+      "b1265fd7_1",
+      "e6ab6a7b_2",
+      "dfe646a7_1",
+      "5c44d9fe_1"
+    ],
+    "recall_at_5": 1.0,
+    "recall_at_10": 1.0,
+    "ndcg_at_10": 1.0
+  },
+  {
+    "question_index": 10,
+    "query": "Where did I buy my new tennis racket from?",
+    "ground_truth_ids": [
+      "answer_c3567066"
+    ],
+    "retrieved_ids": [
+      "answer_c3567066",
+      "64767b7f",
+      "91880423",
+      "e01eaa19_2",
+      "4d0d7984"
+    ],
+    "recall_at_5": 1.0,
+    "recall_at_10": 1.0,
+    "ndcg_at_10": 1.0
+  }
+]

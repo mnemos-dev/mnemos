@@ -1,0 +1,151 @@
+[
+  {
+    "question_index": 1,
+    "query": "What degree did I graduate with?",
+    "ground_truth_ids": [
+      "answer_280352e9"
+    ],
+    "retrieved_ids": [
+      "89c1cdfa_1",
+      "sharegpt_2o1zvbh_11",
+      "sharegpt_KmMXLp3_0",
+      "5d049e3c"
+    ],
+    "recall_at_5": 0.0,
+    "recall_at_10": 0.0,
+    "ndcg_at_10": 0.0
+  },
+  {
+    "question_index": 2,
+    "query": "How long is my daily commute to work?",
+    "ground_truth_ids": [
+      "answer_40a90d51"
+    ],
+    "retrieved_ids": [
+      "5cd6ab1b",
+      "answer_40a90d51",
+      "2ae4f277_1"
+    ],
+    "recall_at_5": 1.0,
+    "recall_at_10": 1.0,
+    "ndcg_at_10": 0.6309297535714575
+  },
+  {
+    "question_index": 3,
+    "query": "Where did I redeem a $5 coupon on coffee creamer?",
+    "ground_truth_ids": [
+      "answer_d61669c7"
+    ],
+    "retrieved_ids": [
+      "answer_d61669c7",
+      "05dce0ef",
+      "aae4411b_2"
+    ],
+    "recall_at_5": 1.0,
+    "recall_at_10": 1.0,
+    "ndcg_at_10": 1.0
+  },
+  {
+    "question_index": 4,
+    "query": "What play did I attend at the local community theater?",
+    "ground_truth_ids": [
+      "answer_355c48bb"
+    ],
+    "retrieved_ids": [
+      "0a699029_4",
+      "answer_355c48bb"
+    ],
+    "recall_at_5": 1.0,
+    "recall_at_10": 1.0,
+    "ndcg_at_10": 0.6309297535714575
+  },
+  {
+    "question_index": 5,
+    "query": "What is the name of the playlist I created on Spotify?",
+    "ground_truth_ids": [
+      "answer_3e012175"
+    ],
+    "retrieved_ids": [
+      "answer_3e012175",
+      "3ea9f765",
+      "71f2f490_2"
+    ],
+    "recall_at_5": 1.0,
+    "recall_at_10": 1.0,
+    "ndcg_at_10": 1.0
+  },
+  {
+    "question_index": 6,
+    "query": "What was my last name before I changed it?",
+    "ground_truth_ids": [
+      "answer_f6168136"
+    ],
+    "retrieved_ids": [
+      "0e3d8491_1",
+      "01bd9def",
+      "answer_f6168136",
+      "4679a05c"
+    ],
+    "recall_at_5": 1.0,
+    "recall_at_10": 1.0,
+    "ndcg_at_10": 0.5
+  },
+  {
+    "question_index": 7,
+    "query": "Where do I take yoga classes?",
+    "ground_truth_ids": [
+      "answer_9398da02"
+    ],
+    "retrieved_ids": [
+      "answer_9398da02",
+      "07d1915d_1"
+    ],
+    "recall_at_5": 1.0,
+    "recall_at_10": 1.0,
+    "ndcg_at_10": 1.0
+  },
+  {
+    "question_index": 8,
+    "query": "What color did I repaint my bedroom walls?",
+    "ground_truth_ids": [
+      "answer_feb5200f"
+    ],
+    "retrieved_ids": [
+      "79f74d4e_1",
+      "answer_feb5200f",
+      "e5bb44ef"
+    ],
+    "recall_at_5": 1.0,
+    "recall_at_10": 1.0,
+    "ndcg_at_10": 0.6309297535714575
+  },
+  {
+    "question_index": 9,
+    "query": "When did I volunteer at the local animal shelter's fundraising dinner?",
+    "ground_truth_ids": [
+      "answer_59547700"
+    ],
+    "retrieved_ids": [
+      "answer_59547700",
+      "b1265fd7_1"
+    ],
+    "recall_at_5": 1.0,
+    "recall_at_10": 1.0,
+    "ndcg_at_10": 1.0
+  },
+  {
+    "question_index": 10,
+    "query": "Where did I buy my new tennis racket from?",
+    "ground_truth_ids": [
+      "answer_c3567066"
+    ],
+    "retrieved_ids": [
+      "answer_c3567066",
+      "5dac7cc2_1",
+      "64767b7f"
+    ],
+    "recall_at_5": 1.0,
+    "recall_at_10": 1.0,
+    "ndcg_at_10": 1.0
+  }
+]
