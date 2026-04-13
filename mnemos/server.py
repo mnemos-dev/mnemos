@@ -206,6 +206,7 @@ class MnemosApp:
                         "room": frag["room"],
                         "hall": frag["hall"],
                         "source": frag["source"],
+                        "source_path": frag["source"],
                         "language": frag["language"],
                     },
                 )

@@ -82,7 +82,7 @@ def run_benchmark(
     start = time.perf_counter()
     per_question_results: list[dict] = []
 
-    with tempfile.TemporaryDirectory(prefix="mnemos_bench_") as tmp_dir:
+    with tempfile.TemporaryDirectory(prefix="mnemos_bench_", ignore_cleanup_errors=True) as tmp_dir:
         vault_path = Path(tmp_dir)
         _print(f"[benchmark] Temp vault: {vault_path}")
 
