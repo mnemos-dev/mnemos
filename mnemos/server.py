@@ -57,7 +57,9 @@ class MnemosApp:
         wing: Optional[str] = None,
         room: Optional[str] = None,
         hall: Optional[str] = None,
+        exclude_wing: Optional[str] = None,
         limit: int = 5,
+        collection: str = "both",
     ) -> list[dict]:
         """Semantic search over indexed drawers with optional filters."""
         return self.search_engine.search(
@@ -65,7 +67,9 @@ class MnemosApp:
             wing=wing,
             room=room,
             hall=hall,
+            exclude_wing=exclude_wing,
             limit=limit,
+            collection=collection,
         )
 
     # ------------------------------------------------------------------
@@ -208,6 +212,20 @@ class MnemosApp:
 
                 drawers_created += 1
                 entities_found += len(frag.get("entities", []))
+
+            # Index raw file content into the raw collection
+            raw_text = filepath.read_text(encoding="utf-8", errors="replace")
+            raw_doc_id = self.search_engine.raw_doc_id(filepath_str)
+            self.search_engine.index_raw(
+                doc_id=raw_doc_id,
+                text=raw_text,
+                metadata={
+                    "wing": fragments[0]["wing"] if fragments else "General",
+                    "room": fragments[0]["room"] if fragments else "general",
+                    "source_path": filepath_str,
+                    "language": fragments[0]["language"] if fragments else "en",
+                },
+            )
 
             # Mark file as processed
             self._mine_log[filepath_str] = time.time()
@@ -388,9 +406,10 @@ def create_mcp_server(config: Optional[MnemosConfig] = None):
         room: Optional[str] = None,
         hall: Optional[str] = None,
         limit: int = 5,
+        collection: str = "both",
     ) -> str:
-        """Search the memory palace using semantic similarity."""
-        results = _get_app().handle_search(query=query, wing=wing, room=room, hall=hall, limit=limit)
+        """Search the memory palace. collection: 'raw', 'mined', or 'both' (default)."""
+        results = _get_app().handle_search(query=query, wing=wing, room=room, hall=hall, limit=limit, collection=collection)
         return json.dumps(results, ensure_ascii=False)
 
     # ------------------------------------------------------------------

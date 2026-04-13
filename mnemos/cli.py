@@ -163,6 +163,12 @@ def cmd_mine(args: argparse.Namespace) -> None:
     from mnemos.server import MnemosApp
 
     app = MnemosApp(cfg)
+
+    if args.rebuild:
+        app._mine_log = {}
+        app._save_mine_log()
+        print("Rebuild: mine_log cleared, re-mining all sources...")
+
     result = app.handle_mine(
         path=args.path,
         use_llm=args.llm,
@@ -272,6 +278,12 @@ def main() -> None:
         action="store_true",
         default=False,
         help="Use LLM-assisted extraction (requires anthropic package)",
+    )
+    parser_mine.add_argument(
+        "--rebuild",
+        action="store_true",
+        default=False,
+        help="Clear mine_log and re-mine all sources from scratch",
     )
     parser_mine.set_defaults(func=cmd_mine)
 

@@ -187,3 +187,55 @@ def test_app_wake_up(config: MnemosConfig) -> None:
 
     assert "Mnemos" in result["identity"]
     assert "ProcureTrack" in result["wings_summary"]
+
+
+# ---------------------------------------------------------------------------
+# test_handle_mine_indexes_raw
+# ---------------------------------------------------------------------------
+
+
+def test_handle_mine_indexes_raw(config: MnemosConfig, sample_session_tr: Path) -> None:
+    """Mining stores raw content in raw collection."""
+    app = MnemosApp(config, chromadb_in_memory=True)
+    app.palace.ensure_structure()
+
+    result = app.handle_mine(path=str(sample_session_tr))
+    assert result["drawers_created"] >= 0
+
+    raw_count = app.search_engine._raw_collection.count()
+    assert raw_count > 0
+
+
+# ---------------------------------------------------------------------------
+# test_handle_search_collection_param
+# ---------------------------------------------------------------------------
+
+
+def test_handle_search_collection_param(config: MnemosConfig, sample_session_tr: Path) -> None:
+    """Search accepts collection parameter."""
+    app = MnemosApp(config, chromadb_in_memory=True)
+    app.palace.ensure_structure()
+
+    app.handle_mine(path=str(sample_session_tr))
+
+    results_raw = app.handle_search(query="test", collection="raw")
+    assert isinstance(results_raw, list)
+
+    results_mined = app.handle_search(query="test", collection="mined")
+    assert isinstance(results_mined, list)
+
+
+# ---------------------------------------------------------------------------
+# test_handle_search_default_both
+# ---------------------------------------------------------------------------
+
+
+def test_handle_search_default_both(config: MnemosConfig, sample_session_tr: Path) -> None:
+    """Default search uses both collections."""
+    app = MnemosApp(config, chromadb_in_memory=True)
+    app.palace.ensure_structure()
+
+    app.handle_mine(path=str(sample_session_tr))
+
+    results = app.handle_search(query="Supabase RLS")
+    assert isinstance(results, list)

@@ -66,6 +66,10 @@ class MnemosConfig:
     rerank: bool = False
     rerank_model: str = ""
 
+    # Mining tuning
+    chunk_max_size: int = 3000
+    min_confidence: float = 0.3
+
     # Watcher
     watcher_enabled: bool = True
     watcher_ignore: List[str] = field(default_factory=lambda: list(WATCHER_IGNORE_DEFAULT))
