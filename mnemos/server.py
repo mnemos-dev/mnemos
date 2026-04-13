@@ -401,7 +401,18 @@ def create_mcp_server(config: Optional[MnemosConfig] = None):
     def _get_app() -> MnemosApp:
         return _app
 
-    mcp = FastMCP("mnemos", instructions="Obsidian-native AI memory palace")
+    mcp = FastMCP(
+        "mnemos",
+        instructions=(
+            "Obsidian-native AI memory palace.\n"
+            "At the START of every session, call mnemos_wake_up to load identity "
+            "and project context (~200 tokens). "
+            "When the user mentions a project or topic, call mnemos_search to "
+            "retrieve relevant memories before responding. "
+            "Use mnemos_recall with level=L2 and a wing name to get deeper "
+            "room-level details when needed."
+        ),
+    )
 
     # ------------------------------------------------------------------
     # Tool: mnemos_search
