@@ -234,6 +234,35 @@ def cmd_status(args: argparse.Namespace) -> None:
 
 
 # ---------------------------------------------------------------------------
+# cmd_benchmark
+# ---------------------------------------------------------------------------
+
+
+def cmd_benchmark(args: argparse.Namespace) -> None:
+    """Run a recall benchmark and print aggregated metrics as JSON."""
+    if args.dataset != "longmemeval":
+        sys.exit(f"[mnemos benchmark] Unknown dataset: {args.dataset!r}. Only 'longmemeval' is supported.")
+
+    try:
+        from benchmarks.longmemeval.runner import run_benchmark
+    except ImportError as exc:
+        sys.exit(
+            f"[mnemos benchmark] Could not import benchmark module: {exc}\n"
+            "Make sure you are running from the repository root."
+        )
+
+    result = run_benchmark(
+        mode=args.mode,
+        limit=args.limit or 0,
+        subset=args.subset,
+        split=args.split,
+        use_llm=args.llm,
+        verbose=True,
+    )
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+# ---------------------------------------------------------------------------
 # main — argparse entrypoint
 # ---------------------------------------------------------------------------
 
@@ -324,6 +353,49 @@ def main() -> None:
         help="Show memory palace status",
     )
     parser_status.set_defaults(func=cmd_status)
+
+    # ------------------------------------------------------------------
+    # benchmark
+    # ------------------------------------------------------------------
+    parser_bench = subparsers.add_parser(
+        "benchmark",
+        help="Run a recall benchmark (default: longmemeval)",
+    )
+    parser_bench.add_argument(
+        "dataset",
+        nargs="?",
+        default="longmemeval",
+        help="Benchmark dataset to run (default: longmemeval)",
+    )
+    parser_bench.add_argument(
+        "--mode",
+        choices=["raw-only", "mined-only", "combined", "filtered"],
+        default="combined",
+        help="Search collection mode (default: combined)",
+    )
+    parser_bench.add_argument(
+        "--limit",
+        type=int,
+        default=10,
+        help="Number of questions to evaluate (default: 10; 0 = all)",
+    )
+    parser_bench.add_argument(
+        "--subset",
+        default="longmemeval_s",
+        help="Dataset subset name (default: longmemeval_s)",
+    )
+    parser_bench.add_argument(
+        "--split",
+        default="test",
+        help="Dataset split name (default: test)",
+    )
+    parser_bench.add_argument(
+        "--llm",
+        action="store_true",
+        default=False,
+        help="Enable LLM-assisted mining during benchmark",
+    )
+    parser_bench.set_defaults(func=cmd_benchmark)
 
     # ------------------------------------------------------------------
     # Dispatch

@@ -32,6 +32,7 @@ dependencies = [
 [project.optional-dependencies]
 llm = ["anthropic>=0.40"]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+benchmark = ["huggingface_hub>=0.20"]
 
 [project.scripts]
 mnemos = "mnemos.cli:main"
