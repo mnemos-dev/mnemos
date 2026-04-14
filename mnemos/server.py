@@ -201,6 +201,7 @@ class MnemosApp:
 
             fragments = self.miner.mine_file(filepath, use_llm=use_llm)
 
+            drawer_items: list[tuple[str, str, dict]] = []
             for frag in fragments:
                 drawer_path = self.palace.add_drawer(
                     wing=frag["wing"],
@@ -212,12 +213,10 @@ class MnemosApp:
                     entities=frag["entities"],
                     language=frag["language"],
                 )
-
-                drawer_id = drawer_path.stem
-                self.search_engine.index_drawer(
-                    drawer_id=drawer_id,
-                    text=frag["text"],
-                    metadata={
+                drawer_items.append((
+                    drawer_path.stem,
+                    frag["text"],
+                    {
                         "wing": frag["wing"],
                         "room": frag["room"],
                         "hall": frag["hall"],
@@ -225,10 +224,12 @@ class MnemosApp:
                         "source_path": frag["source"],
                         "language": frag["language"],
                     },
-                )
-
+                ))
                 drawers_created += 1
                 entities_found += len(frag.get("entities", []))
+
+            if drawer_items:
+                self.search_engine.index_drawers_bulk(drawer_items)
 
             # Index raw file content into the raw collection (chunked for embedding limits)
             raw_text = filepath.read_text(encoding="utf-8", errors="replace")
@@ -238,20 +239,22 @@ class MnemosApp:
                 "source_path": filepath_str,
                 "language": fragments[0]["language"] if fragments else "en",
             }
-            # Chunk raw text to fit embedding model limits (~256 tokens = ~800 chars)
             from mnemos.miner import chunk_text
             raw_chunks = chunk_text(raw_text, chunk_size=800, overlap=100)
             if not raw_chunks:
                 raw_chunks = [raw_text] if raw_text.strip() else []
+            raw_items: list[tuple[str, str, dict]] = []
             for chunk_idx, raw_chunk in enumerate(raw_chunks):
                 raw_doc_id = self.search_engine.raw_doc_id(
                     filepath_str, chunk_index=chunk_idx if len(raw_chunks) > 1 else None,
                 )
-                self.search_engine.index_raw(
-                    doc_id=raw_doc_id,
-                    text=raw_chunk,
-                    metadata={**raw_meta, "chunk_index": chunk_idx},
-                )
+                raw_items.append((
+                    raw_doc_id,
+                    raw_chunk,
+                    {**raw_meta, "chunk_index": chunk_idx},
+                ))
+            if raw_items:
+                self.search_engine.index_raw_bulk(raw_items)
 
             # Mark file as processed
             self._mine_log[filepath_str] = time.time()

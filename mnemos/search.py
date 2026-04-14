@@ -57,6 +57,25 @@ class SearchBackend(ABC):
     @abstractmethod
     def index_raw(self, doc_id: str, text: str, metadata: dict) -> None: ...
 
+    def index_drawers_bulk(
+        self, items: list[tuple[str, str, dict]]
+    ) -> None:
+        """Bulk insert for the mined collection.
+
+        *items* is an iterable of ``(drawer_id, text, metadata)`` tuples.
+        Default implementation falls back to sequential index_drawer calls;
+        backends override for batched embedding and a single transaction.
+        """
+        for drawer_id, text, metadata in items:
+            self.index_drawer(drawer_id, text, metadata)
+
+    def index_raw_bulk(
+        self, items: list[tuple[str, str, dict]]
+    ) -> None:
+        """Bulk insert for the raw collection (same semantics as index_drawers_bulk)."""
+        for doc_id, text, metadata in items:
+            self.index_raw(doc_id, text, metadata)
+
     @abstractmethod
     def search(
         self,
@@ -200,6 +219,21 @@ class ChromaBackend(SearchBackend):
             self._raw_collection.upsert(
                 ids=[doc_id], documents=[text], metadatas=[clean_meta],
             )
+
+    def _bulk_upsert(self, col, items: list[tuple[str, str, dict]]) -> None:
+        if not items:
+            return
+        ids = [i[0] for i in items]
+        docs = [i[1] for i in items]
+        metas = [_clean_metadata(i[2]) for i in items]
+        with self._writing():
+            col.upsert(ids=ids, documents=docs, metadatas=metas)
+
+    def index_drawers_bulk(self, items: list[tuple[str, str, dict]]) -> None:
+        self._bulk_upsert(self._collection, items)
+
+    def index_raw_bulk(self, items: list[tuple[str, str, dict]]) -> None:
+        self._bulk_upsert(self._raw_collection, items)
 
     def search(
         self,
@@ -460,6 +494,67 @@ class SqliteVecBackend(SearchBackend):
 
     def index_raw(self, doc_id: str, text: str, metadata: dict) -> None:
         self._upsert("raw", "vec_raw", doc_id, text, metadata)
+
+    def _bulk_upsert(
+        self, table: str, vec_table: str, items: list[tuple[str, str, dict]],
+    ) -> None:
+        """Batch embed + single transaction upsert — ~10x faster than per-row.
+
+        The embedding model is invoked once on the full text batch so GPU/CPU
+        work is coalesced; all DB writes happen inside one BEGIN/COMMIT.
+        """
+        import json
+        if not items:
+            return
+
+        texts = [i[1] for i in items]
+        # One embedding call for the whole batch
+        embeddings = self._embed_fn(texts)
+
+        rows = []
+        vec_rows = []
+        for (doc_id, text, metadata), emb in zip(items, embeddings):
+            clean_meta = _clean_metadata(metadata)
+            emb_list = [float(x) for x in emb]
+            emb_blob = _serialize_vec(emb_list)
+            rows.append((
+                doc_id,
+                text,
+                clean_meta.get("wing"),
+                clean_meta.get("room"),
+                clean_meta.get("hall"),
+                json.dumps(clean_meta, ensure_ascii=False),
+            ))
+            vec_rows.append((doc_id, emb_blob))
+
+        ids = [r[0] for r in rows]
+        placeholders = ",".join("?" for _ in ids)
+        with self._writing(), self._conn:
+            self._conn.executemany(
+                f"INSERT OR REPLACE INTO {table}"
+                f"(id, text, wing, room, hall, metadata_json) "
+                f"VALUES (?, ?, ?, ?, ?, ?)",
+                rows,
+            )
+            # Delete existing vectors for these IDs (sqlite-vec lacks upsert)
+            self._conn.execute(
+                f"DELETE FROM {vec_table} WHERE id IN ({placeholders})", ids,
+            )
+            self._conn.executemany(
+                f"INSERT INTO {vec_table}(id, embedding) VALUES (?, ?)",
+                vec_rows,
+            )
+
+    def index_drawers_bulk(self, items: list[tuple[str, str, dict]]) -> None:
+        # Chunk to bound memory / batch size for the embedding model
+        batch_size = 64
+        for start in range(0, len(items), batch_size):
+            self._bulk_upsert("mined", "vec_mined", items[start:start + batch_size])
+
+    def index_raw_bulk(self, items: list[tuple[str, str, dict]]) -> None:
+        batch_size = 64
+        for start in range(0, len(items), batch_size):
+            self._bulk_upsert("raw", "vec_raw", items[start:start + batch_size])
 
     # ------------------------------------------------------------------
     # Search
