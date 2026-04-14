@@ -205,3 +205,50 @@ def test_recycle_drawer(config: MnemosConfig) -> None:
     # Must have a date prefix
     today = date.today().isoformat()
     assert recycled_path.name.startswith(today)
+
+
+# ---------------------------------------------------------------------------
+# test_wing_case_insensitive (regression: Mnemos vs mnemos split bug)
+# ---------------------------------------------------------------------------
+
+
+def test_create_wing_case_insensitive_reuses_existing(config: MnemosConfig) -> None:
+    """Creating a wing whose name differs only in case must reuse the existing one.
+
+    Regression: frontmatter 'project:' field with inconsistent casing across
+    source files used to produce two separate wing directories (Mnemos vs
+    mnemos), splitting drawers across both.
+    """
+    palace = Palace(config)
+    palace.ensure_structure()
+
+    first = palace.create_wing("Mnemos")
+    second = palace.create_wing("mnemos")
+
+    assert first == second
+    wings = palace.list_wings()
+    assert wings.count("Mnemos") == 1
+    assert "mnemos" not in wings
+
+
+def test_add_drawer_case_insensitive_reuses_wing(config: MnemosConfig) -> None:
+    """add_drawer() must route to the existing wing regardless of input case."""
+    palace = Palace(config)
+    palace.ensure_structure()
+    palace.create_wing("Mnemos")
+
+    drawer = palace.add_drawer(
+        wing="mnemos",
+        room="backend",
+        hall="facts",
+        text="sqlite-vec backend ChromaDB'den daha dayanıklı.",
+        source="src.md",
+        importance=3,
+        entities=[],
+        language="tr",
+    )
+
+    # Must land inside the canonical "Mnemos" wing, not a new "mnemos" dir
+    assert "Mnemos" in drawer.parts
+    assert "mnemos" not in drawer.parts
+    assert palace.list_wings() == ["Mnemos"]

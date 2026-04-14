@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 from mnemos.config import MnemosConfig
-from mnemos.search import SearchEngine
+from mnemos.search import SearchBackend, SearchEngine, _rrf_score
 
 
 # ---------------------------------------------------------------------------
@@ -171,8 +171,8 @@ def test_get_stats(engine: SearchEngine) -> None:
 
 def test_raw_doc_id_deterministic() -> None:
     """raw_doc_id must return the same ID for the same inputs."""
-    id1 = SearchEngine.raw_doc_id("/vault/Sessions/2026-04-10.md")
-    id2 = SearchEngine.raw_doc_id("/vault/Sessions/2026-04-10.md")
+    id1 = SearchBackend.raw_doc_id("/vault/Sessions/2026-04-10.md")
+    id2 = SearchBackend.raw_doc_id("/vault/Sessions/2026-04-10.md")
     assert id1 == id2
     assert len(id1) == 64  # SHA-256 hex digest length
 
@@ -180,9 +180,9 @@ def test_raw_doc_id_deterministic() -> None:
 def test_raw_doc_id_chunk_distinct() -> None:
     """raw_doc_id with different chunk_index must produce different IDs."""
     base = "/vault/Sessions/2026-04-10.md"
-    id_no_chunk = SearchEngine.raw_doc_id(base)
-    id_chunk_0 = SearchEngine.raw_doc_id(base, chunk_index=0)
-    id_chunk_1 = SearchEngine.raw_doc_id(base, chunk_index=1)
+    id_no_chunk = SearchBackend.raw_doc_id(base)
+    id_chunk_0 = SearchBackend.raw_doc_id(base, chunk_index=0)
+    id_chunk_1 = SearchBackend.raw_doc_id(base, chunk_index=1)
     assert id_no_chunk != id_chunk_0
     assert id_chunk_0 != id_chunk_1
 
@@ -194,7 +194,7 @@ def test_raw_doc_id_chunk_distinct() -> None:
 
 def test_index_raw_and_search(engine: SearchEngine) -> None:
     """index_raw() must make documents findable via search(collection='raw')."""
-    doc_id = SearchEngine.raw_doc_id("/vault/Sessions/2026-04-10.md", chunk_index=0)
+    doc_id = SearchBackend.raw_doc_id("/vault/Sessions/2026-04-10.md", chunk_index=0)
     engine.index_raw(
         doc_id=doc_id,
         text="Row Level Security must be enabled on all Supabase tables.",
@@ -222,7 +222,7 @@ def test_raw_collection_independent_from_mined(engine: SearchEngine) -> None:
         metadata={"wing": "ProcureTrack", "room": "Auth", "hall": "decisions"},
     )
     engine.index_raw(
-        doc_id=SearchEngine.raw_doc_id("/vault/raw.md"),
+        doc_id=SearchBackend.raw_doc_id("/vault/raw.md"),
         text="Raw verbatim content about authentication tokens.",
         metadata={"wing": "ProcureTrack"},
     )
@@ -230,11 +230,11 @@ def test_raw_collection_independent_from_mined(engine: SearchEngine) -> None:
     mined_results = engine.search("authentication", collection="mined", limit=10)
     mined_ids = [r["drawer_id"] for r in mined_results]
     assert "mined_doc" in mined_ids
-    assert SearchEngine.raw_doc_id("/vault/raw.md") not in mined_ids
+    assert SearchBackend.raw_doc_id("/vault/raw.md") not in mined_ids
 
     raw_results = engine.search("authentication", collection="raw", limit=10)
     raw_ids = [r["drawer_id"] for r in raw_results]
-    assert SearchEngine.raw_doc_id("/vault/raw.md") in raw_ids
+    assert SearchBackend.raw_doc_id("/vault/raw.md") in raw_ids
     assert "mined_doc" not in raw_ids
 
 
@@ -251,7 +251,7 @@ def test_rrf_merge_both_collections(engine: SearchEngine) -> None:
         metadata={"wing": "ProcureTrack", "room": "Supabase", "hall": "decisions"},
     )
     engine.index_raw(
-        doc_id=SearchEngine.raw_doc_id("/vault/rrf.md"),
+        doc_id=SearchBackend.raw_doc_id("/vault/rrf.md"),
         text="Raw file: Supabase row level security configuration.",
         metadata={"wing": "ProcureTrack"},
     )
@@ -260,18 +260,18 @@ def test_rrf_merge_both_collections(engine: SearchEngine) -> None:
     ids = [r["drawer_id"] for r in results]
 
     assert "mined_rrf" in ids
-    assert SearchEngine.raw_doc_id("/vault/rrf.md") in ids
+    assert SearchBackend.raw_doc_id("/vault/rrf.md") in ids
 
 
 def test_rrf_score_calculation() -> None:
     """_rrf_score must implement sum(1/(k+rank)) correctly."""
     # Single rank=1, k=60 → 1/61
-    assert abs(SearchEngine._rrf_score([1], k=60) - 1 / 61) < 1e-9
+    assert abs(_rrf_score([1], k=60) - 1 / 61) < 1e-9
     # Two ranks: 1/(60+1) + 1/(60+2)
     expected = 1 / 61 + 1 / 62
-    assert abs(SearchEngine._rrf_score([1, 2], k=60) - expected) < 1e-9
+    assert abs(_rrf_score([1, 2], k=60) - expected) < 1e-9
     # k default is 60
-    assert SearchEngine._rrf_score([1]) == SearchEngine._rrf_score([1], k=60)
+    assert _rrf_score([1]) == _rrf_score([1], k=60)
 
 
 def test_rrf_both_returns_unique_docs(engine: SearchEngine) -> None:
@@ -419,12 +419,12 @@ def test_get_stats_includes_raw_documents(engine: SearchEngine) -> None:
 
     # Add two raw docs
     engine.index_raw(
-        doc_id=SearchEngine.raw_doc_id("/vault/a.md"),
+        doc_id=SearchBackend.raw_doc_id("/vault/a.md"),
         text="Raw content A.",
         metadata={"wing": "Alpha"},
     )
     engine.index_raw(
-        doc_id=SearchEngine.raw_doc_id("/vault/b.md"),
+        doc_id=SearchBackend.raw_doc_id("/vault/b.md"),
         text="Raw content B.",
         metadata={"wing": "Beta"},
     )
@@ -432,3 +432,55 @@ def test_get_stats_includes_raw_documents(engine: SearchEngine) -> None:
     stats = engine.get_stats()
     assert stats["raw_documents"] == 2
     assert stats["total_drawers"] == 0  # no mined docs indexed
+
+
+# ---------------------------------------------------------------------------
+# test_score_is_cosine_similarity (regression: sqlite-vec L2 vs cosine bug)
+# ---------------------------------------------------------------------------
+
+
+def test_score_identical_text_is_near_one(engine: SearchEngine) -> None:
+    """Searching the exact indexed text must return score ~1.0 (cosine sim).
+
+    Regression: sqlite-vec virtual tables default to L2 distance, not cosine.
+    The old ``1 - dist`` formula produced scores ~0.01-0.05 even for identical
+    content because L2 distance for normalized embeddings is in [0, 2], not
+    [0, 1]. Cosine similarity for unit vectors u,v is 1 - L2(u,v)**2 / 2.
+    """
+    text = "Supabase Row Level Security must be enabled on all tables."
+    engine.index_drawer(
+        drawer_id="d1",
+        text=text,
+        metadata={"wing": "ProcureTrack", "room": "Supabase", "hall": "decisions"},
+    )
+
+    # Score is a cosine similarity in the per-collection path; "both" returns
+    # an RRF score (rank-fusion) by design, which is not a similarity.
+    results = engine.search(text, limit=1, collection="mined")
+    assert len(results) == 1
+    score = results[0]["score"]
+    assert 0.0 <= score <= 1.0
+    # Cosine similarity of a vector with itself is 1.0; allow tiny model noise
+    assert score > 0.95, f"Expected near-1.0 score for identical text, got {score}"
+
+
+def test_score_unrelated_text_is_lower(engine: SearchEngine) -> None:
+    """Unrelated text must score noticeably lower than near-identical text."""
+    engine.index_drawer(
+        drawer_id="relevant",
+        text="Turkish coffee brewing requires fine grounds and a cezve.",
+        metadata={"wing": "Food", "room": "coffee", "hall": "facts"},
+    )
+    engine.index_drawer(
+        drawer_id="unrelated",
+        text="Kubernetes Deployment manifests configure replica counts.",
+        metadata={"wing": "DevOps", "room": "k8s", "hall": "facts"},
+    )
+
+    results = engine.search(
+        "how to brew Turkish coffee with a cezve", limit=2, collection="mined",
+    )
+    assert len(results) == 2
+    by_id = {r["drawer_id"]: r["score"] for r in results}
+    # Food-related query should score the coffee doc well above the k8s doc
+    assert by_id["relevant"] > by_id["unrelated"] + 0.1

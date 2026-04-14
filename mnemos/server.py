@@ -105,6 +105,7 @@ class MnemosApp:
         Returns:
             dict with keys: drawer_id, obsidian_path, message
         """
+        wing = self.palace.canonical_wing(wing)
         drawer_path = self.palace.add_drawer(
             wing=wing,
             room=room,
@@ -203,8 +204,9 @@ class MnemosApp:
 
             drawer_items: list[tuple[str, str, dict]] = []
             for frag in fragments:
+                canonical_wing = self.palace.canonical_wing(frag["wing"])
                 drawer_path = self.palace.add_drawer(
-                    wing=frag["wing"],
+                    wing=canonical_wing,
                     room=frag["room"],
                     hall=frag["hall"],
                     text=frag["text"],
@@ -217,7 +219,7 @@ class MnemosApp:
                     drawer_path.stem,
                     frag["text"],
                     {
-                        "wing": frag["wing"],
+                        "wing": canonical_wing,
                         "room": frag["room"],
                         "hall": frag["hall"],
                         "source": frag["source"],
@@ -233,8 +235,11 @@ class MnemosApp:
 
             # Index raw file content into the raw collection (chunked for embedding limits)
             raw_text = filepath.read_text(encoding="utf-8", errors="replace")
+            raw_wing = self.palace.canonical_wing(
+                fragments[0]["wing"] if fragments else "General"
+            )
             raw_meta = {
-                "wing": fragments[0]["wing"] if fragments else "General",
+                "wing": raw_wing,
                 "room": fragments[0]["room"] if fragments else "general",
                 "source_path": filepath_str,
                 "language": fragments[0]["language"] if fragments else "en",

@@ -42,6 +42,22 @@ class Palace:
         self.config.identity_full_path.mkdir(parents=True, exist_ok=True)
         self.config.recycled_full_path.mkdir(parents=True, exist_ok=True)
 
+    def canonical_wing(self, name: str) -> str:
+        """Resolve *name* to an existing wing's canonical casing if one exists.
+
+        Wing names are treated case-insensitively to avoid splitting drawers
+        across sibling directories when a source file uses inconsistent casing
+        (e.g. frontmatter ``project: mnemos`` vs ``project: Mnemos``). The
+        first-created wing wins the canonical casing.
+        """
+        sanitized = _sanitize_name(name)
+        if self.config.wings_dir.exists():
+            lower = sanitized.lower()
+            for p in self.config.wings_dir.iterdir():
+                if p.is_dir() and p.name.lower() == lower:
+                    return p.name
+        return sanitized
+
     def create_wing(self, name: str) -> Path:
         """Create a wing directory and its _wing.md summary file.
 
@@ -51,7 +67,7 @@ class Palace:
         Returns:
             Path to the wing directory.
         """
-        name = _sanitize_name(name)
+        name = self.canonical_wing(name)
         wing_dir = self.config.wings_dir / name
         wing_dir.mkdir(parents=True, exist_ok=True)
 
@@ -82,7 +98,7 @@ class Palace:
             Path to the room directory.
         """
         # Ensure wing exists
-        wing = _sanitize_name(wing)
+        wing = self.canonical_wing(wing)
         room = _sanitize_name(room)
         wing_dir = self.config.wings_dir / wing
         if not wing_dir.exists():
@@ -144,8 +160,8 @@ class Palace:
         Returns:
             Path to the created drawer file.
         """
-        # Sanitize names for filesystem safety
-        wing = _sanitize_name(wing)
+        # Sanitize names for filesystem safety; resolve wing case-insensitively
+        wing = self.canonical_wing(wing)
         room = _sanitize_name(room)
         hall = _sanitize_name(hall)
 

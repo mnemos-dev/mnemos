@@ -329,7 +329,7 @@ class ChromaBackend(SearchBackend):
                 "drawer_id": drawer_id,
                 "text": text,
                 "metadata": meta,
-                "score": 1.0 - dist,
+                "score": _clamp_unit(1.0 - float(dist)),
             })
         return output
 
@@ -343,6 +343,38 @@ def _serialize_vec(vec: Iterable[float]) -> bytes:
     """Pack a float vector for sqlite-vec BLOB storage."""
     vec_list = list(vec)
     return struct.pack(f"{len(vec_list)}f", *vec_list)
+
+
+def _clamp_unit(x: float) -> float:
+    """Clamp *x* into [0, 1]. Backend distance math can produce values a
+    few float32 ULPs outside the interval for near-identical vectors."""
+    if x < 0.0:
+        return 0.0
+    if x > 1.0:
+        return 1.0
+    return x
+
+
+def _l2_to_cosine_sim(l2_dist: float) -> float:
+    """Convert L2 distance between unit-length vectors to cosine similarity.
+
+    sqlite-vec's vec0 virtual table defaults to L2 distance. For unit vectors
+    u, v the identity ``||u - v||² = 2(1 - u·v)`` gives
+    ``cos_sim = 1 - L2² / 2``. Clamped to [0, 1] so callers can treat score
+    as a similarity monotonically increasing with relevance.
+    """
+    return _clamp_unit(1.0 - (l2_dist * l2_dist) / 2.0)
+
+
+def _l2_normalize(vec: list[float]) -> list[float]:
+    """Return *vec* scaled to unit length. A zero vector is returned unchanged."""
+    norm_sq = 0.0
+    for x in vec:
+        norm_sq += x * x
+    if norm_sq <= 0.0:
+        return vec
+    inv = 1.0 / (norm_sq ** 0.5)
+    return [x * inv for x in vec]
 
 
 class SqliteVecBackend(SearchBackend):
@@ -463,7 +495,7 @@ class SqliteVecBackend(SearchBackend):
         import json
         clean_meta = _clean_metadata(metadata)
         embedding = self._embed_fn([text])[0]
-        embedding = [float(x) for x in embedding]
+        embedding = _l2_normalize([float(x) for x in embedding])
         emb_blob = _serialize_vec(embedding)
         wing = clean_meta.get("wing")
         room = clean_meta.get("room")
@@ -515,7 +547,7 @@ class SqliteVecBackend(SearchBackend):
         vec_rows = []
         for (doc_id, text, metadata), emb in zip(items, embeddings):
             clean_meta = _clean_metadata(metadata)
-            emb_list = [float(x) for x in emb]
+            emb_list = _l2_normalize([float(x) for x in emb])
             emb_blob = _serialize_vec(emb_list)
             rows.append((
                 doc_id,
@@ -593,7 +625,7 @@ class SqliteVecBackend(SearchBackend):
             return []
 
         embedding = self._embed_fn([query])[0]
-        embedding = [float(x) for x in embedding]
+        embedding = _l2_normalize([float(x) for x in embedding])
         q_blob = _serialize_vec(embedding)
 
         # Fetch more candidates than limit to allow metadata filtering without
@@ -633,7 +665,7 @@ class SqliteVecBackend(SearchBackend):
                 "drawer_id": doc_id,
                 "text": text,
                 "metadata": meta,
-                "score": 1.0 - float(dist),
+                "score": _l2_to_cosine_sim(float(dist)),
             })
             if len(output) >= limit:
                 break
