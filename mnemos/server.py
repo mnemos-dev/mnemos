@@ -48,6 +48,21 @@ class MnemosApp:
         self.stack = MemoryStack(config)
         self._mine_log: dict[str, float] = self._load_mine_log()
 
+    def close(self) -> None:
+        """Flush and close the underlying search index.
+
+        Call before process exit for write workloads to ensure ChromaDB's
+        HNSW segments are persisted to disk.
+        """
+        self.search_engine.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+        return False
+
     # ------------------------------------------------------------------
     # handle_search
     # ------------------------------------------------------------------
@@ -397,6 +412,12 @@ def create_mcp_server(config: Optional[MnemosConfig] = None):
     # Eager init: create app at startup so tool calls don't block
     _app = MnemosApp(config)
     _app.palace.ensure_structure()
+
+    # Ensure ChromaDB flushes its HNSW segments on process exit.
+    # Without this, binary index files are left partial and the next
+    # process can't load the index ("Error loading hnsw index").
+    import atexit
+    atexit.register(_app.close)
 
     def _get_app() -> MnemosApp:
         return _app

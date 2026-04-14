@@ -67,6 +67,27 @@ class SearchEngine:
             return nullcontext()
         return self._write_lock
 
+    def close(self) -> None:
+        """Flush and close the underlying ChromaDB client.
+
+        ChromaDB 1.x writes HNSW segments lazily; without calling close()
+        the binary index files may be left in an unrecoverable partial
+        state when the process exits, even though chroma.sqlite3 has the
+        data. Always call this before process exit for write workloads.
+        """
+        if self._client is not None:
+            try:
+                self._client.close()
+            except Exception:
+                pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+        return False
+
     # ------------------------------------------------------------------
     # Static helpers
     # ------------------------------------------------------------------

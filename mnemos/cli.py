@@ -162,18 +162,17 @@ def cmd_mine(args: argparse.Namespace) -> None:
 
     from mnemos.server import MnemosApp
 
-    app = MnemosApp(cfg)
+    with MnemosApp(cfg) as app:
+        if args.rebuild:
+            app._mine_log = {}
+            app._save_mine_log()
+            print("Rebuild: mine_log cleared, re-mining all sources...")
 
-    if args.rebuild:
-        app._mine_log = {}
-        app._save_mine_log()
-        print("Rebuild: mine_log cleared, re-mining all sources...")
-
-    result = app.handle_mine(
-        path=args.path,
-        use_llm=args.llm,
-    )
-    print(json.dumps(result, indent=2, ensure_ascii=False))
+        result = app.handle_mine(
+            path=args.path,
+            use_llm=args.llm,
+        )
+        print(json.dumps(result, indent=2, ensure_ascii=False))
 
 
 # ---------------------------------------------------------------------------
