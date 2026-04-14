@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import hashlib
 import uuid
+from contextlib import nullcontext
 from typing import Any
 
 import chromadb
+from filelock import FileLock
 
 from mnemos.config import MnemosConfig
 
@@ -16,12 +18,19 @@ class SearchEngine:
     Two collections are maintained:
     - ``mnemos_mined``  (formerly ``mnemos_drawers``) — mined fragments / knowledge units
     - ``mnemos_raw``    — verbatim file content chunks for MemPalace-matching recall
+
+    Writes (upsert/delete) are serialized across processes with a file lock
+    living next to the ChromaDB directory. Reads are not locked; ChromaDB
+    allows single-writer / multi-reader access safely.
     """
 
     # Legacy name kept for backward compat; the mined collection uses this base.
     COLLECTION_NAME = "mnemos_drawers"
     MINED_COLLECTION_NAME = "mnemos_mined"
     RAW_COLLECTION_NAME = "mnemos_raw"
+
+    # How long a writer will wait for the lock before failing (seconds).
+    WRITE_LOCK_TIMEOUT = 120
 
     def __init__(self, config: MnemosConfig, in_memory: bool = False) -> None:
         if in_memory:
@@ -31,12 +40,17 @@ class SearchEngine:
             uid = uuid.uuid4().hex
             mined_name = f"{self.MINED_COLLECTION_NAME}_{uid}"
             raw_name = f"{self.RAW_COLLECTION_NAME}_{uid}"
+            self._write_lock = None  # no cross-process contention for ephemeral
         else:
-            self._client = chromadb.PersistentClient(
-                path=str(config.chromadb_full_path)
-            )
+            chroma_path = config.chromadb_full_path
+            self._client = chromadb.PersistentClient(path=str(chroma_path))
             mined_name = self.MINED_COLLECTION_NAME
             raw_name = self.RAW_COLLECTION_NAME
+            # Lock file lives next to chromadb — one lock guards all writes
+            lock_path = chroma_path.parent / ".chromadb.write.lock"
+            self._write_lock = FileLock(
+                str(lock_path), timeout=self.WRITE_LOCK_TIMEOUT
+            )
 
         self._collection = self._client.get_or_create_collection(
             name=mined_name,
@@ -46,6 +60,12 @@ class SearchEngine:
             name=raw_name,
             metadata={"hnsw:space": "cosine"},
         )
+
+    def _writing(self):
+        """Return a context manager that holds the cross-process write lock."""
+        if self._write_lock is None:
+            return nullcontext()
+        return self._write_lock
 
     # ------------------------------------------------------------------
     # Static helpers
@@ -73,16 +93,18 @@ class SearchEngine:
         Lists are converted to comma-separated strings.
         """
         clean_meta = self._clean_metadata(metadata)
-        self._collection.upsert(
-            ids=[drawer_id],
-            documents=[text],
-            metadatas=[clean_meta],
-        )
+        with self._writing():
+            self._collection.upsert(
+                ids=[drawer_id],
+                documents=[text],
+                metadatas=[clean_meta],
+            )
 
     def delete_drawer(self, drawer_id: str) -> None:
         """Remove a drawer from the mined index. Silently ignores unknown IDs."""
         try:
-            self._collection.delete(ids=[drawer_id])
+            with self._writing():
+                self._collection.delete(ids=[drawer_id])
         except Exception:
             pass
 
@@ -96,11 +118,12 @@ class SearchEngine:
         Use :meth:`raw_doc_id` to generate a stable deterministic *doc_id*.
         """
         clean_meta = self._clean_metadata(metadata)
-        self._raw_collection.upsert(
-            ids=[doc_id],
-            documents=[text],
-            metadatas=[clean_meta],
-        )
+        with self._writing():
+            self._raw_collection.upsert(
+                ids=[doc_id],
+                documents=[text],
+                metadatas=[clean_meta],
+            )
 
     # ------------------------------------------------------------------
     # Search
