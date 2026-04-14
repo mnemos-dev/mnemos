@@ -196,3 +196,16 @@ def test_wing_assignment_from_frontmatter(config, sample_session_tr):
     assert len(results) > 0
     wings = {r["wing"] for r in results}
     assert "ProcureTrack" in wings
+
+
+def test_wing_override_beats_frontmatter(config, sample_session_tr):
+    """wing_override must take precedence over frontmatter ``project``.
+
+    Use case: mining Claude Code memory/ dirs and JSONL transcripts where
+    the project is known from the parent directory, not the file itself.
+    """
+    miner = Miner(config)
+    results = miner.mine_file(sample_session_tr, wing_override="Mnemos")
+    assert len(results) > 0
+    wings = {r["wing"] for r in results}
+    assert wings == {"Mnemos"}

@@ -335,11 +335,21 @@ class Miner:
     # Public API
     # ------------------------------------------------------------------
 
-    def mine_file(self, filepath: Path, use_llm: bool = False) -> list[dict[str, Any]]:
+    def mine_file(
+        self,
+        filepath: Path,
+        use_llm: bool = False,
+        wing_override: str | None = None,
+    ) -> list[dict[str, Any]]:
         """Mine a Markdown file and return a list of memory fragment dicts.
 
         Each fragment dict has keys:
             wing, room, hall, text, entities, language, source
+
+        If *wing_override* is given it supersedes both the frontmatter
+        ``project`` field and any path-derived wing. Used when the project
+        is known from the parent directory of the file (e.g. Claude Code
+        memory dirs or JSONL transcripts, which carry no frontmatter).
         """
         meta, body = parse_frontmatter(filepath)
 
@@ -353,12 +363,14 @@ class Miner:
         # 3. Detect language from body
         language = detect_language(body)
 
-        # 4. Wing resolution
-        # frontmatter "project" > path entities > "General"
-        wing: str = meta.get("project") or ""
-        if not wing:
-            path_entities = extract_entities_from_path(filepath)
-            wing = path_entities[0] if path_entities else "General"
+        # 4. Wing resolution: explicit override > frontmatter > path > "General"
+        if wing_override:
+            wing = wing_override
+        else:
+            wing = meta.get("project") or ""
+            if not wing:
+                path_entities = extract_entities_from_path(filepath)
+                wing = path_entities[0] if path_entities else "General"
 
         # 5. Room detection (room_detector instead of old logic)
         # Override with frontmatter tags if available

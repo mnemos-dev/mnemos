@@ -148,6 +148,7 @@ class MnemosApp:
         mode: str = "auto",
         use_llm: bool = False,
         external: bool = False,
+        wing_override: str | None = None,
     ) -> dict:
         """Mine files at *path*, create drawers, index them, update mine_log.
 
@@ -158,6 +159,12 @@ class MnemosApp:
         If *external* is True, this is a read-only source outside the vault.
         Files are mined once and never watched. The source files are never
         modified — only drawers are created in the palace.
+
+        If *wing_override* is given, every fragment is assigned to that wing,
+        superseding frontmatter and path-derived wings. Use this for data
+        sources where the project is known from context (parent directory)
+        rather than file content — e.g. Claude Code memory dirs or JSONL
+        transcripts.
 
         Returns:
             dict with keys: files_scanned, drawers_created, entities_found, skipped
@@ -200,7 +207,9 @@ class MnemosApp:
 
             files_scanned += 1
 
-            fragments = self.miner.mine_file(filepath, use_llm=use_llm)
+            fragments = self.miner.mine_file(
+                filepath, use_llm=use_llm, wing_override=wing_override,
+            )
 
             drawer_items: list[tuple[str, str, dict]] = []
             for frag in fragments:
