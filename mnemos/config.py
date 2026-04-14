@@ -82,6 +82,9 @@ class MnemosConfig:
     graph_path: str = "graph.json"
     mine_log_path: str = "mine.log"
 
+    # Search backend: "chromadb" (default) or "sqlite-vec"
+    search_backend: str = "chromadb"
+
     # ---------------------------------------------------------------------------
     # Derived path properties
     # ---------------------------------------------------------------------------
@@ -165,6 +168,7 @@ def load_config(vault_path: Optional[str] = None) -> MnemosConfig:
         "chromadb_path",
         "graph_path",
         "mine_log_path",
+        "search_backend",
     ):
         if scalar in raw:
             setattr(cfg, scalar, raw[scalar])
