@@ -142,18 +142,70 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
   Git workflow, branch naming, test çalıştırma, skill geliştirme, nasıl
   yeni language/marker ekleneceği.
 
-- [ ] **3.7 New-user simülasyonu pilot** *(1h, tüm yukarıdakilerden sonra)*
+- [ ] **3.7 SessionStart auto-refine hook** *(2-3h, 3.3'ten sonra)*
+  Claude Code session açılırken önceki session'ın JSONL'ini otomatik
+  refine et → Sessions/'a yaz → mnemos mine tetikle. Kullanıcı manuel
+  `/mnemos-refine-transcripts` demek zorunda kalmaz.
+
+  **Akış:**
+  ```
+  Claude Code SessionStart hook çalışır (settings.json'da tanımlı)
+    ↓
+  Hook script: ledger'da olmayan JSONL'leri bul (~/.claude/projects/**/*.jsonl)
+    ↓
+  Her unprocessed JSONL için:
+    claude --print --skill mnemos-refine-transcripts "<jsonl-path>"
+    (kullanıcının kendi Claude Code quota'sı — ek API ücreti yok)
+    ↓
+  Sessions/ notları oluşur, ledger güncellenir
+    ↓
+  mnemos mine Sessions/ --incremental
+    ↓
+  mnemos watcher ChromaDB'yi yeniler
+    ↓
+  Yeni session'da mnemos_wake_up + mnemos_search taze veriyi bulur
+  ```
+
+  **Dosyalar:**
+  - `scripts/auto_refine_hook.py` — hook script (Python, Windows+Unix uyumlu)
+  - `scripts/hook-template.json` — kullanıcının `~/.claude/settings.json`'una
+    ekleyeceği hook config template
+  - `mnemos install-hook` CLI komutu — settings.json'a otomatik ekler
+
+  **Kritik prensip ihlali YOK:** `claude --print` subprocess kullanıcının
+  kendi Claude Code oturumu; Anthropic SDK direkt çağrısı değil. "mnemos
+  LLM API çağırmaz" prensibi korunur.
+
+  **Doğrulama adımları:** `claude --print` skill çağırabiliyor mu (Claude
+  Code feature parity check) → yoksa fallback: hook sadece JSONL listesini
+  `.mnemos-pending.json`'a yazar, kullanıcı bir sonraki session'da skill'i
+  manuel tetikler.
+
+- [ ] **3.8 session-memory skill deprecation** *(15 dk, 3.7'den sonra)*
+  `~/.claude/skills/session-memory/` artık gereksiz — refine-transcripts
+  aynı bilgiyi daha kapsamlı üretir (JSONL log'unun tamamı, canlı Claude
+  hafızasının kısmi özeti değil).
+
+  **Adımlar:**
+  - 3.7 hook'u en az 3 session boyunca sorunsuz çalıştığını doğrula
+  - README / CONTRIBUTING'e migration notu ekle: "Eski session-memory
+    skill kullanıcıları `~/.claude/skills/session-memory/` klasörünü
+    kaldırabilir; mnemos auto-refine hook aynı işi otomatik yapıyor"
+  - Silme işlemi kullanıcı kararı — mnemos silmez
+
+- [ ] **3.9 New-user simülasyonu pilot** *(1h, tüm yukarıdakilerden sonra)*
   Temiz throwaway klasörde:
   1. Yeni vault klasörü oluştur
   2. `pip install -e .` dev-install
   3. Junction skill kur
   4. `mnemos init` wizard baştan sona
-  5. 5 JSONL pilot → Sessions/
-  6. `mnemos mine Sessions/` → search kalite
-  7. Patlayan her yeri not et, düzelt
-  8. Dokümantasyon boşluklarını README/CONTRIBUTING'e ekle
+  5. Auto-refine hook'u `mnemos install-hook` ile kur
+  6. 5 JSONL pilot → Sessions/
+  7. `mnemos mine Sessions/` → search kalite
+  8. Patlayan her yeri not et, düzelt
+  9. Dokümantasyon boşluklarını README/CONTRIBUTING'e ekle
 
-- [ ] **3.8 PyPI release v0.3.0**
+- [ ] **3.10 PyPI release v0.3.0**
   - `pyproject.toml` version bump
   - `python -m build` + `twine upload`
   - GitHub release notes + tag
