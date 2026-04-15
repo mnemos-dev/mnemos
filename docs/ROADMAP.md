@@ -165,7 +165,7 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
   (Obsidian master, no LLM in mnemos itself, dual-collection separation,
   junction/symlink drift forbidden).
 
-- [ ] **3.7 SessionStart auto-refine hook** *(2-3h, 3.3'ten sonra)*
+- [~] **3.7 SessionStart auto-refine hook** *(in progress 2026-04-15)*
   Claude Code session açılırken önceki session'ın JSONL'ini otomatik
   refine et → Sessions/'a yaz → mnemos mine tetikle. Kullanıcı manuel
   `/mnemos-refine-transcripts` demek zorunda kalmaz.
