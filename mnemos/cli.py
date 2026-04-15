@@ -3,13 +3,103 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 import yaml
 
 from mnemos.config import load_config, HALLS_DEFAULT, WATCHER_IGNORE_DEFAULT
+
+
+# ---------------------------------------------------------------------------
+# install_hook — SessionStart hook management
+# ---------------------------------------------------------------------------
+
+HOOK_MARKER = "mnemos-auto-refine"
+
+
+@dataclass
+class HookInstallResult:
+    status: str  # "installed" | "already-installed" | "uninstalled" | "not-found"
+    settings_path: Path
+    backup_path: Optional[Path] = None
+
+
+def _hook_script_path() -> str:
+    repo_root = Path(__file__).resolve().parent.parent
+    return str(repo_root / "scripts" / "auto_refine_hook.py")
+
+
+def _utc_date_str() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def install_hook(vault: Path, uninstall: bool = False) -> HookInstallResult:
+    """Install or uninstall the SessionStart auto-refine hook in ~/.claude/settings.json."""
+    settings_path = Path.home() / ".claude" / "settings.json"
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+
+    backup: Optional[Path] = None
+    if settings_path.exists():
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
+        if not uninstall:
+            backup = settings_path.with_name(
+                settings_path.name + f".bak-{_utc_date_str()}"
+            )
+            backup.write_text(settings_path.read_text(encoding="utf-8"), encoding="utf-8")
+    else:
+        settings = {}
+
+    hooks = settings.setdefault("hooks", {})
+    sessionstart = hooks.setdefault("SessionStart", [])
+
+    existing_idx: Optional[int] = None
+    for i, entry in enumerate(sessionstart):
+        for h in entry.get("hooks", []):
+            if HOOK_MARKER in h.get("command", ""):
+                existing_idx = i
+                break
+        if existing_idx is not None:
+            break
+
+    if uninstall:
+        if existing_idx is None:
+            return HookInstallResult(status="not-found", settings_path=settings_path)
+        sessionstart.pop(existing_idx)
+        if not sessionstart:
+            hooks.pop("SessionStart", None)
+        settings_path.write_text(
+            json.dumps(settings, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        return HookInstallResult(status="uninstalled", settings_path=settings_path)
+
+    if existing_idx is not None:
+        return HookInstallResult(status="already-installed", settings_path=settings_path)
+
+    hook_script = _hook_script_path()
+    if os.name == "nt":
+        full_cmd = f'cmd /c "set MNEMOS_VAULT={vault}&& python \\"{hook_script}\\""'
+    else:
+        full_cmd = f'MNEMOS_VAULT="{vault}" python "{hook_script}"'
+
+    sessionstart.append({
+        "matcher": "",
+        "hooks": [{
+            "type": "command",
+            "command": f"# {HOOK_MARKER}\n{full_cmd}",
+            "timeout": 5,
+        }],
+    })
+    settings_path.write_text(
+        json.dumps(settings, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    return HookInstallResult(status="installed", settings_path=settings_path, backup_path=backup)
 
 
 # ---------------------------------------------------------------------------
@@ -484,6 +574,18 @@ def cmd_status(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 
+def cmd_install_hook(args: argparse.Namespace) -> None:
+    """Install or uninstall the SessionStart auto-refine hook."""
+    vault_path = _resolve_vault(args.vault)
+    if not vault_path:
+        vault_path = str(Path.cwd())
+
+    result = install_hook(vault=Path(vault_path), uninstall=args.uninstall)
+    print(f"{result.status}: {result.settings_path}")
+    if result.backup_path:
+        print(f"backup: {result.backup_path}")
+
+
 def cmd_benchmark(args: argparse.Namespace) -> None:
     """Run a recall benchmark and print aggregated metrics as JSON."""
     if args.dataset != "longmemeval":
@@ -647,6 +749,16 @@ def main() -> None:
     )
     p_mem.add_argument("path", help="Directory containing memory .md files")
     p_mem.set_defaults(func=cmd_import)
+
+    # ------------------------------------------------------------------
+    # install-hook
+    # ------------------------------------------------------------------
+    parser_install_hook = subparsers.add_parser(
+        "install-hook",
+        help="Install/uninstall the SessionStart auto-refine hook",
+    )
+    parser_install_hook.add_argument("--uninstall", action="store_true")
+    parser_install_hook.set_defaults(func=cmd_install_hook)
 
     # ------------------------------------------------------------------
     # benchmark
