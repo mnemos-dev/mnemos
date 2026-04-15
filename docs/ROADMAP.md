@@ -89,7 +89,7 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
   - "Why Not Just Raw Transcripts?" karşılaştırma tablosu
   - Roadmap bölümü v0.3=First-Run
 
-- [x] **3.3 `.mnemos-pending.json` schema** *(commit `__PENDING__`, 2026-04-15)*
+- [x] **3.3 `.mnemos-pending.json` schema** *(commit `0783ba2`, 2026-04-15)*
   Vault kökünde tek JSON. Schema:
   ```json
   {
