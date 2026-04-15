@@ -235,11 +235,11 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
 
 ### Başarı kriterleri
 
-- [ ] External user, README'deki 5 adımı izleyerek clean vault'ta çalışır mnemos kurabiliyor
-- [ ] `mnemos init` 244 JSONL transcript'i keşfedip pilot + import önerebiliyor
-- [ ] `.mnemos-pending.json` resume çalışıyor — oturum kesilirse baştan başlamak gerekmiyor
-- [ ] `mnemos import` 5 formatın hepsini destekliyor
-- [ ] Skill install (junction/symlink) dokümante + test edilmiş
+- [ ] External user, README'deki 5 adımı izleyerek clean vault'ta çalışır mnemos kurabiliyor *(blocked on 3.9 pilot)*
+- [x] `mnemos init` 244 JSONL transcript'i keşfedip pilot + import önerebiliyor *(3.4a)*
+- [x] `.mnemos-pending.json` resume çalışıyor — oturum kesilirse baştan başlamak gerekmiyor *(3.3 + 3.4a)*
+- [x] `mnemos import` 5 formatın hepsini destekliyor *(3.5: claude-code/chatgpt/slack/markdown/memory)*
+- [x] Skill install (junction/symlink) dokümante + test edilmiş *(3.6 CONTRIBUTING + 3.1 SKILL.md)*
 
 ---
 
