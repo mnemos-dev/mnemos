@@ -24,3 +24,6 @@ htmlcov/
 *.env
 .env*
 *credentials*
+
+# Skill state (user-local ledgers etc.)
+skills/*/state/
