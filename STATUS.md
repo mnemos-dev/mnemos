@@ -1,6 +1,6 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-15
+**Last updated:** 2026-04-15 (v0.3 task 3.3 delivered)
 **Stable PyPI version:** `v0.2.0` · **In-progress:** `v0.3.0` (First-Run Experience)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
@@ -77,7 +77,9 @@ gap.
 - ✅ `refine-transcripts` Claude Code skill — JSONL → refined Sessions/.md
   with ledger-based resume, zero LLM cost, ships inside the repo via junction/symlink
 - ✅ README repositioned around the Claude Code history use case
-- 🔲 `.mnemos-pending.json` schema for resumable onboarding
+- ✅ `.mnemos-pending.json` schema + `mnemos.pending` module — atomic
+  read/write/upsert API for resumable onboarding, status enum validation,
+  schema versioning
 - 🔲 `mnemos init` wizard expansion (discover → classify → pilot → confirm)
 - 🔲 `mnemos import <source>` subcommand family (claude-code, chatgpt, slack, markdown, memory)
 - 🔲 CONTRIBUTING.md

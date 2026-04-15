@@ -89,7 +89,7 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
   - "Why Not Just Raw Transcripts?" karşılaştırma tablosu
   - Roadmap bölümü v0.3=First-Run
 
-- [ ] **3.3 `.mnemos-pending.json` schema** *(30 dk)*
+- [x] **3.3 `.mnemos-pending.json` schema** *(commit `__PENDING__`, 2026-04-15)*
   Vault kökünde tek JSON. Schema:
   ```json
   {
@@ -110,6 +110,11 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
   ```
   Dosyalar: `mnemos/pending.py` (yeni) — read/write/append API. Tüm
   `init` + `import` komutları bu modülü kullanır.
+
+  **Delivered:** `mnemos/pending.py` + `tests/test_pending.py` (10 tests,
+  all passing). Public API: `PendingSource`, `PendingState`, `load()`,
+  `save()` (atomic via tmp+replace), `upsert_source()`, `pending_path()`.
+  Status enum validated in `__post_init__`; unknown schema version raises.
 
 - [ ] **3.4 `mnemos init` wizard genişletme** *(2-3h, 3.3'ten sonra)*
   Mevcut init sadece vault scaffold yapıyor. Yeni akış:
