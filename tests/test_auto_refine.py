@@ -124,3 +124,43 @@ def test_compute_backlog_no_projects_dir(tmp_path):
     from mnemos.auto_refine import compute_backlog
 
     assert compute_backlog(tmp_path / "nope", tmp_path / "ledger.tsv") == 0
+
+
+def test_reminder_shown_on_first_run():
+    from datetime import datetime, timezone
+    from mnemos.auto_refine import should_show_reminder
+    from mnemos.pending import PendingState
+
+    state = PendingState()
+    today = datetime(2026, 4, 15, tzinfo=timezone.utc)
+    assert should_show_reminder(state, today, backlog=1) is True
+
+
+def test_reminder_suppressed_within_seven_days():
+    from datetime import datetime, timezone
+    from mnemos.auto_refine import should_show_reminder
+    from mnemos.pending import PendingState
+
+    state = PendingState(backlog_reminder_last_shown="2026-04-13T00:00:00+00:00")
+    today = datetime(2026, 4, 15, tzinfo=timezone.utc)  # 2 days later
+    assert should_show_reminder(state, today, backlog=1) is False
+
+
+def test_reminder_shown_after_seven_days():
+    from datetime import datetime, timezone
+    from mnemos.auto_refine import should_show_reminder
+    from mnemos.pending import PendingState
+
+    state = PendingState(backlog_reminder_last_shown="2026-04-01T00:00:00+00:00")
+    today = datetime(2026, 4, 15, tzinfo=timezone.utc)  # 14 days later
+    assert should_show_reminder(state, today, backlog=1) is True
+
+
+def test_reminder_suppressed_when_backlog_zero():
+    from datetime import datetime, timezone
+    from mnemos.auto_refine import should_show_reminder
+    from mnemos.pending import PendingState
+
+    state = PendingState()
+    today = datetime(2026, 4, 15, tzinfo=timezone.utc)
+    assert should_show_reminder(state, today, backlog=0) is False

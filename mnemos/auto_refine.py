@@ -2,9 +2,13 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from mnemos.pending import PendingState
+
 DEFAULT_LEDGER_SUFFIX = Path(".claude/skills/mnemos-refine-transcripts/state/processed.tsv")
+REMINDER_INTERVAL_DAYS = 7
 
 
 def resolve_ledger_path() -> Path:
@@ -77,3 +81,21 @@ def compute_backlog(projects_dir: Path, ledger_path: Path) -> int:
         if str(candidate) not in ledger_paths:
             total += 1
     return total
+
+
+def should_show_reminder(state: PendingState, today: datetime, backlog: int) -> bool:
+    """Decide whether to show the backlog reminder this session.
+
+    Rules:
+    - backlog <= 0 → never
+    - no `backlog_reminder_last_shown` → yes (first run)
+    - otherwise → yes only if ≥ REMINDER_INTERVAL_DAYS since last shown
+    """
+    if backlog <= 0:
+        return False
+    if not state.backlog_reminder_last_shown:
+        return True
+    last = datetime.fromisoformat(state.backlog_reminder_last_shown)
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=timezone.utc)
+    return today - last >= timedelta(days=REMINDER_INTERVAL_DAYS)
