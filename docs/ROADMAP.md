@@ -132,9 +132,16 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
   Dosyalar: `mnemos/cli.py` (`cmd_init` genişletme), yeni
   `mnemos/onboarding.py` discover/classify/process.
 
-- [ ] **3.4b CLI i18n altyapısı + TR+EN onboarding metinleri** *(1-2h, 3.4a'dan sonra)*
+- [x] **3.4b CLI i18n altyapısı + TR+EN onboarding metinleri** *(commit `__PENDING__`, 2026-04-15)*
   Faz 1 tanıtım ve Faz 3 prompt'ları için locale-aware string sistemi.
   `mnemos.yaml`'daki `languages` listesi ilk dile düşer; default `en`.
+
+  **Delivered:** `mnemos/i18n.py` (dict-based, 17 keys × {en, tr}),
+  `t(key, lang, **fmt)` + `resolve_lang(cfg)`. CLI'da `cmd_init` →
+  `_print_intro/_run_onboarding/_apply_decision/_mine_and_record/`
+  `_print_hook_placeholder` hepsi `lang` parametresi alır.
+  Windows cp1252 console fix: `main()` başında `sys.stdout.reconfigure(
+  encoding='utf-8', errors='replace')`. 14 yeni test, hepsi yeşil.
 
 - [x] **3.5 `mnemos import <source>` subcommand ailesi** *(commit `d9e97a9`, 2026-04-15)*
   Discovery'yi ChatGPT/Slack/Claude.ai/Gemini formatlarına genişletir

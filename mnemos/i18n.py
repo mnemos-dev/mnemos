@@ -1,0 +1,186 @@
+"""CLI i18n — locale-aware string lookup for `mnemos init` / `mnemos import`.
+
+Tiny dict-based design. No gettext, no .po files, no compilation step.
+For 15–25 translatable strings the dict is more readable than the
+machinery would save.
+
+Public API:
+    t(key, lang) -> str         # lookup, English fallback if missing
+    resolve_lang(cfg) -> str    # pick locale from MnemosConfig
+
+Error messages aimed at developers stay English on purpose. Only
+user-facing onboarding text is localized.
+"""
+from __future__ import annotations
+
+from typing import Dict
+
+DEFAULT_LANG = "en"
+SUPPORTED_LANGS = ("en", "tr")
+
+# {key: {lang: text}}
+_STRINGS: Dict[str, Dict[str, str]] = {
+    # ---------------- Intro (Phase 1) ----------------
+    "intro.body": {
+        "en": (
+            "Mnemos is your AI memory system. It stores conversations, decisions,\n"
+            "and learnings as human-readable markdown inside your Obsidian vault.\n"
+            "\n"
+            "Two modes of use:\n"
+            "  1. First-time setup — bulk-mine your past conversations.\n"
+            "  2. Ongoing — every Claude Code session is mined automatically via\n"
+            "     hooks (set up at the end of this wizard; full activation in\n"
+            "     a future release).\n"
+            "\n"
+            "First-time setup is resumable. You can stop anywhere and pick up\n"
+            "later — every decision is saved to .mnemos-pending.json.\n"
+        ),
+        "tr": (
+            "Mnemos AI hafıza sistemin. Konuşmalarını, kararlarını, öğrendiklerini\n"
+            "Obsidian vault'unda insan-okunabilir markdown olarak saklıyor.\n"
+            "\n"
+            "İki kullanım modu:\n"
+            "  1. İlk kurulum — geçmiş konuşmalarını toplu mine etme.\n"
+            "  2. Sürekli kullanım — her Claude Code session'ı hook'lar ile\n"
+            "     otomatik mine edilir (bu sihirbaz sonunda kurulur; tam\n"
+            "     aktivasyon ileriki bir sürümde).\n"
+            "\n"
+            "İlk kurulum tek seferde yapılmak zorunda değil — istediğin yerde\n"
+            "durup sonra kaldığın yerden devam edebilirsin. Her karar\n"
+            ".mnemos-pending.json'a yazılır.\n"
+        ),
+    },
+    # ---------------- Discovery (Phase 2) ----------------
+    "discovery.header": {
+        "en": "\n=== Discovering knowledge sources ===\n",
+        "tr": "\n=== Bilgi kaynakları taranıyor ===\n",
+    },
+    "discovery.empty": {
+        "en": (
+            "  No knowledge sources found. Nothing to mine right now.\n"
+            "  Add markdown to Sessions/, memory/, or Topics/ and run\n"
+            "  `mnemos mine <path>` later.\n"
+        ),
+        "tr": (
+            "  Hiçbir bilgi kaynağı bulunamadı. Şu an mine edilecek bir şey yok.\n"
+            "  Sessions/, memory/ veya Topics/ klasörüne markdown ekle ve daha\n"
+            "  sonra `mnemos mine <path>` çalıştır.\n"
+        ),
+    },
+    "discovery.total_estimate": {
+        "en": "\n  Total estimated time if you process all: {estimate}\n",
+        "tr": "\n  Hepsini işlersen tahmini toplam süre: {estimate}\n",
+    },
+    # ---------------- Choice (Phase 3) ----------------
+    "choice.options_header": {
+        "en": "Options:",
+        "tr": "Seçenekler:",
+    },
+    "choice.option_a": {
+        "en": "  [A] Process all now",
+        "tr": "  [A] Hepsini şimdi işle",
+    },
+    "choice.option_s": {
+        "en": "  [S] Selective — ask me per source",
+        "tr": "  [S] Seçerek ilerle — kaynak kaynak sor",
+    },
+    "choice.option_l": {
+        "en": "  [L] Later — just register sources, don't process now",
+        "tr": "  [L] Sonra — şimdilik sadece kaynakları kaydet, işleme",
+    },
+    "choice.prompt": {
+        "en": "\nChoice [A/S/L]: ",
+        "tr": "\nSeçim [A/S/L]: ",
+    },
+    "choice.invalid": {
+        "en": "Please type A, S, or L: ",
+        "tr": "Lütfen A, S veya L yaz: ",
+    },
+    # ---------------- Per-source selective (Phase 3 / 4) ----------------
+    "per_source.header": {
+        "en": "\n  Source: {sid}  ({n} files, {est}, {cls})",
+        "tr": "\n  Kaynak: {sid}  ({n} dosya, {est}, {cls})",
+    },
+    "per_source.prompt": {
+        "en": "    Process now [Y], leave for later [L], skip entirely [S]? ",
+        "tr": "    Şimdi işle [Y], sonraya bırak [L], tamamen atla [S]? ",
+    },
+    "per_source.invalid": {
+        "en": "    Please type Y, L, or S: ",
+        "tr": "    Lütfen Y, L veya S yaz: ",
+    },
+    # ---------------- Outcomes (Phase 4) ----------------
+    "outcome.skipped": {
+        "en": "    [skipped] {sid}",
+        "tr": "    [atlandı] {sid}",
+    },
+    "outcome.skip_done": {
+        "en": "  [skip] {sid} already done.",
+        "tr": "  [atla] {sid} zaten tamamlanmış.",
+    },
+    "outcome.raw_registered": {
+        "en": (
+            "    [registered] {sid}: {n} files awaiting refinement.\n"
+            "      → Run `/mnemos-refine-transcripts` skill in Claude Code\n"
+            "        on `{path}` to convert these to Sessions/."
+        ),
+        "tr": (
+            "    [kaydedildi] {sid}: {n} dosya rafine bekliyor.\n"
+            "      → Claude Code oturumunda `/mnemos-refine-transcripts` skill'ini\n"
+            "        `{path}` üzerinde çalıştırarak Sessions/'a dönüştür."
+        ),
+    },
+    "outcome.later": {
+        "en": "    [later] {sid} registered as pending.",
+        "tr": "    [sonra] {sid} pending olarak kaydedildi.",
+    },
+    "outcome.mining": {
+        "en": "    [mining] {sid} — {n} files...",
+        "tr": "    [mine] {sid} — {n} dosya...",
+    },
+    "outcome.done": {
+        "en": "    [done] {sid} — scanned: {scanned}, drawers: {drawers}, entities: {entities}",
+        "tr": "    [bitti] {sid} — taranan: {scanned}, çekmece: {drawers}, varlık: {entities}",
+    },
+    # ---------------- Hook placeholder (Phase 5) ----------------
+    "hook.placeholder": {
+        "en": (
+            "\n=== Auto-mining hooks ===\n"
+            "  Hook activation (auto-mine each new Claude Code session) is\n"
+            "  coming in a future release. For now, run\n"
+            "  `/mnemos-refine-transcripts` skill manually to refine new\n"
+            "  transcripts, then `mnemos mine Sessions/` to index them.\n"
+        ),
+        "tr": (
+            "\n=== Auto-mining hook'lar ===\n"
+            "  Hook aktivasyonu (her yeni Claude Code session'ı otomatik\n"
+            "  mine etme) gelecek sürümde gelecek. Şimdilik yeni transcript'leri\n"
+            "  rafine etmek için `/mnemos-refine-transcripts` skill'ini elle\n"
+            "  çalıştır, sonra `mnemos mine Sessions/` ile indeksle.\n"
+        ),
+    },
+}
+
+
+def t(key: str, lang: str = DEFAULT_LANG, **fmt: object) -> str:
+    """Look up a localized string. Falls back to English if `lang` is missing.
+
+    `fmt` keyword args run through str.format on the resolved template.
+    Unknown keys raise KeyError — these are typos, not runtime conditions.
+    """
+    bundle = _STRINGS[key]
+    text = bundle.get(lang) or bundle[DEFAULT_LANG]
+    return text.format(**fmt) if fmt else text
+
+
+def resolve_lang(cfg) -> str:  # type: ignore[no-untyped-def]
+    """Pick the active locale from a MnemosConfig instance.
+
+    Uses the first entry of `cfg.languages` if it's supported, else falls
+    back to English.
+    """
+    langs = getattr(cfg, "languages", None) or []
+    for candidate in langs:
+        if candidate in SUPPORTED_LANGS:
+            return candidate
+    return DEFAULT_LANG

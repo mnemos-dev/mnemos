@@ -43,7 +43,6 @@ def _require_vault(vault_path: str, cmd: str) -> None:
 def cmd_init(args: argparse.Namespace) -> None:
     """Interactive wizard: scaffold a Mnemos vault."""
     print("=== Mnemos Init Wizard ===\n")
-    _print_intro()
 
     # --- Vault path ---
     if args.vault:
@@ -67,6 +66,13 @@ def cmd_init(args: argparse.Namespace) -> None:
     # --- Languages ---
     raw_langs = input("Languages (comma-separated, e.g. en,tr) [en]: ").strip()
     languages = [l.strip() for l in raw_langs.split(",") if l.strip()] if raw_langs else ["en"]
+
+    # From this point on, everything is locale-aware.
+    from mnemos.i18n import t, resolve_lang
+    from mnemos.config import MnemosConfig as _MC
+    lang = resolve_lang(_MC(vault_path=vault_path, languages=languages))
+
+    _print_intro(lang)
 
     # --- LLM ---
     use_llm_raw = input("Enable LLM-assisted mining? [y/N]: ").strip().lower()
@@ -120,10 +126,10 @@ def cmd_init(args: argparse.Namespace) -> None:
         print(f"  Created identity placeholder: {identity_file}")
 
     # --- Onboarding: discover → present → choose → process ---
-    _run_onboarding(cfg)
+    _run_onboarding(cfg, lang=lang)
 
     # --- Hook activation placeholder (real install lands in task 3.7) ---
-    _print_hook_placeholder()
+    _print_hook_placeholder(lang=lang)
 
     # --- MCP connection instructions ---
     print(
@@ -144,38 +150,26 @@ def cmd_init(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _print_intro() -> None:
+def _print_intro(lang: str = "en") -> None:
     """Phase 1 — what Mnemos is and how it works."""
-    print(
-        "Mnemos is your AI memory system. It stores conversations, decisions,\n"
-        "and learnings as human-readable markdown inside your Obsidian vault.\n"
-        "\n"
-        "Two modes of use:\n"
-        "  1. First-time setup — bulk-mine your past conversations.\n"
-        "  2. Ongoing — every Claude Code session is mined automatically via\n"
-        "     hooks (set up at the end of this wizard; full activation in\n"
-        "     a future release).\n"
-        "\n"
-        "First-time setup is resumable. You can stop anywhere and pick up\n"
-        "later — every decision is saved to .mnemos-pending.json.\n"
-    )
+    from mnemos.i18n import t
+    print(t("intro.body", lang))
 
 
-def _run_onboarding(cfg) -> None:  # type: ignore[no-untyped-def]
+def _run_onboarding(cfg, lang: str = "en") -> None:  # type: ignore[no-untyped-def]
     """Phase 2–4: discover sources, ask user, process per choice."""
     from mnemos import pending
+    from mnemos.i18n import t
     from mnemos.onboarding import discover, format_estimate
 
-    print("\n=== Discovering knowledge sources ===\n")
+    print(t("discovery.header", lang))
     sources = discover(cfg.vault_path)
 
     if not sources:
-        print("  No knowledge sources found. Nothing to mine right now.\n"
-              "  Add markdown to Sessions/, memory/, or Topics/ and run\n"
-              "  `mnemos mine <path>` later.\n")
+        print(t("discovery.empty", lang))
         return
 
-    # Phase 2 report
+    # Phase 2 report — per-source line stays format-string driven (data row, not prose).
     total_secs = 0.0
     for i, src in enumerate(sources, 1):
         print(
@@ -183,22 +177,22 @@ def _run_onboarding(cfg) -> None:  # type: ignore[no-untyped-def]
             f"({format_estimate(src.estimated_seconds)}, {src.classification})"
         )
         total_secs += src.estimated_seconds
-    print(f"\n  Total estimated time if you process all: {format_estimate(total_secs)}\n")
+    print(t("discovery.total_estimate", lang, estimate=format_estimate(total_secs)))
 
     # Phase 3 choice
-    print("Options:")
-    print("  [A] Process all now")
-    print("  [S] Selective — ask me per source")
-    print("  [L] Later — just register sources, don't process now")
-    raw_choice = input("\nChoice [A/S/L]: ").strip().upper()
+    print(t("choice.options_header", lang))
+    print(t("choice.option_a", lang))
+    print(t("choice.option_s", lang))
+    print(t("choice.option_l", lang))
+    raw_choice = input(t("choice.prompt", lang)).strip().upper()
     while raw_choice not in {"A", "S", "L"}:
-        raw_choice = input("Please type A, S, or L: ").strip().upper()
+        raw_choice = input(t("choice.invalid", lang)).strip().upper()
 
     # Phase 4 process
     for src in sources:
         existing = pending.load(cfg.vault_path).get(src.id)
         if existing and existing.status == "done":
-            print(f"  [skip] {src.id} already done.")
+            print(t("outcome.skip_done", lang, sid=src.id))
             continue
 
         if raw_choice == "A":
@@ -206,25 +200,26 @@ def _run_onboarding(cfg) -> None:  # type: ignore[no-untyped-def]
         elif raw_choice == "L":
             decision = "later"
         else:  # S — ask per source
-            decision = _ask_per_source(src, format_estimate(src.estimated_seconds))
+            decision = _ask_per_source(src, format_estimate(src.estimated_seconds), lang)
 
-        _apply_decision(cfg, src, decision)
+        _apply_decision(cfg, src, decision, lang=lang)
 
 
-def _ask_per_source(src, estimate: str) -> str:  # type: ignore[no-untyped-def]
+def _ask_per_source(src, estimate: str, lang: str = "en") -> str:  # type: ignore[no-untyped-def]
     """Selective-mode prompt for one source. Returns 'process' | 'later' | 'skip'."""
-    print(
-        f"\n  Source: {src.id}  ({src.file_count} files, {estimate}, {src.classification})"
-    )
-    raw = input("    Process now [Y], leave for later [L], skip entirely [S]? ").strip().upper()
+    from mnemos.i18n import t
+    print(t("per_source.header", lang,
+            sid=src.id, n=src.file_count, est=estimate, cls=src.classification))
+    raw = input(t("per_source.prompt", lang)).strip().upper()
     while raw not in {"Y", "L", "S"}:
-        raw = input("    Please type Y, L, or S: ").strip().upper()
+        raw = input(t("per_source.invalid", lang)).strip().upper()
     return {"Y": "process", "L": "later", "S": "skip"}[raw]
 
 
-def _apply_decision(cfg, src, decision: str) -> None:  # type: ignore[no-untyped-def]
+def _apply_decision(cfg, src, decision: str, lang: str = "en") -> None:  # type: ignore[no-untyped-def]
     """Carry out user decision for one source + record it in pending.json."""
     from mnemos import onboarding
+    from mnemos.i18n import t
 
     common = dict(
         source_id=src.id, kind=src.kind,
@@ -233,7 +228,7 @@ def _apply_decision(cfg, src, decision: str) -> None:  # type: ignore[no-untyped
 
     if decision == "skip":
         onboarding.mark_skipped(cfg.vault_path, **common, last_action="skipped-during-init")
-        print(f"    [skipped] {src.id}")
+        print(t("outcome.skipped", lang, sid=src.id))
         return
 
     if decision == "later" or src.classification == "raw":
@@ -246,30 +241,30 @@ def _apply_decision(cfg, src, decision: str) -> None:  # type: ignore[no-untyped
         )
         onboarding.register_pending(cfg.vault_path, **common, last_action=last_action)
         if src.classification == "raw":
-            print(
-                f"    [registered] {src.id}: {src.file_count} files awaiting refinement.\n"
-                f"      → Run `/mnemos-refine-transcripts` skill in Claude Code\n"
-                f"        on `{src.root_path}` to convert these to Sessions/."
-            )
+            print(t("outcome.raw_registered", lang,
+                    sid=src.id, n=src.file_count, path=src.root_path))
         else:
-            print(f"    [later] {src.id} registered as pending.")
+            print(t("outcome.later", lang, sid=src.id))
         return
 
     # Curated source, process now
-    _mine_and_record(cfg, src.id, src.kind, src.root_path, src.file_count, "mined-during-init")
+    _mine_and_record(cfg, src.id, src.kind, src.root_path, src.file_count,
+                     "mined-during-init", lang=lang)
 
 
 def _mine_and_record(cfg, source_id: str, kind: str, root_path: str,
-                     file_count: int, last_action: str) -> dict:  # type: ignore[no-untyped-def]
+                     file_count: int, last_action: str,
+                     lang: str = "en") -> dict:  # type: ignore[no-untyped-def]
     """Shared mining flow: in-progress → handle_mine → done."""
     from mnemos import onboarding
+    from mnemos.i18n import t
     from mnemos.server import MnemosApp
 
     onboarding.mark_in_progress(
         cfg.vault_path, source_id=source_id, kind=kind,
         root_path=root_path, file_count=file_count,
     )
-    print(f"    [mining] {source_id} — {file_count} files...")
+    print(t("outcome.mining", lang, sid=source_id, n=file_count))
 
     with MnemosApp(cfg) as app:
         result = app.handle_mine(path=root_path, use_llm=cfg.use_llm)
@@ -280,11 +275,11 @@ def _mine_and_record(cfg, source_id: str, kind: str, root_path: str,
         processed=result.get("files_scanned", file_count),
         last_action=last_action,
     )
-    print(
-        f"    [done] {source_id} — scanned: {result.get('files_scanned', 0)}, "
-        f"drawers: {result.get('drawers_created', 0)}, "
-        f"entities: {result.get('entities_found', 0)}"
-    )
+    print(t("outcome.done", lang,
+            sid=source_id,
+            scanned=result.get("files_scanned", 0),
+            drawers=result.get("drawers_created", 0),
+            entities=result.get("entities_found", 0)))
     return result
 
 
@@ -394,15 +389,10 @@ def _import_memory(cfg, args: argparse.Namespace) -> None:  # type: ignore[no-un
     _import_dir(cfg, args, source_id="memory-import", kind="curated-md")
 
 
-def _print_hook_placeholder() -> None:
+def _print_hook_placeholder(lang: str = "en") -> None:
     """Phase 5 — informational note. Real hook install lands in task 3.7."""
-    print(
-        "\n=== Auto-mining hooks ===\n"
-        "  Hook activation (auto-mine each new Claude Code session) is\n"
-        "  coming in a future release. For now, run\n"
-        "  `/mnemos-refine-transcripts` skill manually to refine new\n"
-        "  transcripts, then `mnemos mine Sessions/` to index them.\n"
-    )
+    from mnemos.i18n import t
+    print(t("hook.placeholder", lang))
 
 
 # ---------------------------------------------------------------------------
@@ -524,6 +514,15 @@ def cmd_benchmark(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    # Ensure non-ASCII output (Turkish onboarding text, Unicode in vault paths)
+    # works on Windows consoles that default to cp1252. No-op on Unix where
+    # stdout is already UTF-8, and silent on older Pythons that lack the API.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError):
+            pass
+
     parser = argparse.ArgumentParser(
         prog="mnemos",
         description="Mnemos — Obsidian-native AI memory palace",
