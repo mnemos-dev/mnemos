@@ -1,7 +1,9 @@
 """Auto-refine hook: SessionStart orchestration for last-3 JSONL refinement."""
 from __future__ import annotations
 
+import json
 import os
+import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -9,6 +11,7 @@ from mnemos.pending import PendingState
 
 DEFAULT_LEDGER_SUFFIX = Path(".claude/skills/mnemos-refine-transcripts/state/processed.tsv")
 REMINDER_INTERVAL_DAYS = 7
+STATUS_FILENAME = ".mnemos-hook-status.json"
 
 
 def resolve_ledger_path() -> Path:
@@ -99,3 +102,39 @@ def should_show_reminder(state: PendingState, today: datetime, backlog: int) -> 
     if last.tzinfo is None:
         last = last.replace(tzinfo=timezone.utc)
     return today - last >= timedelta(days=REMINDER_INTERVAL_DAYS)
+
+
+def write_status(
+    vault: Path,
+    phase: str,
+    current: int,
+    total: int,
+    backlog: int,
+    reminder_active: bool,
+    started_at: str,
+) -> Path:
+    """Atomically write the statusline state file (tmp + os.replace)."""
+    path = Path(vault) / STATUS_FILENAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    payload = {
+        "phase": phase,
+        "current": current,
+        "total": total,
+        "backlog": backlog,
+        "reminder_active": reminder_active,
+        "started_at": started_at,
+        "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+
+    fd, tmp_name = tempfile.mkstemp(prefix=".mnemos-hook-status.", suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=2, ensure_ascii=False)
+            fh.write("\n")
+        os.replace(tmp_name, path)
+    except Exception:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
+
+    return path

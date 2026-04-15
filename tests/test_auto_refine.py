@@ -164,3 +164,37 @@ def test_reminder_suppressed_when_backlog_zero():
     state = PendingState()
     today = datetime(2026, 4, 15, tzinfo=timezone.utc)
     assert should_show_reminder(state, today, backlog=0) is False
+
+
+def test_write_status_creates_file_with_fields(tmp_path):
+    import json
+    from mnemos.auto_refine import write_status
+
+    write_status(
+        vault=tmp_path,
+        phase="refining",
+        current=1,
+        total=3,
+        backlog=42,
+        reminder_active=True,
+        started_at="2026-04-15T14:30:00+00:00",
+    )
+    data = json.loads((tmp_path / ".mnemos-hook-status.json").read_text(encoding="utf-8"))
+    assert data["phase"] == "refining"
+    assert data["current"] == 1
+    assert data["total"] == 3
+    assert data["backlog"] == 42
+    assert data["reminder_active"] is True
+    assert data["started_at"] == "2026-04-15T14:30:00+00:00"
+    assert "updated_at" in data
+
+
+def test_write_status_overwrites_atomically(tmp_path):
+    import json
+    from mnemos.auto_refine import write_status
+
+    write_status(tmp_path, "refining", 1, 3, 10, False, "2026-04-15T14:30:00+00:00")
+    write_status(tmp_path, "mining", 3, 3, 10, False, "2026-04-15T14:30:00+00:00")
+    data = json.loads((tmp_path / ".mnemos-hook-status.json").read_text(encoding="utf-8"))
+    assert data["phase"] == "mining"
+    assert data["current"] == 3
