@@ -116,7 +116,7 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
   `save()` (atomic via tmp+replace), `upsert_source()`, `pending_path()`.
   Status enum validated in `__post_init__`; unknown schema version raises.
 
-- [x] **3.4a `mnemos init` onboarding core** *(commit `__PENDING__`, 2026-04-15)*
+- [x] **3.4a `mnemos init` onboarding core** *(commit `fc17751`, 2026-04-15)*
   Mevcut init sadece vault scaffold yapıyor. Yeni 5-faz akış (kullanıcı spec'i, 2026-04-15):
 
   1. **Faz 1 — Tanıtım** — Mnemos ne, nasıl çalışıyor; ilk run + her run
