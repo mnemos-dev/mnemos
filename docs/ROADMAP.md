@@ -249,5 +249,6 @@ Aktif plan bu dosyadır; arşiv sadece tasarım rationale için referans.
 
 1. Görev başlamadan önce bu dosyadaki checkbox'ı `[ ] → [~]` (in progress) yap
 2. Görev bitince `[~] → [x]` + commit hash'i ekle (`*(commit <hash>, <tarih>)*`)
-3. Scope değişirse ilgili satırı güncelle, gerekirse yeni alt-görev ekle
-4. Yeni phase design spec'leri `docs/specs/` altında; bu ROADMAP'te sadece özet
+3. **[`STATUS.md`](../STATUS.md) güncelle** — "What Mnemos can do today" bölümüne yeni capability'yi ekle, gerekirse "Where the roadmap ends up" satırını güncelle. STATUS.md dışarıya açık olan durum dosyası; buradaki checkbox değişmeden oraya özellik eklenmez, özellik eklenmeden checkbox flip edilmez — ikisi birlikte commit olur
+4. Scope değişirse ilgili satırı güncelle, gerekirse yeni alt-görev ekle
+5. Yeni phase design spec'leri `docs/specs/` altında; bu ROADMAP'te sadece özet

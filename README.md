@@ -16,6 +16,11 @@
   </a>
 </p>
 
+<p align="center">
+  📖 <strong><a href="STATUS.md">Project Status</a></strong> — what works today vs. what's coming ·
+  🗺️ <strong><a href="docs/ROADMAP.md">Roadmap</a></strong> — the single canonical plan
+</p>
+
 ---
 
 ## The Problem
