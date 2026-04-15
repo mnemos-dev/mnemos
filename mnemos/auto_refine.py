@@ -22,8 +22,11 @@ def resolve_ledger_path() -> Path:
 def _read_ledger_paths(ledger_path: Path) -> set[str]:
     """Return the set of source-JSONL paths recorded in the refine-skill ledger.
 
-    Format is one TSV line per processed JSONL: `<status>\t<source_path>\t<note_or_reason>`.
-    Empty or missing file → empty set.
+    Ledger format is one TSV line per processed JSONL:
+    `<source_path>\t<status>\t<note_or_reason>` where status is OK or SKIP.
+    Empty or missing file → empty set. Paths are normalised via Path()/str()
+    so backslash/slash and case differences between ledger writer and reader
+    don't cause spurious re-picks.
     """
     if not ledger_path.exists():
         return set()
@@ -31,8 +34,10 @@ def _read_ledger_paths(ledger_path: Path) -> set[str]:
     paths: set[str] = set()
     for line in ledger_path.read_text(encoding="utf-8").splitlines():
         cols = line.split("\t")
-        if len(cols) >= 2:
-            paths.add(cols[1].strip())
+        if not cols or not cols[0].strip():
+            continue
+        raw = cols[0].strip()
+        paths.add(str(Path(raw)))
     return paths
 
 

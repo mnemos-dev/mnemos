@@ -53,7 +53,7 @@ def test_pick_recent_skips_ledger_entries(tmp_path):
 
     ledger = tmp_path / "ledger.tsv"
     ledger.write_text(
-        f"OK\t{c}\tnote.md\n",
+        f"{c}\tOK\tnote.md\n",
         encoding="utf-8",
     )
     picked = pick_recent_jsonls(projects, ledger, n=3)
@@ -74,3 +74,20 @@ def test_pick_recent_handles_missing_ledger(tmp_path):
     a = _write_jsonl(projects, "a.jsonl", 1_000_000)
     picked = pick_recent_jsonls(projects, tmp_path / "never.tsv", n=3)
     assert picked == [a]
+
+
+def test_pick_recent_parses_real_ledger_format(tmp_path):
+    from mnemos.auto_refine import pick_recent_jsonls
+
+    projects = tmp_path / "projects"
+    a = _write_jsonl(projects, "a.jsonl", 1_000_000)
+    b = _write_jsonl(projects, "b.jsonl", 2_000_000)
+    c = _write_jsonl(projects, "c.jsonl", 3_000_000)
+
+    ledger = tmp_path / "ledger.tsv"
+    ledger.write_text(
+        f"{a}\tOK\tnote1.md\n{c}\tSKIP\tbos-transcript\n",
+        encoding="utf-8",
+    )
+    picked = pick_recent_jsonls(projects, ledger, n=3)
+    assert picked == [b]
