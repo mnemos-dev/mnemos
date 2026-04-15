@@ -132,7 +132,7 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
   Dosyalar: `mnemos/cli.py` (`cmd_init` genişletme), yeni
   `mnemos/onboarding.py` discover/classify/process.
 
-- [x] **3.4b CLI i18n altyapısı + TR+EN onboarding metinleri** *(commit `__PENDING__`, 2026-04-15)*
+- [x] **3.4b CLI i18n altyapısı + TR+EN onboarding metinleri** *(commit `0ddaae9`, 2026-04-15)*
   Faz 1 tanıtım ve Faz 3 prompt'ları için locale-aware string sistemi.
   `mnemos.yaml`'daki `languages` listesi ilk dile düşer; default `en`.
 
