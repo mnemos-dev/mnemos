@@ -142,22 +142,22 @@ _STRINGS: Dict[str, Dict[str, str]] = {
         "en": "    [done] {sid} — scanned: {scanned}, drawers: {drawers}, entities: {entities}",
         "tr": "    [bitti] {sid} — taranan: {scanned}, çekmece: {drawers}, varlık: {entities}",
     },
-    # ---------------- Hook placeholder (Phase 5) ----------------
-    "hook.placeholder": {
-        "en": (
-            "\n=== Auto-mining hooks ===\n"
-            "  Hook activation (auto-mine each new Claude Code session) is\n"
-            "  coming in a future release. For now, run\n"
-            "  `/mnemos-refine-transcripts` skill manually to refine new\n"
-            "  transcripts, then `mnemos mine Sessions/` to index them.\n"
-        ),
-        "tr": (
-            "\n=== Auto-mining hook'lar ===\n"
-            "  Hook aktivasyonu (her yeni Claude Code session'ı otomatik\n"
-            "  mine etme) gelecek sürümde gelecek. Şimdilik yeni transcript'leri\n"
-            "  rafine etmek için `/mnemos-refine-transcripts` skill'ini elle\n"
-            "  çalıştır, sonra `mnemos mine Sessions/` ile indeksle.\n"
-        ),
+    # ---------------- Hook install (v0.3 task 3.7) ----------------
+    "hook_install_prompt": {
+        "en": "Install the auto-refine SessionStart hook so future Claude Code sessions mine themselves? [Y/n]: ",
+        "tr": "Auto-refine SessionStart hook'unu kur — gelecekteki Claude Code oturumları kendiliğinden mine edilsin mi? [E/h]: ",
+    },
+    "hook_install_done": {
+        "en": "Auto-refine hook installed.",
+        "tr": "Auto-refine hook kuruldu.",
+    },
+    "hook_install_already": {
+        "en": "Auto-refine hook already installed — skipping.",
+        "tr": "Auto-refine hook zaten kurulu — atlıyorum.",
+    },
+    "hook_install_declined": {
+        "en": "Skipped. Install later with: mnemos install-hook",
+        "tr": "Atlandı. Daha sonra kurmak için: mnemos install-hook",
     },
 }
 

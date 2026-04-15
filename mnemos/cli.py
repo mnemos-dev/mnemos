@@ -218,8 +218,8 @@ def cmd_init(args: argparse.Namespace) -> None:
     # --- Onboarding: discover → present → choose → process ---
     _run_onboarding(cfg, lang=lang)
 
-    # --- Hook activation placeholder (real install lands in task 3.7) ---
-    _print_hook_placeholder(lang=lang)
+    # --- Hook activation: offer to install SessionStart hook ---
+    _install_hook_prompt(lang=lang, vault=Path(cfg.vault_path))
 
     # --- MCP connection instructions ---
     print(
@@ -479,10 +479,21 @@ def _import_memory(cfg, args: argparse.Namespace) -> None:  # type: ignore[no-un
     _import_dir(cfg, args, source_id="memory-import", kind="curated-md")
 
 
-def _print_hook_placeholder(lang: str = "en") -> None:
-    """Phase 5 — informational note. Real hook install lands in task 3.7."""
+def _install_hook_prompt(lang: str = "en", vault: Path = Path(".")) -> None:
+    """Phase 5 — ask the user to install the SessionStart auto-refine hook."""
     from mnemos.i18n import t
-    print(t("hook.placeholder", lang))
+
+    answer = input(t("hook_install_prompt", lang)).strip().lower()
+    yes_answers = {"", "y", "yes", "e", "evet"}
+    if answer not in yes_answers:
+        print(t("hook_install_declined", lang))
+        return
+
+    result = install_hook(vault=vault, uninstall=False)
+    if result.status == "already-installed":
+        print(t("hook_install_already", lang))
+    else:
+        print(t("hook_install_done", lang))
 
 
 # ---------------------------------------------------------------------------

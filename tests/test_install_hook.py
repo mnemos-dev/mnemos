@@ -59,3 +59,29 @@ def test_install_hook_preserves_existing_settings(tmp_path, monkeypatch):
     assert settings["theme"] == "dark"
     assert "Stop" in settings["hooks"]
     assert "SessionStart" in settings["hooks"]
+
+
+def test_install_hook_prompt_installs_on_yes(tmp_path, monkeypatch, capsys):
+    from mnemos.cli import _install_hook_prompt
+
+    home = tmp_path / "home"
+    (home / ".claude").mkdir(parents=True)
+    monkeypatch.setattr("pathlib.Path.home", lambda: home)
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+
+    _install_hook_prompt(lang="en", vault=tmp_path)
+    out = capsys.readouterr().out
+    assert "installed" in out.lower() or "kuruldu" in out.lower()
+
+
+def test_install_hook_prompt_skips_on_no(tmp_path, monkeypatch, capsys):
+    from mnemos.cli import _install_hook_prompt
+
+    home = tmp_path / "home"
+    (home / ".claude").mkdir(parents=True)
+    monkeypatch.setattr("pathlib.Path.home", lambda: home)
+    monkeypatch.setattr("builtins.input", lambda _: "n")
+
+    _install_hook_prompt(lang="en", vault=tmp_path)
+    out = capsys.readouterr().out
+    assert "skipped" in out.lower() or "atlandı" in out.lower() or "install later" in out.lower()
