@@ -1,6 +1,6 @@
 <h1 align="center">Mnemos</h1>
-<p align="center"><strong>Obsidian-native AI memory palace with semantic search</strong></p>
-<p align="center">Your AI's memory lives in your Obsidian vault. Human-readable. Searchable. Yours.</p>
+<p align="center"><strong>Turn your Claude Code history into a searchable memory palace.</strong></p>
+<p align="center">Every conversation becomes markdown in your Obsidian vault. Every decision stays findable. Your AI finally remembers you.</p>
 <p align="center">
   <a href="https://github.com/mnemos-dev/mnemos/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License">
@@ -18,31 +18,70 @@
 
 ---
 
-## Why Mnemos?
+## The Problem
 
-[MemPalace](https://github.com/MemPalace/mempalace) proved that structured memory architecture works for AI. Mnemos takes the same idea and makes it **Obsidian-native** — your memories are markdown files you can read, edit, and organize.
+You've had hundreds of Claude Code sessions. Decisions, debugging notes, hard-won context — all locked in `~/.claude/projects/*.jsonl` files nobody ever opens again. Every new session starts from zero.
 
-| | MemPalace | Mnemos |
-|--|-----------|--------|
-| **Storage** | ChromaDB binary (opaque) | Obsidian markdown (you can read it) |
-| **Mining** | English regex only | Hybrid: regex + Claude API (any language) |
-| **Access** | AI only | You AND your AI |
-| **Search** | Semantic | Semantic + metadata + optional re-rank |
-| **Deletion** | API call | Delete in Obsidian, auto-synced |
-| **Ecosystem** | Standalone | Obsidian Graph View, Dataview, plugins |
+## What Mnemos Does
+
+Mnemos turns that history into a **memory palace** any future Claude Code session can search:
+
+1. **Refine** — a bundled Claude Code skill reads your JSONL transcripts and writes focused session notes (decisions, outcomes, open questions) into your Obsidian vault. High signal, no tool noise.
+2. **Mine** — regex + optional LLM extraction pulls individual memories out of those notes and classifies them by project, topic, and type.
+3. **Recall** — 8 MCP tools let any Claude Code / Cursor / ChatGPT session search, graph, and load relevant context.
+
+Storage is plain markdown in your vault. You read it, edit it, organize it. ChromaDB indexes it for semantic search, but **Obsidian is the source of truth** — delete a note in Obsidian and the memory is gone.
 
 ## Quick Start
 
 ```bash
-# Install
+# 1. Install
 pip install mnemos-dev
 
-# Initialize your vault
+# 2. Scaffold your vault
 mnemos init
 
-# Connect to Claude Code
+# 3. Install the refinement skill (one-time)
+#    Windows:
+mklink /J "%USERPROFILE%\.claude\skills\mnemos-refine-transcripts" \
+  "<mnemos-repo>\skills\mnemos-refine-transcripts"
+#    macOS / Linux:
+ln -s <mnemos-repo>/skills/mnemos-refine-transcripts \
+  ~/.claude/skills/mnemos-refine-transcripts
+
+# 4. Wire it to Claude Code
 claude mcp add mnemos -- python -m mnemos --vault /path/to/your/vault
+
+# 5. In a Claude Code session:
+/mnemos-refine-transcripts --limit 5   # pilot: 5 JSONLs → Sessions/
+mnemos mine Sessions/                   # extract memories into the palace
 ```
+
+Future Claude Code sessions automatically pull context via `mnemos_wake_up` + `mnemos_search`.
+
+## The Refinement Skill
+
+`skills/mnemos-refine-transcripts/` ships with the repo. After the symlink/junction above, Claude Code sees it as `/mnemos-refine-transcripts`. The skill:
+
+- Discovers JSONL transcripts under `~/.claude/projects/`
+- Runs a prose extractor (drops tool calls, hooks, sidechains)
+- Applies the canonical refinement prompt at `docs/prompts/refine-transcripts.md` — one source of rules, no drift
+- Writes value-carrying sessions to `<vault>/Sessions/<YYYY-MM-DD>-<slug>.md`, skips noise
+- Keeps a local ledger (`skills/mnemos-refine-transcripts/state/processed.tsv`) so nothing gets reprocessed
+- Pilots 5 at a time before committing to the full batch
+
+The skill does **not** call any LLM API — it runs inside your existing Claude Code session. Zero additional cost, zero extra dependencies.
+
+## Why Not Just Raw Transcripts?
+
+| | Raw JSONL | Refined Sessions/ |
+|--|-----------|-------------------|
+| **Size** | 50-500 KB each, 99% tool noise | 10-50 lines of actual decisions |
+| **Searchability** | Semantic search drowns in tool calls | Every hit is a real turn |
+| **Readability** | JSON blobs | Human markdown |
+| **Portability** | Claude Code format only | Markdown, any tool |
+
+Refinement is selective: curated `.md` files (memory, Topics/, hand-written Sessions/) skip refinement and are mined directly. Noisy sources (JSONL, email, PDF) get refined first.
 
 ## How It Works
 
@@ -62,22 +101,20 @@ Your Obsidian Vault
       +-- _recycled/          (soft-deleted memories)
 ```
 
-Every memory is a `.md` file with YAML frontmatter. ChromaDB runs alongside as a vector index for fast semantic search. **Obsidian is the master, ChromaDB is the index** — if it's not in your vault, it doesn't exist.
+Every memory is a `.md` file with YAML frontmatter. ChromaDB (or optional sqlite-vec) runs alongside as a vector index. If it's not in your vault, it doesn't exist.
 
 ## MCP Tools
 
-Mnemos exposes 8 tools via [Model Context Protocol](https://modelcontextprotocol.io/):
-
 | Tool | Description |
 |------|-------------|
+| `mnemos_wake_up` | Session startup context (~200 tokens: identity + wings) |
 | `mnemos_search` | Semantic search with wing/room/hall filters + dual collection (raw/mined/both) |
+| `mnemos_recall` | Load context (L0 identity, L1 summaries, L2 details) |
 | `mnemos_add` | Add a new memory |
 | `mnemos_mine` | Extract memories from files or directories |
-| `mnemos_status` | Palace statistics |
-| `mnemos_recall` | Load context (L0 identity, L1 summaries, L2 details) |
 | `mnemos_graph` | Query entity relationships |
 | `mnemos_timeline` | Chronological entity history |
-| `mnemos_wake_up` | Session startup context (~200 tokens) |
+| `mnemos_status` | Palace statistics |
 
 Works with **Claude Code**, **Cursor**, **ChatGPT**, and any MCP-compatible client.
 
@@ -85,76 +122,64 @@ Works with **Claude Code**, **Cursor**, **ChatGPT**, and any MCP-compatible clie
 
 Mnemos extracts memories using a 10-step pipeline:
 
-1. **Format detection** — auto-detects Claude Code JSONL, ChatGPT JSON, Slack JSON, or plain markdown
-2. **Conversation normalization** — converts chat exports to standard transcript format
-3. **Prose extraction** — filters out code blocks, shell commands, and non-human text
-4. **Exchange-pair chunking** — keeps questions and answers together (conversations)
+1. **Format detection** — Claude Code JSONL, ChatGPT JSON, Slack JSON, or plain markdown
+2. **Conversation normalization** — chat exports → standard transcript format
+3. **Prose extraction** — filters code blocks, shell commands, non-human text
+4. **Exchange-pair chunking** — keeps questions and answers together
 5. **Room detection** — 72+ folder/keyword patterns across 13 categories
 6. **Entity detection** — heuristic person/project classification
 7. **172 regex markers** — 87 English + 85 Turkish across 4 halls (decisions, preferences, problems, events)
-8. **Scoring + disambiguation** — confidence-based classification with problem-to-milestone detection
+8. **Scoring + disambiguation** — confidence-based classification
 9. **Claude API** (optional) — catches what regex misses, works in any language
 
 ```bash
-# Mine your session notes
-mnemos mine Sessions/
-
-# Mine conversation exports (auto-detected)
-mnemos mine ~/chatgpt-export.json
-mnemos mine ~/.claude/projects/my-project/conversations/
-
-# Rebuild all indexes from scratch
-mnemos mine Sessions/ --rebuild
-
-# Use Claude API for better extraction
-pip install mnemos-dev[llm]
-mnemos mine Sessions/ --llm
+mnemos mine Sessions/                                  # the usual flow
+mnemos mine ~/chatgpt-export.json                      # auto-detected format
+mnemos mine Sessions/ --rebuild                        # wipe & re-index
+pip install mnemos-dev[llm] && mnemos mine Sessions/ --llm   # LLM-assisted
 ```
 
 ### Conversation Formats
 
 | Format | Source | Auto-detected |
 |--------|--------|:---:|
-| Claude Code JSONL | `~/.claude/projects/*/conversations/` | Yes |
-| Claude.ai JSON | claude.ai export | Yes |
-| ChatGPT JSON | chatgpt.com export | Yes |
-| Slack JSON | Slack workspace export | Yes |
-| Plain text / Markdown | Any `.md` or `.txt` | Yes |
+| Claude Code JSONL | `~/.claude/projects/*/conversations/` | ✅ |
+| Claude.ai JSON | claude.ai export | ✅ |
+| ChatGPT JSON | chatgpt.com export | ✅ |
+| Slack JSON | Slack workspace export | ✅ |
+| Plain text / Markdown | Any `.md` or `.txt` | ✅ |
 
 ### External Sources (Read-Only)
 
-Mine data from outside your vault without modifying the source:
-
 ```bash
-# Mine Claude Code memory (one-shot, read-only)
-mnemos mine ~/.claude/projects/my-project/memory --external
+mnemos mine ~/some/notes --external
 ```
 
-External sources are mined once to extract memories into your palace. The source files are **never modified or watched**.
+External sources are mined once. Source files are **never modified or watched**.
 
 ## File Watcher
 
-Changes you make in Obsidian are automatically synced to ChromaDB:
+Changes you make in Obsidian sync to the vector index automatically:
 
 | Action | Result |
 |--------|--------|
-| **Add** a note | Indexed in ChromaDB |
-| **Edit** a note | Re-indexed |
-| **Delete** a note | Removed from index |
-| **Move** a note | Metadata updated |
+| Add a note | Indexed |
+| Edit a note | Re-indexed |
+| Delete a note | Removed from index |
+| Move a note | Metadata updated |
 
-The watcher runs inside the MCP server. When the server restarts, it detects any changes made while it was offline.
+Runs inside the MCP server. Detects offline changes on restart.
 
-## Memory Stack (L0-L3)
+## Memory Stack (L0–L3)
 
-Efficient context loading — your AI knows you without wasting tokens:
+Efficient context loading — your AI knows you without burning tokens:
 
 | Level | Content | Tokens | Loaded |
 |-------|---------|--------|--------|
 | L0 | Identity | ~50 | Every session |
 | L1 | Wing summaries | ~150 | Every session |
-| L2 | Room details | ~300-500 | When topic mentioned |
-| L3 | Deep search | ~200-400 | When asked |
+| L2 | Room details | ~300–500 | When topic mentioned |
+| L3 | Deep search | ~200–400 | When asked |
 
 ## Configuration
 
@@ -210,34 +235,40 @@ Mnemos uses [LongMemEval](https://huggingface.co/datasets/xiaowu0162/LongMemEval
 
 ```bash
 pip install mnemos-dev[benchmark]
-
-# Run benchmark (all 500 questions)
-mnemos benchmark longmemeval
-
-# Quick test (first 10 questions)
-mnemos benchmark longmemeval --limit 10
-
-# Test specific mode
+mnemos benchmark longmemeval              # all 500 questions
+mnemos benchmark longmemeval --limit 10   # quick smoke
 mnemos benchmark longmemeval --mode raw-only
 ```
 
 | Mode | Description |
 |------|-------------|
-| `raw-only` | Search only raw (verbatim) collection |
-| `mined-only` | Search only mined (classified) collection |
-| `combined` | Both collections with RRF merge (default) |
+| `raw-only` | Verbatim collection only |
+| `mined-only` | Classified collection only |
+| `combined` | Both, with RRF merge (default) |
 
 ## Roadmap
 
 - **v0.1** — Core palace architecture, 8 MCP tools, basic regex mining
-- **v0.2** — Phase 0: Foundation (dual collection, 5 conversation formats, 172 markers, benchmark)
-- **v0.3** — Phase 1: AI Engine (Claude API mining, reranking, contradiction detection)
-- **v0.4** — Phase 2: Automation (session hooks, memory lifecycle, knowledge graph)
-- **v0.5** — Phase 3: Ecosystem (specialist agents, multi-source connectors, Obsidian plugin)
+- **v0.2** — Dual collection, 5 conversation formats, 172 markers, LongMemEval benchmark harness
+- **v0.3** — **First-run experience** (in progress): refine-transcripts skill ✅, `mnemos init` discover/classify/import wizard, `mnemos import <source>` subcommand family, `.mnemos-pending.json` resume mechanism
+- **v0.4** — AI engine: Claude API mining quality pass, reranking, contradiction detection
+- **v0.5** — Automation: session hooks, memory lifecycle, knowledge graph deepening
+- **v0.6** — Ecosystem: specialist agents, multi-source connectors, Obsidian plugin
+
+## vs. MemPalace
+
+[MemPalace](https://github.com/MemPalace/mempalace) proved structured memory architecture works for AI. Mnemos takes the same idea and makes it Obsidian-native and Claude Code-first.
+
+| | MemPalace | Mnemos |
+|--|-----------|--------|
+| **Storage** | ChromaDB binary (opaque) | Obsidian markdown (you can read it) |
+| **Mining** | English regex only | Hybrid: regex + Claude API (any language) |
+| **Primary source** | Generic strings | Claude Code JSONL via refinement skill |
+| **Access** | AI only | You AND your AI |
+| **Deletion** | API call | Delete in Obsidian, auto-synced |
+| **Ecosystem** | Standalone | Obsidian Graph View, Dataview, plugins |
 
 ## Contributing
-
-Contributions welcome! This project is built from scratch (not a fork) — inspired by [MemPalace](https://github.com/MemPalace/mempalace)'s palace architecture.
 
 ```bash
 git clone https://github.com/mnemos-dev/mnemos.git
@@ -245,6 +276,8 @@ cd mnemos
 pip install -e ".[dev,llm]"
 pytest tests/ -v
 ```
+
+Built from scratch (not a fork) — inspired by [MemPalace](https://github.com/MemPalace/mempalace)'s palace architecture.
 
 ## License
 
