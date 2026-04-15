@@ -54,6 +54,7 @@ class PendingState:
 
     version: int = SCHEMA_VERSION
     sources: List[PendingSource] = field(default_factory=list)
+    backlog_reminder_last_shown: Optional[str] = None
 
     def get(self, source_id: str) -> Optional[PendingSource]:
         for src in self.sources:
@@ -80,7 +81,11 @@ def load(vault_path: str | os.PathLike[str]) -> PendingState:
         )
 
     sources = [PendingSource(**entry) for entry in raw.get("sources", [])]
-    return PendingState(version=version, sources=sources)
+    return PendingState(
+        version=version,
+        sources=sources,
+        backlog_reminder_last_shown=raw.get("backlog_reminder_last_shown"),
+    )
 
 
 def save(vault_path: str | os.PathLike[str], state: PendingState) -> Path:
@@ -91,6 +96,7 @@ def save(vault_path: str | os.PathLike[str], state: PendingState) -> Path:
     payload = {
         "version": state.version,
         "sources": [asdict(src) for src in state.sources],
+        "backlog_reminder_last_shown": state.backlog_reminder_last_shown,
     }
 
     fd, tmp_name = tempfile.mkstemp(

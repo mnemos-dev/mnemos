@@ -132,3 +132,26 @@ class TestStateGet:
         ])
         assert state.get("b").path == "/y"
         assert state.get("missing") is None
+
+
+def test_backlog_reminder_defaults_to_none(tmp_path):
+    from mnemos.pending import load
+    state = load(tmp_path)
+    assert state.backlog_reminder_last_shown is None
+
+
+def test_backlog_reminder_roundtrip(tmp_path):
+    from mnemos.pending import PendingState, load, save
+    stamp = "2026-04-15T14:30:00+00:00"
+    save(tmp_path, PendingState(backlog_reminder_last_shown=stamp))
+    assert load(tmp_path).backlog_reminder_last_shown == stamp
+
+
+def test_backlog_reminder_loads_legacy_payload(tmp_path):
+    import json
+    from mnemos.pending import load, pending_path
+    pending_path(tmp_path).write_text(
+        json.dumps({"version": 1, "sources": []}),
+        encoding="utf-8",
+    )
+    assert load(tmp_path).backlog_reminder_last_shown is None
