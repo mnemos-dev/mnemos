@@ -136,7 +136,7 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
   Faz 1 tanıtım ve Faz 3 prompt'ları için locale-aware string sistemi.
   `mnemos.yaml`'daki `languages` listesi ilk dile düşer; default `en`.
 
-- [x] **3.5 `mnemos import <source>` subcommand ailesi** *(commit `__PENDING__`, 2026-04-15)*
+- [x] **3.5 `mnemos import <source>` subcommand ailesi** *(commit `d9e97a9`, 2026-04-15)*
   Discovery'yi ChatGPT/Slack/Claude.ai/Gemini formatlarına genişletir
   (`onboarding.py`'a eklenir). `mnemos init [L]` seçen kullanıcı için
   parça parça ilerleme yolu.
