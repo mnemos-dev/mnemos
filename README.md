@@ -44,7 +44,10 @@ Storage is plain markdown in your vault. You read it, edit it, organize it. Chro
 # 1. Install
 pip install mnemos-dev
 
-# 2. Scaffold your vault
+# 2. Scaffold your vault — interactive wizard:
+#    discovers Claude Code transcripts + vault Sessions/memory/Topics,
+#    asks [A]ll / [S]elective / [L]ater, then mines what you choose.
+#    Resumable via .mnemos-pending.json. TR + EN.
 mnemos init
 
 # 3. Install the refinement skill (one-time)
@@ -62,6 +65,8 @@ claude mcp add mnemos -- python -m mnemos --vault /path/to/your/vault
 /mnemos-refine-transcripts --limit 5   # pilot: 5 JSONLs → Sessions/
 mnemos mine Sessions/                   # extract memories into the palace
 ```
+
+Or skip the manual flow above and let `mnemos init` walk you through everything. Add sources later with `mnemos import claude-code`, `mnemos import chatgpt <export.json>`, etc.
 
 Future Claude Code sessions automatically pull context via `mnemos_wake_up` + `mnemos_search`.
 
@@ -256,7 +261,14 @@ mnemos benchmark longmemeval --mode raw-only
 
 - **v0.1** — Core palace architecture, 8 MCP tools, basic regex mining
 - **v0.2** — Dual collection, 5 conversation formats, 172 markers, LongMemEval benchmark harness
-- **v0.3** — **First-run experience** (in progress): refine-transcripts skill ✅, `mnemos init` discover/classify/import wizard, `mnemos import <source>` subcommand family, `.mnemos-pending.json` resume mechanism
+- **v0.3** — **First-run experience** (in progress):
+  refine-transcripts skill ✅,
+  `.mnemos-pending.json` resume mechanism ✅,
+  `mnemos init` 5-phase discover/classify/import wizard ✅,
+  `mnemos import {claude-code,chatgpt,slack,markdown,memory}` subcommand family ✅,
+  CLI i18n (TR + EN) ✅,
+  CONTRIBUTING.md ✅.
+  Remaining: auto-refine SessionStart hook, session-memory skill deprecation, new-user pilot, PyPI release.
 - **v0.4** — AI engine: Claude API mining quality pass, reranking, contradiction detection
 - **v0.5** — Automation: session hooks, memory lifecycle, knowledge graph deepening
 - **v0.6** — Ecosystem: specialist agents, multi-source connectors, Obsidian plugin
