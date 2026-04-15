@@ -91,3 +91,36 @@ def test_pick_recent_parses_real_ledger_format(tmp_path):
     )
     picked = pick_recent_jsonls(projects, ledger, n=3)
     assert picked == [b]
+
+
+def test_compute_backlog_counts_unprocessed(tmp_path):
+    from mnemos.auto_refine import compute_backlog
+
+    projects = tmp_path / "projects"
+    _write_jsonl(projects, "a.jsonl", 1_000_000)
+    _write_jsonl(projects, "b.jsonl", 2_000_000)
+    _write_jsonl(projects, "c.jsonl", 3_000_000)
+
+    ledger = tmp_path / "ledger.tsv"
+    ledger.write_text(
+        f"{projects / 'proj' / 'a.jsonl'}\tOK\tnote.md\n",
+        encoding="utf-8",
+    )
+    assert compute_backlog(projects, ledger) == 2
+
+
+def test_compute_backlog_zero_when_all_processed(tmp_path):
+    from mnemos.auto_refine import compute_backlog
+
+    projects = tmp_path / "projects"
+    a = _write_jsonl(projects, "a.jsonl", 1_000_000)
+
+    ledger = tmp_path / "ledger.tsv"
+    ledger.write_text(f"{a}\tOK\tnote.md\n", encoding="utf-8")
+    assert compute_backlog(projects, ledger) == 0
+
+
+def test_compute_backlog_no_projects_dir(tmp_path):
+    from mnemos.auto_refine import compute_backlog
+
+    assert compute_backlog(tmp_path / "nope", tmp_path / "ledger.tsv") == 0

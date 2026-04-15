@@ -60,3 +60,20 @@ def pick_recent_jsonls(projects_dir: Path, ledger_path: Path, n: int = 3) -> lis
         if len(picked) >= n:
             break
     return picked
+
+
+def compute_backlog(projects_dir: Path, ledger_path: Path) -> int:
+    """Count JSONLs under `projects_dir` that are not listed in the ledger.
+
+    Uses the same path normalisation as `pick_recent_jsonls` so counts stay
+    consistent between the picker and the backlog reminder.
+    """
+    if not projects_dir.exists():
+        return 0
+
+    ledger_paths = _read_ledger_paths(ledger_path)
+    total = 0
+    for candidate in projects_dir.rglob("*.jsonl"):
+        if str(candidate) not in ledger_paths:
+            total += 1
+    return total
