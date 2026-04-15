@@ -1,0 +1,17 @@
+{
+  "_comment": "Reference snippet added by `mnemos install-hook` to ~/.claude/settings.json. You don't normally edit this by hand — run the CLI instead.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "# mnemos-auto-refine\nMNEMOS_VAULT=\"<path-to-your-vault>\" python \"<repo>/scripts/auto_refine_hook.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
