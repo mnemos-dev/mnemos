@@ -239,14 +239,9 @@ asgariye iner.
 
 ## Historical archive
 
-Aşağıdaki belgeler delivered sürümlerin design/plan artifact'ları. Referans
-olarak saklı; aktif plan bu dosya.
-
-- `docs/specs/2026-04-12-mnemos-design.md` — v0.1 orijinal tasarım (`Release Plan`
-  bölümü burada outdated — bu ROADMAP baz alınır)
-- `docs/plans/2026-04-12-mnemos-v01-implementation.md` — v0.1 implement planı
-- `docs/specs/2026-04-13-phase0-foundation-design.md` — Phase 0 detay
-- `docs/plans/2026-04-13-phase0-foundation-implementation.md` — Phase 0 task listesi
+Delivered sürümlerin design/plan artifact'ları `docs/archive/` altında.
+Aktif plan bu dosyadır; arşiv sadece tasarım rationale için referans.
+İndeks: [`docs/archive/README.md`](archive/README.md).
 
 ---
 
