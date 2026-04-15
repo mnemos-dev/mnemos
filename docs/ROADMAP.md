@@ -152,9 +152,11 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
   Dosyalar: `mnemos/cli.py` (argparse subparser), yeni
   `mnemos/importers/` modülü.
 
-- [ ] **3.6 CONTRIBUTING.md** *(30 dk, bağımsız)*
+- [x] **3.6 CONTRIBUTING.md** *(commit `__PENDING__`, 2026-04-15)*
   Git workflow, branch naming, test çalıştırma, skill geliştirme, nasıl
-  yeni language/marker ekleneceği.
+  yeni language/marker ekleneceği. Plus: architectural "no-cross" lines
+  (Obsidian master, no LLM in mnemos itself, dual-collection separation,
+  junction/symlink drift forbidden).
 
 - [ ] **3.7 SessionStart auto-refine hook** *(2-3h, 3.3'ten sonra)*
   Claude Code session açılırken önceki session'ın JSONL'ini otomatik
