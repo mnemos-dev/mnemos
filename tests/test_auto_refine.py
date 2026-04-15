@@ -198,3 +198,84 @@ def test_write_status_overwrites_atomically(tmp_path):
     data = json.loads((tmp_path / ".mnemos-hook-status.json").read_text(encoding="utf-8"))
     assert data["phase"] == "mining"
     assert data["current"] == 3
+
+
+def test_run_invokes_refine_for_each_picked_jsonl(tmp_path):
+    from mnemos.auto_refine import run
+
+    projects = tmp_path / "projects"
+    a = _write_jsonl(projects, "a.jsonl", 1_000_000)
+    b = _write_jsonl(projects, "b.jsonl", 2_000_000)
+
+    ledger = tmp_path / "ledger.tsv"
+    ledger.touch()
+
+    calls: list[str] = []
+
+    def fake_runner(cmd):
+        calls.append(" ".join(str(c) for c in cmd))
+        return 0
+
+    run(
+        vault=tmp_path,
+        projects_dir=projects,
+        ledger_path=ledger,
+        picked=[b, a],
+        reminder_active=False,
+        started_at="2026-04-15T14:30:00+00:00",
+        runner=fake_runner,
+    )
+
+    assert any("/mnemos-refine-transcripts" in c and str(b) in c for c in calls)
+    assert any("/mnemos-refine-transcripts" in c and str(a) in c for c in calls)
+    assert any("--dangerously-skip-permissions" in c for c in calls)
+    assert any("mnemos" in c and "mine" in c for c in calls)
+
+
+def test_run_updates_reminder_timestamp_when_active(tmp_path):
+    from mnemos.auto_refine import run
+    from mnemos.pending import load, save, PendingState
+
+    projects = tmp_path / "projects"
+    ledger = tmp_path / "ledger.tsv"
+    ledger.touch()
+    save(tmp_path, PendingState())
+
+    def noop_runner(cmd):
+        return 0
+
+    run(
+        vault=tmp_path,
+        projects_dir=projects,
+        ledger_path=ledger,
+        picked=[],
+        reminder_active=True,
+        started_at="2026-04-15T14:30:00+00:00",
+        runner=noop_runner,
+    )
+    state = load(tmp_path)
+    assert state.backlog_reminder_last_shown is not None
+
+
+def test_run_sets_phase_idle_when_done(tmp_path):
+    import json
+    from mnemos.auto_refine import run
+
+    projects = tmp_path / "projects"
+    ledger = tmp_path / "ledger.tsv"
+    ledger.touch()
+
+    def noop_runner(cmd):
+        return 0
+
+    run(
+        vault=tmp_path,
+        projects_dir=projects,
+        ledger_path=ledger,
+        picked=[],
+        reminder_active=False,
+        started_at="2026-04-15T14:30:00+00:00",
+        runner=noop_runner,
+    )
+    data = json.loads((tmp_path / ".mnemos-hook-status.json").read_text(encoding="utf-8"))
+    assert data["phase"] == "idle"

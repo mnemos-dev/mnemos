@@ -3,15 +3,26 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Callable, Sequence
+
+from filelock import FileLock, Timeout
 
 from mnemos.pending import PendingState
+from mnemos.pending import load as pending_load
+from mnemos.pending import save as pending_save
 
 DEFAULT_LEDGER_SUFFIX = Path(".claude/skills/mnemos-refine-transcripts/state/processed.tsv")
 REMINDER_INTERVAL_DAYS = 7
 STATUS_FILENAME = ".mnemos-hook-status.json"
+HOOK_LOG_FILENAME = ".mnemos-hook.log"
+HOOK_LOCK_FILENAME = ".mnemos-hook.lock"
+
+Runner = Callable[[Sequence[str]], int]
 
 
 def resolve_ledger_path() -> Path:
@@ -138,3 +149,88 @@ def write_status(
         raise
 
     return path
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator
+# ---------------------------------------------------------------------------
+
+
+def _default_runner(cmd: Sequence[str]) -> int:
+    return subprocess.call(list(cmd))
+
+
+def run(
+    vault: Path,
+    projects_dir: Path,
+    ledger_path: Path,
+    picked: list[Path],
+    reminder_active: bool,
+    started_at: str,
+    runner: Runner | None = None,
+) -> None:
+    """Background orchestrator: refine each picked JSONL, mine, update state.
+
+    Acquires a filelock advisory lock at <vault>/.mnemos-hook.lock to avoid
+    concurrent auto-refine runs from overlapping sessions.
+    """
+    runner = runner or _default_runner
+    lock = FileLock(str(Path(vault) / HOOK_LOCK_FILENAME), timeout=1)
+
+    try:
+        with lock:
+            _run_locked(
+                vault=vault,
+                projects_dir=projects_dir,
+                ledger_path=ledger_path,
+                picked=picked,
+                reminder_active=reminder_active,
+                started_at=started_at,
+                runner=runner,
+            )
+    except Timeout:
+        backlog = compute_backlog(projects_dir, ledger_path)
+        write_status(vault, "busy", 0, 0, backlog, False, started_at)
+
+
+def _run_locked(
+    *,
+    vault: Path,
+    projects_dir: Path,
+    ledger_path: Path,
+    picked: list[Path],
+    reminder_active: bool,
+    started_at: str,
+    runner: Runner,
+) -> None:
+    total = len(picked)
+    log_path = Path(vault) / HOOK_LOG_FILENAME
+
+    for i, jsonl in enumerate(picked, start=1):
+        backlog = compute_backlog(projects_dir, ledger_path)
+        write_status(vault, "refining", i, total, backlog, reminder_active, started_at)
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(f"[{datetime.now(timezone.utc).isoformat(timespec='seconds')}] refine {jsonl}\n")
+        rc = runner([
+            "claude",
+            "--print",
+            "--dangerously-skip-permissions",
+            f"/mnemos-refine-transcripts {jsonl}",
+        ])
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(f"  exit={rc}\n")
+
+    backlog = compute_backlog(projects_dir, ledger_path)
+    write_status(vault, "mining", total, total, backlog, reminder_active, started_at)
+    sessions_dir = Path(vault) / "Sessions"
+    rc = runner([sys.executable, "-m", "mnemos", "mine", str(sessions_dir), "--incremental"])
+    with log_path.open("a", encoding="utf-8") as fh:
+        fh.write(f"  mine exit={rc}\n")
+
+    if reminder_active:
+        state = pending_load(vault)
+        state.backlog_reminder_last_shown = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        pending_save(vault, state)
+
+    backlog = compute_backlog(projects_dir, ledger_path)
+    write_status(vault, "idle", total, total, backlog, False, started_at)
