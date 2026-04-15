@@ -179,6 +179,139 @@ class TestApplyDecisionNonMining:
         assert entry.last_action == "deferred-by-user"
 
 
+class TestPendingHelpers:
+    """test_pending_helpers — onboarding's thin wrappers around mnemos.pending."""
+
+    def test_mark_in_progress(self, tmp_vault: Path) -> None:
+        from mnemos import onboarding, pending
+
+        onboarding.mark_in_progress(
+            tmp_vault, source_id="x", kind="curated-md",
+            root_path="/p", file_count=7,
+        )
+        entry = pending.load(tmp_vault).get("x")
+        assert entry.status == "in-progress"
+        assert entry.last_action == "mining"
+        assert entry.total == 7
+
+    def test_mark_done_records_processed(self, tmp_vault: Path) -> None:
+        from mnemos import onboarding, pending
+
+        onboarding.mark_done(
+            tmp_vault, source_id="x", kind="curated-md",
+            root_path="/p", file_count=10, processed=8,
+            last_action="mined-via-import",
+        )
+        entry = pending.load(tmp_vault).get("x")
+        assert entry.status == "done"
+        assert entry.processed == 8
+        assert entry.last_action == "mined-via-import"
+
+    def test_register_pending_uses_caller_action(self, tmp_vault: Path) -> None:
+        from mnemos import onboarding, pending
+
+        onboarding.register_pending(
+            tmp_vault, source_id="cc", kind="raw-jsonl",
+            root_path="/r", file_count=200,
+            last_action="awaiting-refine-skill",
+        )
+        entry = pending.load(tmp_vault).get("cc")
+        assert entry.status == "pending"
+        assert entry.last_action == "awaiting-refine-skill"
+
+
+class TestImportClaudeCode:
+    """test_import_claude_code — register-only (no mining), refine hint shown."""
+
+    def _args(self, projects_dir: Path, limit: int = 0):
+        import argparse
+        return argparse.Namespace(
+            vault=None, projects_dir=str(projects_dir), limit=limit,
+        )
+
+    def test_registers_as_pending_with_refine_action(
+        self, config, tmp_vault: Path, tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture,
+    ) -> None:
+        from mnemos import pending
+        from mnemos.cli import _import_claude_code
+
+        cc_dir = tmp_path / "claude-projects"
+        (cc_dir / "proj").mkdir(parents=True)
+        for i in range(3):
+            (cc_dir / "proj" / f"s{i}.jsonl").write_text("{}", encoding="utf-8")
+
+        _import_claude_code(config, self._args(cc_dir))
+
+        entry = pending.load(tmp_vault).get("claude-code-jsonl")
+        assert entry.status == "pending"
+        assert entry.last_action == "awaiting-refine-skill"
+        assert entry.total == 3
+
+        out = capsys.readouterr().out
+        assert "/mnemos-refine-transcripts" in out
+
+    def test_limit_caps_registered_count(
+        self, config, tmp_vault: Path, tmp_path: Path,
+    ) -> None:
+        from mnemos import pending
+        from mnemos.cli import _import_claude_code
+
+        cc_dir = tmp_path / "claude-projects"
+        (cc_dir / "proj").mkdir(parents=True)
+        for i in range(10):
+            (cc_dir / "proj" / f"s{i}.jsonl").write_text("{}", encoding="utf-8")
+
+        _import_claude_code(config, self._args(cc_dir, limit=4))
+        assert pending.load(tmp_vault).get("claude-code-jsonl").total == 4
+
+    def test_missing_projects_dir_exits(
+        self, config, tmp_path: Path,
+    ) -> None:
+        from mnemos.cli import _import_claude_code
+
+        ghost = tmp_path / "no-such-dir"
+        with pytest.raises(SystemExit, match="Not a directory"):
+            _import_claude_code(config, self._args(ghost))
+
+
+class TestImportPathValidation:
+    """test_import_path_validation — file vs directory checks for non-mining paths."""
+
+    def test_chatgpt_rejects_directory(
+        self, config, tmp_path: Path,
+    ) -> None:
+        import argparse
+        from mnemos.cli import _import_chatgpt
+
+        target_dir = tmp_path / "not-a-file"
+        target_dir.mkdir()
+        with pytest.raises(SystemExit, match="Not a file"):
+            _import_chatgpt(config, argparse.Namespace(vault=None, path=str(target_dir)))
+
+    def test_markdown_rejects_file(
+        self, config, tmp_path: Path,
+    ) -> None:
+        import argparse
+        from mnemos.cli import _import_markdown
+
+        f = tmp_path / "actual-file.md"
+        f.write_text("# x", encoding="utf-8")
+        with pytest.raises(SystemExit, match="Not a directory"):
+            _import_markdown(config, argparse.Namespace(vault=None, path=str(f)))
+
+    def test_markdown_rejects_empty_directory(
+        self, config, tmp_path: Path,
+    ) -> None:
+        import argparse
+        from mnemos.cli import _import_markdown
+
+        empty = tmp_path / "empty-dir"
+        empty.mkdir()
+        with pytest.raises(SystemExit, match="No .md files"):
+            _import_markdown(config, argparse.Namespace(vault=None, path=str(empty)))
+
+
 class TestDiscoveryOrdering:
     def test_claude_first_then_vault(self, tmp_vault: Path, tmp_path: Path) -> None:
         cc_dir = tmp_path / "claude-projects"

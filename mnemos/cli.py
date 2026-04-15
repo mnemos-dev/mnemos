@@ -224,18 +224,15 @@ def _ask_per_source(src, estimate: str) -> str:  # type: ignore[no-untyped-def]
 
 def _apply_decision(cfg, src, decision: str) -> None:  # type: ignore[no-untyped-def]
     """Carry out user decision for one source + record it in pending.json."""
-    from mnemos import pending
-    from mnemos.pending import PendingSource
+    from mnemos import onboarding
+
+    common = dict(
+        source_id=src.id, kind=src.kind,
+        root_path=src.root_path, file_count=src.file_count,
+    )
 
     if decision == "skip":
-        pending.upsert_source(
-            cfg.vault_path,
-            PendingSource(
-                id=src.id, path=src.root_path, kind=src.kind,
-                status="skipped-by-user", total=src.file_count,
-                last_action="skipped-during-init",
-            ),
-        )
+        onboarding.mark_skipped(cfg.vault_path, **common, last_action="skipped-during-init")
         print(f"    [skipped] {src.id}")
         return
 
@@ -247,14 +244,7 @@ def _apply_decision(cfg, src, decision: str) -> None:  # type: ignore[no-untyped
             if src.classification == "raw"
             else "deferred-by-user"
         )
-        pending.upsert_source(
-            cfg.vault_path,
-            PendingSource(
-                id=src.id, path=src.root_path, kind=src.kind,
-                status="pending", total=src.file_count,
-                last_action=last_action,
-            ),
-        )
+        onboarding.register_pending(cfg.vault_path, **common, last_action=last_action)
         if src.classification == "raw":
             print(
                 f"    [registered] {src.id}: {src.file_count} files awaiting refinement.\n"
@@ -266,34 +256,142 @@ def _apply_decision(cfg, src, decision: str) -> None:  # type: ignore[no-untyped
         return
 
     # Curated source, process now
-    pending.upsert_source(
-        cfg.vault_path,
-        PendingSource(
-            id=src.id, path=src.root_path, kind=src.kind,
-            status="in-progress", total=src.file_count,
-            last_action="mining",
-        ),
-    )
-    print(f"    [mining] {src.id} — {src.file_count} files...")
+    _mine_and_record(cfg, src.id, src.kind, src.root_path, src.file_count, "mined-during-init")
+
+
+def _mine_and_record(cfg, source_id: str, kind: str, root_path: str,
+                     file_count: int, last_action: str) -> dict:  # type: ignore[no-untyped-def]
+    """Shared mining flow: in-progress → handle_mine → done."""
+    from mnemos import onboarding
     from mnemos.server import MnemosApp
 
-    with MnemosApp(cfg) as app:
-        result = app.handle_mine(path=src.root_path, use_llm=cfg.use_llm)
+    onboarding.mark_in_progress(
+        cfg.vault_path, source_id=source_id, kind=kind,
+        root_path=root_path, file_count=file_count,
+    )
+    print(f"    [mining] {source_id} — {file_count} files...")
 
-    pending.upsert_source(
-        cfg.vault_path,
-        PendingSource(
-            id=src.id, path=src.root_path, kind=src.kind,
-            status="done", total=src.file_count,
-            processed=result.get("files_scanned", src.file_count),
-            last_action="mined-during-init",
-        ),
+    with MnemosApp(cfg) as app:
+        result = app.handle_mine(path=root_path, use_llm=cfg.use_llm)
+
+    onboarding.mark_done(
+        cfg.vault_path, source_id=source_id, kind=kind,
+        root_path=root_path, file_count=file_count,
+        processed=result.get("files_scanned", file_count),
+        last_action=last_action,
     )
     print(
-        f"    [done] {src.id} — scanned: {result.get('files_scanned', 0)}, "
+        f"    [done] {source_id} — scanned: {result.get('files_scanned', 0)}, "
         f"drawers: {result.get('drawers_created', 0)}, "
         f"entities: {result.get('entities_found', 0)}"
     )
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Import command family
+# ---------------------------------------------------------------------------
+
+
+def cmd_import(args: argparse.Namespace) -> None:
+    """Dispatch `mnemos import <kind>` to the right handler."""
+    vault_path = _resolve_vault(args.vault)
+    _require_vault(vault_path, "import")
+    cfg = load_config(vault_path)
+
+    handler = {
+        "claude-code": _import_claude_code,
+        "chatgpt": _import_chatgpt,
+        "slack": _import_slack,
+        "markdown": _import_markdown,
+        "memory": _import_memory,
+    }.get(args.import_kind)
+
+    if handler is None:
+        sys.exit(
+            f"[mnemos import] Unknown source kind: {args.import_kind!r}.\n"
+            "Available: claude-code, chatgpt, slack, markdown, memory."
+        )
+
+    handler(cfg, args)
+
+
+def _import_claude_code(cfg, args: argparse.Namespace) -> None:  # type: ignore[no-untyped-def]
+    """Register Claude Code JSONL transcripts as pending → user runs refine skill."""
+    from mnemos import onboarding
+
+    if args.projects_dir:
+        projects = Path(args.projects_dir).expanduser().resolve()
+    else:
+        default = onboarding.default_claude_projects_dir()
+        if default is None:
+            sys.exit(
+                "[mnemos import claude-code] Could not find ~/.claude/projects.\n"
+                "Pass --projects-dir <path> explicitly."
+            )
+        projects = default
+
+    if not projects.is_dir():
+        sys.exit(f"[mnemos import claude-code] Not a directory: {projects}")
+
+    jsonls = list(projects.rglob("*.jsonl"))
+    if args.limit:
+        jsonls = jsonls[: args.limit]
+
+    if not jsonls:
+        print(f"No .jsonl files under {projects}.")
+        return
+
+    onboarding.register_pending(
+        cfg.vault_path, source_id="claude-code-jsonl", kind="raw-jsonl",
+        root_path=str(projects), file_count=len(jsonls),
+        last_action="awaiting-refine-skill",
+    )
+    print(
+        f"Registered {len(jsonls)} JSONL transcripts under {projects}.\n"
+        "Next step:\n"
+        "  In a Claude Code session, run /mnemos-refine-transcripts to\n"
+        "  convert these into Sessions/<YYYY-MM-DD>-<slug>.md notes,\n"
+        "  then run `mnemos import markdown <vault>/Sessions` to mine them."
+    )
+
+
+def _import_single_file_export(cfg, args: argparse.Namespace,
+                                source_id: str, kind: str) -> None:  # type: ignore[no-untyped-def]
+    """Shared logic for ChatGPT / Slack JSON exports (single-file inputs)."""
+    path = Path(args.path).expanduser().resolve()
+    if not path.is_file():
+        sys.exit(f"[mnemos import] Not a file: {path}")
+    _mine_and_record(cfg, source_id, kind, str(path), 1, f"imported-via-{source_id}")
+
+
+def _import_chatgpt(cfg, args: argparse.Namespace) -> None:  # type: ignore[no-untyped-def]
+    _import_single_file_export(cfg, args, source_id="chatgpt-export", kind="raw-json")
+
+
+def _import_slack(cfg, args: argparse.Namespace) -> None:  # type: ignore[no-untyped-def]
+    _import_single_file_export(cfg, args, source_id="slack-export", kind="raw-json")
+
+
+def _import_dir(cfg, args: argparse.Namespace,
+                source_id: str, kind: str) -> None:  # type: ignore[no-untyped-def]
+    """Shared logic for markdown / memory directory imports."""
+    path = Path(args.path).expanduser().resolve()
+    if not path.is_dir():
+        sys.exit(f"[mnemos import] Not a directory: {path}")
+    md_files = list(path.glob("*.md"))
+    if not md_files:
+        sys.exit(f"[mnemos import] No .md files in {path}")
+    _mine_and_record(cfg, source_id, kind, str(path), len(md_files),
+                     f"imported-via-{source_id}")
+
+
+def _import_markdown(cfg, args: argparse.Namespace) -> None:  # type: ignore[no-untyped-def]
+    _import_dir(cfg, args, source_id="markdown-import", kind="curated-md")
+
+
+def _import_memory(cfg, args: argparse.Namespace) -> None:  # type: ignore[no-untyped-def]
+    _import_dir(cfg, args, source_id="memory-import", kind="curated-md")
 
 
 def _print_hook_placeholder() -> None:
@@ -511,6 +609,45 @@ def main() -> None:
         help="Show memory palace status",
     )
     parser_status.set_defaults(func=cmd_status)
+
+    # ------------------------------------------------------------------
+    # import — bring an external knowledge source into the palace
+    # ------------------------------------------------------------------
+    parser_import = subparsers.add_parser(
+        "import",
+        help="Import a knowledge source (claude-code / chatgpt / slack / markdown / memory)",
+    )
+    import_subs = parser_import.add_subparsers(
+        dest="import_kind", metavar="<kind>", required=True,
+    )
+
+    p_cc = import_subs.add_parser(
+        "claude-code",
+        help="Register Claude Code JSONL transcripts (refine via skill afterward)",
+    )
+    p_cc.add_argument("--projects-dir", default=None,
+                      help="Override ~/.claude/projects path")
+    p_cc.add_argument("--limit", type=int, default=0,
+                      help="Limit number of JSONLs to register (0 = all)")
+    p_cc.set_defaults(func=cmd_import)
+
+    p_chat = import_subs.add_parser("chatgpt", help="Mine a ChatGPT JSON export file")
+    p_chat.add_argument("path", help="Path to the chatgpt export .json")
+    p_chat.set_defaults(func=cmd_import)
+
+    p_slack = import_subs.add_parser("slack", help="Mine a Slack JSON export file")
+    p_slack.add_argument("path", help="Path to the slack export .json")
+    p_slack.set_defaults(func=cmd_import)
+
+    p_md = import_subs.add_parser("markdown", help="Mine a directory of curated .md files")
+    p_md.add_argument("path", help="Directory containing .md files")
+    p_md.set_defaults(func=cmd_import)
+
+    p_mem = import_subs.add_parser(
+        "memory", help="Mine a Claude memory export directory (.md files)",
+    )
+    p_mem.add_argument("path", help="Directory containing memory .md files")
+    p_mem.set_defaults(func=cmd_import)
 
     # ------------------------------------------------------------------
     # benchmark

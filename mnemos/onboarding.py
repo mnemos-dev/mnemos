@@ -144,3 +144,94 @@ def _mtime_desc(p: Path) -> float:
         return -p.stat().st_mtime
     except OSError:
         return 0.0
+
+
+# ---------------------------------------------------------------------------
+# Pending-state helpers (shared by `mnemos init` and `mnemos import`)
+# ---------------------------------------------------------------------------
+
+
+def mark_in_progress(
+    vault_path: str | os.PathLike[str],
+    *,
+    source_id: str,
+    kind: str,
+    root_path: str,
+    file_count: int,
+    last_action: str = "mining",
+) -> None:
+    """Upsert source as in-progress in `.mnemos-pending.json`."""
+    from mnemos import pending
+
+    pending.upsert_source(
+        vault_path,
+        pending.PendingSource(
+            id=source_id, path=root_path, kind=kind,
+            status="in-progress", total=file_count, last_action=last_action,
+        ),
+    )
+
+
+def mark_done(
+    vault_path: str | os.PathLike[str],
+    *,
+    source_id: str,
+    kind: str,
+    root_path: str,
+    file_count: int,
+    processed: int,
+    last_action: str = "mined",
+) -> None:
+    """Upsert source as done in `.mnemos-pending.json`."""
+    from mnemos import pending
+
+    pending.upsert_source(
+        vault_path,
+        pending.PendingSource(
+            id=source_id, path=root_path, kind=kind,
+            status="done", total=file_count, processed=processed,
+            last_action=last_action,
+        ),
+    )
+
+
+def register_pending(
+    vault_path: str | os.PathLike[str],
+    *,
+    source_id: str,
+    kind: str,
+    root_path: str,
+    file_count: int,
+    last_action: str,
+) -> None:
+    """Upsert source as pending (deferred / awaiting external action)."""
+    from mnemos import pending
+
+    pending.upsert_source(
+        vault_path,
+        pending.PendingSource(
+            id=source_id, path=root_path, kind=kind,
+            status="pending", total=file_count, last_action=last_action,
+        ),
+    )
+
+
+def mark_skipped(
+    vault_path: str | os.PathLike[str],
+    *,
+    source_id: str,
+    kind: str,
+    root_path: str,
+    file_count: int,
+    last_action: str = "skipped-by-user",
+) -> None:
+    """Upsert source as skipped-by-user in `.mnemos-pending.json`."""
+    from mnemos import pending
+
+    pending.upsert_source(
+        vault_path,
+        pending.PendingSource(
+            id=source_id, path=root_path, kind=kind,
+            status="skipped-by-user", total=file_count, last_action=last_action,
+        ),
+    )

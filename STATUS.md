@@ -1,6 +1,6 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-15 (v0.3 tasks 3.3 + 3.4a delivered)
+**Last updated:** 2026-04-15 (v0.3 tasks 3.3 + 3.4a + 3.5 + 3.6 delivered)
 **Stable PyPI version:** `v0.2.0` · **In-progress:** `v0.3.0` (First-Run Experience)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
@@ -85,6 +85,10 @@ gap.
   → process (curated mined immediately, raw registered as pending with
   refine-skill hint) → hook activation placeholder. Skip/done sources
   honored on re-run via `.mnemos-pending.json`
+- ✅ `mnemos import <kind>` command family: `claude-code` (register-only,
+  prints refine-skill instructions), `chatgpt` / `slack` (single-file JSON
+  exports → mine), `markdown` / `memory` (curated `.md` directories → mine).
+  Every import updates `.mnemos-pending.json`.
 - 🔲 `mnemos init` wizard expansion (discover → classify → pilot → confirm)
 - 🔲 `mnemos import <source>` subcommand family (claude-code, chatgpt, slack, markdown, memory)
 - 🔲 CONTRIBUTING.md
