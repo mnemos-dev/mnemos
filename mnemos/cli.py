@@ -43,6 +43,7 @@ def _require_vault(vault_path: str, cmd: str) -> None:
 def cmd_init(args: argparse.Namespace) -> None:
     """Interactive wizard: scaffold a Mnemos vault."""
     print("=== Mnemos Init Wizard ===\n")
+    _print_intro()
 
     # --- Vault path ---
     if args.vault:
@@ -118,21 +119,11 @@ def cmd_init(args: argparse.Namespace) -> None:
         )
         print(f"  Created identity placeholder: {identity_file}")
 
-    # --- Offer to mine existing files ---
-    print()
-    mine_now = input("Mine existing markdown files in the vault now? [y/N]: ").strip().lower()
-    if mine_now == "y":
-        print("  Mining vault (this may take a while)...")
-        from mnemos.server import MnemosApp
+    # --- Onboarding: discover → present → choose → process ---
+    _run_onboarding(cfg)
 
-        app = MnemosApp(cfg)
-        result = app.handle_mine(path=vault_path, use_llm=use_llm)
-        print(
-            f"  Done — scanned: {result['files_scanned']}, "
-            f"drawers: {result['drawers_created']}, "
-            f"entities: {result['entities_found']}, "
-            f"skipped: {result['skipped']}"
-        )
+    # --- Hook activation placeholder (real install lands in task 3.7) ---
+    _print_hook_placeholder()
 
     # --- MCP connection instructions ---
     print(
@@ -145,6 +136,174 @@ def cmd_init(args: argparse.Namespace) -> None:
         "  }\n\n"
         "Then restart your MCP client.\n"
         "\nSetup complete!"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Onboarding helpers (Phase 1–5 of `mnemos init`)
+# ---------------------------------------------------------------------------
+
+
+def _print_intro() -> None:
+    """Phase 1 — what Mnemos is and how it works."""
+    print(
+        "Mnemos is your AI memory system. It stores conversations, decisions,\n"
+        "and learnings as human-readable markdown inside your Obsidian vault.\n"
+        "\n"
+        "Two modes of use:\n"
+        "  1. First-time setup — bulk-mine your past conversations.\n"
+        "  2. Ongoing — every Claude Code session is mined automatically via\n"
+        "     hooks (set up at the end of this wizard; full activation in\n"
+        "     a future release).\n"
+        "\n"
+        "First-time setup is resumable. You can stop anywhere and pick up\n"
+        "later — every decision is saved to .mnemos-pending.json.\n"
+    )
+
+
+def _run_onboarding(cfg) -> None:  # type: ignore[no-untyped-def]
+    """Phase 2–4: discover sources, ask user, process per choice."""
+    from mnemos import pending
+    from mnemos.onboarding import discover, format_estimate
+
+    print("\n=== Discovering knowledge sources ===\n")
+    sources = discover(cfg.vault_path)
+
+    if not sources:
+        print("  No knowledge sources found. Nothing to mine right now.\n"
+              "  Add markdown to Sessions/, memory/, or Topics/ and run\n"
+              "  `mnemos mine <path>` later.\n")
+        return
+
+    # Phase 2 report
+    total_secs = 0.0
+    for i, src in enumerate(sources, 1):
+        print(
+            f"  {i}. {src.id:<22} — {src.file_count} files  "
+            f"({format_estimate(src.estimated_seconds)}, {src.classification})"
+        )
+        total_secs += src.estimated_seconds
+    print(f"\n  Total estimated time if you process all: {format_estimate(total_secs)}\n")
+
+    # Phase 3 choice
+    print("Options:")
+    print("  [A] Process all now")
+    print("  [S] Selective — ask me per source")
+    print("  [L] Later — just register sources, don't process now")
+    raw_choice = input("\nChoice [A/S/L]: ").strip().upper()
+    while raw_choice not in {"A", "S", "L"}:
+        raw_choice = input("Please type A, S, or L: ").strip().upper()
+
+    # Phase 4 process
+    for src in sources:
+        existing = pending.load(cfg.vault_path).get(src.id)
+        if existing and existing.status == "done":
+            print(f"  [skip] {src.id} already done.")
+            continue
+
+        if raw_choice == "A":
+            decision = "process"
+        elif raw_choice == "L":
+            decision = "later"
+        else:  # S — ask per source
+            decision = _ask_per_source(src, format_estimate(src.estimated_seconds))
+
+        _apply_decision(cfg, src, decision)
+
+
+def _ask_per_source(src, estimate: str) -> str:  # type: ignore[no-untyped-def]
+    """Selective-mode prompt for one source. Returns 'process' | 'later' | 'skip'."""
+    print(
+        f"\n  Source: {src.id}  ({src.file_count} files, {estimate}, {src.classification})"
+    )
+    raw = input("    Process now [Y], leave for later [L], skip entirely [S]? ").strip().upper()
+    while raw not in {"Y", "L", "S"}:
+        raw = input("    Please type Y, L, or S: ").strip().upper()
+    return {"Y": "process", "L": "later", "S": "skip"}[raw]
+
+
+def _apply_decision(cfg, src, decision: str) -> None:  # type: ignore[no-untyped-def]
+    """Carry out user decision for one source + record it in pending.json."""
+    from mnemos import pending
+    from mnemos.pending import PendingSource
+
+    if decision == "skip":
+        pending.upsert_source(
+            cfg.vault_path,
+            PendingSource(
+                id=src.id, path=src.root_path, kind=src.kind,
+                status="skipped-by-user", total=src.file_count,
+                last_action="skipped-during-init",
+            ),
+        )
+        print(f"    [skipped] {src.id}")
+        return
+
+    if decision == "later" or src.classification == "raw":
+        # Raw sources always go to pending in 3.4a — refine skill is
+        # user-driven (mnemos itself does not call any LLM API).
+        last_action = (
+            "awaiting-refine-skill"
+            if src.classification == "raw"
+            else "deferred-by-user"
+        )
+        pending.upsert_source(
+            cfg.vault_path,
+            PendingSource(
+                id=src.id, path=src.root_path, kind=src.kind,
+                status="pending", total=src.file_count,
+                last_action=last_action,
+            ),
+        )
+        if src.classification == "raw":
+            print(
+                f"    [registered] {src.id}: {src.file_count} files awaiting refinement.\n"
+                f"      → Run `/mnemos-refine-transcripts` skill in Claude Code\n"
+                f"        on `{src.root_path}` to convert these to Sessions/."
+            )
+        else:
+            print(f"    [later] {src.id} registered as pending.")
+        return
+
+    # Curated source, process now
+    pending.upsert_source(
+        cfg.vault_path,
+        PendingSource(
+            id=src.id, path=src.root_path, kind=src.kind,
+            status="in-progress", total=src.file_count,
+            last_action="mining",
+        ),
+    )
+    print(f"    [mining] {src.id} — {src.file_count} files...")
+    from mnemos.server import MnemosApp
+
+    with MnemosApp(cfg) as app:
+        result = app.handle_mine(path=src.root_path, use_llm=cfg.use_llm)
+
+    pending.upsert_source(
+        cfg.vault_path,
+        PendingSource(
+            id=src.id, path=src.root_path, kind=src.kind,
+            status="done", total=src.file_count,
+            processed=result.get("files_scanned", src.file_count),
+            last_action="mined-during-init",
+        ),
+    )
+    print(
+        f"    [done] {src.id} — scanned: {result.get('files_scanned', 0)}, "
+        f"drawers: {result.get('drawers_created', 0)}, "
+        f"entities: {result.get('entities_found', 0)}"
+    )
+
+
+def _print_hook_placeholder() -> None:
+    """Phase 5 — informational note. Real hook install lands in task 3.7."""
+    print(
+        "\n=== Auto-mining hooks ===\n"
+        "  Hook activation (auto-mine each new Claude Code session) is\n"
+        "  coming in a future release. For now, run\n"
+        "  `/mnemos-refine-transcripts` skill manually to refine new\n"
+        "  transcripts, then `mnemos mine Sessions/` to index them.\n"
     )
 
 

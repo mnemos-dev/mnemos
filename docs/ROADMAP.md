@@ -116,21 +116,30 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
   `save()` (atomic via tmp+replace), `upsert_source()`, `pending_path()`.
   Status enum validated in `__post_init__`; unknown schema version raises.
 
-- [ ] **3.4 `mnemos init` wizard genişletme** *(2-3h, 3.3'ten sonra)*
-  Mevcut init sadece vault scaffold yapıyor. Yeni akış:
-  1. **Discover** — sessizce tara: `~/.claude/projects/` (JSONL), yerel
-     `Sessions/`, `memory/`, Obsidian `Topics/`
-  2. **Classify** — her kaynak curated mı raw mı işaretle
-     - Frontmatter'lı `.md` → curated → direkt mine
-     - JSONL/email/PDF → raw → önce refine skill
-  3. **Sun** — kaynakları tek tek, topluca değil
-  4. **Raw pilot protokolü** — 5'li pilot → user review → full batch
-  5. **Resume** — her karar `.mnemos-pending.json`'a yazılır
+- [x] **3.4a `mnemos init` onboarding core** *(commit `__PENDING__`, 2026-04-15)*
+  Mevcut init sadece vault scaffold yapıyor. Yeni 5-faz akış (kullanıcı spec'i, 2026-04-15):
+
+  1. **Faz 1 — Tanıtım** — Mnemos ne, nasıl çalışıyor; ilk run + her run
+  2. **Faz 2 — Discovery** — sessizce tara, dosya sayısı + tahmini süre raporla
+  3. **Faz 3 — Karar** — `[A]ll / [S]elective / [L]ater` üçlü seçim
+  4. **Faz 4 — İşleme** — resumable, her dosya sonrası pending.json güncelle
+  5. **Faz 5 — Hook aktivasyonu** — *(3.7'de gerçekleşir; 3.4a'da placeholder)*
+
+  3.4a scope (ilk parça): **JSONL + curated-md** kaynakları için tüm 5 faz.
+  Diğer formatlar (ChatGPT/Slack/Claude.ai/Gemini) 3.5'te discovery'ye eklenir.
+  i18n (TR+EN) 3.4b'ye taşındı. Hook gerçek aktivasyonu 3.7'de.
 
   Dosyalar: `mnemos/cli.py` (`cmd_init` genişletme), yeni
-  `mnemos/onboarding.py` discover/classify.
+  `mnemos/onboarding.py` discover/classify/process.
 
-- [ ] **3.5 `mnemos import <source>` subcommand ailesi** *(1-2h, 3.3'ten sonra)*
+- [ ] **3.4b CLI i18n altyapısı + TR+EN onboarding metinleri** *(1-2h, 3.4a'dan sonra)*
+  Faz 1 tanıtım ve Faz 3 prompt'ları için locale-aware string sistemi.
+  `mnemos.yaml`'daki `languages` listesi ilk dile düşer; default `en`.
+
+- [ ] **3.5 `mnemos import <source>` subcommand ailesi** *(2-3h, 3.4a'dan sonra)*
+  Discovery'yi ChatGPT/Slack/Claude.ai/Gemini formatlarına genişletir
+  (`onboarding.py`'a eklenir). `mnemos init [L]` seçen kullanıcı için
+  parça parça ilerleme yolu.
   Init'ten sonra kaynak ekleme:
   - `mnemos import claude-code [--projects-dir PATH] [--limit N] [--refine]`
     — refine skill prompt'unu kullanıcıya verir (mnemos LLM çağırmaz) +

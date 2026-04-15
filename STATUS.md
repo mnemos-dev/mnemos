@@ -1,6 +1,6 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-15 (v0.3 task 3.3 delivered)
+**Last updated:** 2026-04-15 (v0.3 tasks 3.3 + 3.4a delivered)
 **Stable PyPI version:** `v0.2.0` · **In-progress:** `v0.3.0` (First-Run Experience)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
@@ -80,6 +80,11 @@ gap.
 - ✅ `.mnemos-pending.json` schema + `mnemos.pending` module — atomic
   read/write/upsert API for resumable onboarding, status enum validation,
   schema versioning
+- ✅ `mnemos init` 5-phase onboarding flow: intro → discover (Claude Code
+  JSONL + vault Sessions/memory/Topics) → [A]ll/[S]elective/[L]ater choice
+  → process (curated mined immediately, raw registered as pending with
+  refine-skill hint) → hook activation placeholder. Skip/done sources
+  honored on re-run via `.mnemos-pending.json`
 - 🔲 `mnemos init` wizard expansion (discover → classify → pilot → confirm)
 - 🔲 `mnemos import <source>` subcommand family (claude-code, chatgpt, slack, markdown, memory)
 - 🔲 CONTRIBUTING.md
