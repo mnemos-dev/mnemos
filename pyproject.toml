@@ -24,7 +24,7 @@ classifiers = [
 ]
 dependencies = [
     "chromadb>=1.5",
-    "filelock>=3",
+    "filelock>=3.12",
     "mcp>=1.0",
     "sqlite-vec>=0.1.9",
     "watchdog>=4.0",
