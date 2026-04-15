@@ -17,3 +17,41 @@ def resolve_ledger_path() -> Path:
     if override:
         return Path(override)
     return Path.home() / DEFAULT_LEDGER_SUFFIX
+
+
+def _read_ledger_paths(ledger_path: Path) -> set[str]:
+    """Return the set of source-JSONL paths recorded in the refine-skill ledger.
+
+    Format is one TSV line per processed JSONL: `<status>\t<source_path>\t<note_or_reason>`.
+    Empty or missing file → empty set.
+    """
+    if not ledger_path.exists():
+        return set()
+
+    paths: set[str] = set()
+    for line in ledger_path.read_text(encoding="utf-8").splitlines():
+        cols = line.split("\t")
+        if len(cols) >= 2:
+            paths.add(cols[1].strip())
+    return paths
+
+
+def pick_recent_jsonls(projects_dir: Path, ledger_path: Path, n: int = 3) -> list[Path]:
+    """Return up to `n` most-recent (by mtime) JSONLs not already in the ledger."""
+    if not projects_dir.exists():
+        return []
+
+    ledger_paths = _read_ledger_paths(ledger_path)
+    candidates = sorted(
+        projects_dir.rglob("*.jsonl"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    picked: list[Path] = []
+    for candidate in candidates:
+        if str(candidate) in ledger_paths:
+            continue
+        picked.append(candidate)
+        if len(picked) >= n:
+            break
+    return picked
