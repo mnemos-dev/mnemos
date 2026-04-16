@@ -245,6 +245,48 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
   - `tests/test_auto_refine_hook_script.py` — subagent skip, no-op skip
   - `docs/specs/2026-04-15-v0.3-task-3.7-auto-refine-hook-design.md` — §5.1 güncel
 
+- [x] **3.7d Mid-conversation re-fire'ı durdurma** *(commit `d6cbeed`, 2026-04-16)*
+
+  **Sorun:** 3.7c subagent contention'ı kapattı ama hook hâlâ tek konuşma
+  içinde defalarca tetikleniyor. Hook log: 3-5 refine round / saat.
+  İki kalıntı kök neden:
+  1. **Otomatik compaction `source=compact` ile SessionStart fire'lıyor.**
+     Bu mid-conversation event — transcript daha bitmedi, refine etmek
+     hem gereksiz hem de ledger'a "OK" olarak yazıp kalanı sonsuza
+     kadar gözden kaçırıyor. Sadece "yeni session" semantiği taşıyan
+     eventler refine etmeli (`startup`, `resume`, `clear`).
+  2. **In-progress conversation'ın kendi JSONL'ı picker'a düşüyor.**
+     `pick_recent_jsonls` mtime'a göre sıralıyor → en yeni dosya genelde
+     bu konuşmanın canlı transcript'i. Refine edip ledger'a yazınca
+     conversation'ın geri kalanı asla mine edilmiyor. Hook input'taki
+     `transcript_path` zaten bunu söylüyor; picker'a "exclude" olarak
+     iletilmeli.
+
+  **Çözüm:**
+  - `mnemos/auto_refine.py` — `pick_recent_jsonls`'a `exclude: set[str] | None`
+    parametresi ekle. Listedeki path'leri es geç (str-normalize ile).
+    `compute_backlog`'da exclude kullanmıyoruz — kullanıcı "hâlâ X dosya bekliyor"
+    bilgisini görmek istiyor.
+  - `scripts/auto_refine_hook.py`:
+    - **Source whitelist**: hook stdin'inde `source` `compact` (veya gelecekteki
+      ephemeral source'lar) ise anında `exit 0`. Whitelist: `{"", "startup",
+      "resume", "clear"}`. Bilinmeyen source'lar default-skip (forward-compat
+      için kasıtlı; yeni bir Claude Code event'i çıkarsa istemediğimiz davranışı
+      önler).
+    - `transcript_path`'i `pick_recent_jsonls(exclude={...})` olarak ilet.
+  - **Ek temizlik**: `~/.claude/settings.json`'da hâlâ duran eski
+    `mnemos-session-mine.py` SessionStart entry'si (mnemos-auto-refine ile
+    overlap'lı, raw mine yapıyor — yeni refine flow'undan beri redundant).
+    settings.json'dan kaldırılır + ilgili `~/.claude/hooks/mnemos-*.{py,json,log,lock}`
+    dosyaları silinir (kullanıcı onayıyla).
+
+  **Dosyalar:**
+  - `mnemos/auto_refine.py` — `pick_recent_jsonls(exclude)` param
+  - `scripts/auto_refine_hook.py` — source whitelist, exclude self-transcript
+  - `tests/test_auto_refine.py` — exclude param testleri
+  - `tests/test_auto_refine_hook_script.py` — source filter, self-exclude integration
+  - `~/.claude/settings.json` — legacy SessionStart entry remove (manuel, backup ile)
+
 - [x] **3.7b `mnemos install-statusline` CLI** *(commit `15a21fa`, 2026-04-16)*
 
   **Sorun:** 3.7 hook'u `<vault>/.mnemos-hook-status.json` yazıyor + repo

@@ -1,6 +1,6 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-16 (v0.3 tasks 3.3 + 3.4a + 3.4b + 3.5 + 3.6 + 3.7 + 3.7b + 3.7c delivered; 3.7 verified in production)
+**Last updated:** 2026-04-16 (v0.3 tasks 3.3 + 3.4a + 3.4b + 3.5 + 3.6 + 3.7 + 3.7b + 3.7c + 3.7d delivered; 3.7 verified in production)
 **Stable PyPI version:** `v0.2.0` · **In-progress:** `v0.3.0` (First-Run Experience)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
@@ -120,6 +120,17 @@ gap.
   current=0` directly (no `starting` snapshot). The idle render uses new
   `last_outcome` + `last_finished_at` fields to show `mnemos: last
   refine Xm ago · N notes · OK · backlog Y` for 10 minutes (was 30s).
+- ✅ Auto-refine no longer re-fires mid-conversation: the wrapper
+  whitelists SessionStart `source` values ({"", "startup", "resume",
+  "clear"}) so auto-compaction (`source=compact`) and any future
+  ephemeral event types short-circuit to exit 0.
+  `pick_recent_jsonls(exclude=...)` accepts the current session's own
+  `transcript_path` from the hook input, so the in-progress conversation
+  is never marked OK in the ledger before it actually ends — fixes the
+  silent loss of post-refine turns. Legacy `mnemos-session-mine.py`
+  SessionStart entry removed from the author's `~/.claude/settings.json`
+  (separate hook that mined raw transcripts; obsolete since 3.7's
+  refine-then-mine pipeline).
 - 🔲 New-user simulation pilot
 - 🔲 PyPI release
 
