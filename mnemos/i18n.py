@@ -159,6 +159,23 @@ _STRINGS: Dict[str, Dict[str, str]] = {
         "en": "Skipped. Install later with: mnemos install-hook",
         "tr": "Atlandı. Daha sonra kurmak için: mnemos install-hook",
     },
+    # ---------------- Statusline install (v0.3 task 3.7b) ----------------
+    "statusline_install_prompt": {
+        "en": "Install the statusline snippet so auto-refine progress shows in the chatbox footer? [Y/n]: ",
+        "tr": "Statusline snippet'ini kur — auto-refine ilerleyişi sohbet kutusu altında görünsün mü? [E/h]: ",
+    },
+    "statusline_install_done": {
+        "en": "Statusline snippet installed.",
+        "tr": "Statusline snippet'i kuruldu.",
+    },
+    "statusline_install_already": {
+        "en": "Statusline snippet already installed — skipping.",
+        "tr": "Statusline snippet'i zaten kurulu — atlıyorum.",
+    },
+    "statusline_install_declined": {
+        "en": "Skipped. Install later with: mnemos install-statusline",
+        "tr": "Atlandı. Daha sonra kurmak için: mnemos install-statusline",
+    },
 }
 
 

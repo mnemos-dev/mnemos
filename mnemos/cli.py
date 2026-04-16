@@ -242,6 +242,9 @@ def cmd_init(args: argparse.Namespace) -> None:
     # --- Hook activation: offer to install SessionStart hook ---
     _install_hook_prompt(lang=lang, vault=Path(cfg.vault_path))
 
+    # --- Statusline: offer to wire up the progress snippet ---
+    _install_statusline_prompt(lang=lang, vault=Path(cfg.vault_path))
+
     # --- MCP connection instructions ---
     print(
         "\n=== MCP Connection ===\n"
@@ -517,6 +520,24 @@ def _install_hook_prompt(lang: str = "en", vault: Path = Path(".")) -> None:
         print(t("hook_install_done", lang))
 
 
+def _install_statusline_prompt(lang: str = "en", vault: Path = Path(".")) -> None:
+    """Phase 5 extra — offer to install the statusline snippet."""
+    from mnemos.i18n import t
+    from mnemos.install_statusline import install_statusline
+
+    answer = input(t("statusline_install_prompt", lang)).strip().lower()
+    yes_answers = {"", "y", "yes", "e", "evet"}
+    if answer not in yes_answers:
+        print(t("statusline_install_declined", lang))
+        return
+
+    result = install_statusline(vault=vault, uninstall=False)
+    if result.status == "already-installed":
+        print(t("statusline_install_already", lang))
+    else:
+        print(t("statusline_install_done", lang))
+
+
 # ---------------------------------------------------------------------------
 # cmd_mine
 # ---------------------------------------------------------------------------
@@ -616,6 +637,24 @@ def cmd_install_hook(args: argparse.Namespace) -> None:
     print(f"{result.status}: {result.settings_path}")
     if result.backup_path:
         print(f"backup: {result.backup_path}")
+
+
+def cmd_install_statusline(args: argparse.Namespace) -> None:
+    """Install or uninstall the mnemos statusline snippet."""
+    from mnemos.install_statusline import install_statusline
+
+    vault_path = _resolve_vault(args.vault)
+    if not vault_path:
+        vault_path = str(Path.cwd())
+
+    result = install_statusline(vault=Path(vault_path), uninstall=args.uninstall)
+    print(f"{result.status}: {result.settings_path}")
+    if result.script_path:
+        print(f"script: {result.script_path}")
+    if result.settings_backup_path:
+        print(f"settings backup: {result.settings_backup_path}")
+    if result.script_backup_path:
+        print(f"script backup: {result.script_backup_path}")
 
 
 def cmd_benchmark(args: argparse.Namespace) -> None:
@@ -791,6 +830,16 @@ def main() -> None:
     )
     parser_install_hook.add_argument("--uninstall", action="store_true")
     parser_install_hook.set_defaults(func=cmd_install_hook)
+
+    # ------------------------------------------------------------------
+    # install-statusline
+    # ------------------------------------------------------------------
+    parser_install_statusline = subparsers.add_parser(
+        "install-statusline",
+        help="Install/uninstall the statusline snippet (shows auto-refine progress)",
+    )
+    parser_install_statusline.add_argument("--uninstall", action="store_true")
+    parser_install_statusline.set_defaults(func=cmd_install_statusline)
 
     # ------------------------------------------------------------------
     # benchmark
