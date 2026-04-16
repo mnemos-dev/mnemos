@@ -27,3 +27,16 @@ htmlcov/
 
 # Skill state (user-local ledgers etc.)
 skills/*/state/
+
+# v0.3 3.7: runtime + accidentally-untracked artifacts (never commit)
+.claude/
+.playwright-cli/
+=0.20
+github-preview.png
+
+# Mnemos local runtime (reiterate per CLAUDE.md — never commit)
+mnemos/.chroma/
+mnemos/graph.json
+
+# Benchmark data (huge — download locally, not in repo)
+benchmarks/*/data/

@@ -1,6 +1,6 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-16 (v0.3 tasks 3.3 + 3.4a + 3.4b + 3.5 + 3.6 + 3.7 delivered)
+**Last updated:** 2026-04-16 (v0.3 tasks 3.3 + 3.4a + 3.4b + 3.5 + 3.6 + 3.7 delivered; 3.7 verified in production)
 **Stable PyPI version:** `v0.2.0` · **In-progress:** `v0.3.0` (First-Run Experience)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
@@ -114,16 +114,25 @@ v0.3 kalan sırası (ROADMAP §v0.3.0):
    eklemesi gerek. Yeni komut: varolan statusline script'in sonuna
    idempotent ekler veya hiç yoksa minimal bir tane oluşturur. Detay
    ROADMAP §3.7b. `mnemos init` opsiyonel olarak prompt edebilir.
-2. **3.8 session-memory skill deprecation** (~15 dk) — *bekleme:* 3.7 hook'u
-   en az 3 gerçek session boyunca sorunsuz çalıştığını gözlemle. Sonra
+2. **3.7c Statusline UX iyileştirmeleri** (~30-45 dk) — canlı pilot'ta 3
+   UX pürüzü çıktı: "busy (another session)" yanıltıcı, idle 30s TTL çok
+   kısa, starting fazı snapshot olarak "takıldı" sanılıyor. Detay §3.7c.
+3. **3.8 session-memory skill deprecation** (~15 dk) — *bekleme:* 3.7 hook'u
+   birkaç gerçek session boyunca sorunsuz çalıştığını gözlemle. Sonra
    README/CONTRIBUTING'e migration notu ekle (`~/.claude/skills/session-memory/`
    klasörünü kaldırma rehberi). Silme işlemi kullanıcıya bırakılır.
-3. **3.9 New-user simülasyonu pilot** (~1h) — temiz throwaway klasörde
+4. **3.9 New-user simülasyonu pilot** (~1h) — temiz throwaway klasörde
    sıfırdan kurulum (pip install → junction skill → `mnemos init` → hook
    install → statusline install → 5 JSONL pilot). README'deki 5 adımın
    çalıştığını kanıtla. Dokümantasyon boşluklarını raporla.
-4. **3.10 PyPI release v0.3.0** — version bump, `python -m build`, twine,
+5. **3.10 PyPI release v0.3.0** — version bump, `python -m build`, twine,
    GitHub release + tag.
+
+**3.7 canlı doğrulama sonucu (2026-04-16):** kasamd vault'unda 6 gerçek
+session JSONL otomatik refine + mine edildi, subscription quota kullanıldı
+(0 API credit). Hook 5 ayrı bug içinden (marker format, cmd /c quoting,
+API key precedence, interactive cmd bypass, backslash mangling) turn-by-turn
+fix'lerle geçti. Plan'daki `## Pilot outcomes` bölümü tüm zinciri kaydediyor.
 
 Aktif bug gözlemleri (3.7 canlı test'inden): bir JSONL refine'ı tek seferlik
 `exit=1` döndü (izole, flow etkilenmedi). Bir ledger satırında `\t` escape

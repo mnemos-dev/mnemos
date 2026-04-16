@@ -165,22 +165,61 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
   (Obsidian master, no LLM in mnemos itself, dual-collection separation,
   junction/symlink drift forbidden).
 
-- [x] **3.7 SessionStart auto-refine hook** *(commit `725d569` + docs `a3a1ef0`, 2026-04-16)*
-  SessionStart hook + `scripts/auto_refine_hook.py` senkron wrapper → son 3
-  unprocessed JSONL için `claude --print --dangerously-skip-permissions
-  "/mnemos-refine-transcripts <path>"` subprocess zinciri (detached,
-  `filelock`'lu) → `python -m mnemos.cli --vault <v> mine <v>/Sessions`.
-  Statusline `.mnemos-hook-status.json`'dan canlı okur; haftalık backlog
-  reminder `additionalContext`'le AI'a iletilir. Subagent JSONL'leri
-  (`/subagents/`) picker'da filtrelenir. `mnemos install-hook` idempotent,
-  settings.json'u yedekler. `mnemos init` son fazı hook'u kullanıcı onayıyla
-  kurar. Pilot başarılı (commit öncesi fix'ler dahil: mine komutu yanlış
-  `python -m mnemos`'tu → `.cli` eklendi; subagent filter eklendi; Windows
-  `CREATE_NO_WINDOW` flag'i eklendi).
+- [x] **3.7 SessionStart auto-refine hook** *(commit `725d569` + hardening `96aa07f`, 2026-04-16)*
+  SessionStart hook + `scripts/auto_refine_hook.py` wrapper. Hook komutu:
+  `python <script> --vault <path>` (Windows için forward slash yol, no
+  `cmd /c` wrapper). Script `--vault` arg'ı veya `MNEMOS_VAULT` env'i kabul
+  eder. Background: son 3 JSONL için `claude --print --dangerously-skip-permissions
+  "/mnemos-refine-transcripts <path>"` (detached, `filelock`'lu, `ANTHROPIC_API_KEY`
+  subprocess env'inden çıkarılır → subscription auth). Sonra `python -m
+  mnemos.cli --vault <v> mine <v>/Sessions`. Statusline `.mnemos-hook-status.json`'dan
+  canlı okur; haftalık backlog reminder `additionalContext`'le AI'a iletilir.
+  Subagent JSONL'leri (`/subagents/`) picker'da filtrelenir. `mnemos install-hook`
+  idempotent, settings.json'u yedekler, entry'yi `_managed_by: mnemos-auto-refine`
+  field'ıyla tanımlar. `mnemos init` son fazı hook'u kullanıcı onayıyla kurar.
+  Gerçek kullanımda doğrulandı: kullanıcının kasamd vault'unda 6 session
+  JSONL otomatik refine edildi + mine tamamlandı, 0 API credit harcandı.
+
+  **Pilot'ta düzeltilen bug zinciri:**
+  - `725d569` — mine komutu `python -m mnemos` MCP server'ı başlatıyordu → `python -m mnemos.cli` + `--vault`; subagent JSONL filter; Windows `CREATE_NO_WINDOW`
+  - `512e3dd` — marker `# mnemos-auto-refine\n<cmd>` formatı cmd.exe'de fail → `_managed_by` sibling field
+  - `138a4cf` — `cmd /c` içindeki nested `\"path\"` cmd.exe quote stripping'iyle mangling → inner quotes çıkarıldı
+  - `4ad8505` — `claude --print` env'deki `ANTHROPIC_API_KEY` yüzünden API quota kullanıyordu → subprocess env'inde strip → subscription auth
+  - `47f58af` — `cmd /c` wrapper Claude Code dispatch'iyle interactive cmd başlatıyordu → direkt `python <script> --vault <path>` çağrısı, shell wrapper yok
+  - `96aa07f` — Claude Code Windows hook dispatch'i backslash escape mangling yapıyordu (`\P\m\s` yeniyor) → forward slash normalization
 
   **Canonical docs:**
   - Spec: [`docs/specs/2026-04-15-v0.3-task-3.7-auto-refine-hook-design.md`](specs/2026-04-15-v0.3-task-3.7-auto-refine-hook-design.md)
   - Plan + pilot outcomes: [`docs/plans/2026-04-15-v0.3-task-3.7-auto-refine-hook-implementation.md`](plans/2026-04-15-v0.3-task-3.7-auto-refine-hook-implementation.md)
+
+- [ ] **3.7c Statusline UX iyileştirmeleri** *(~30-45 dk, 3.7b'den sonra)*
+
+  **Sorun:** 3.7 canlı test'te 3 UX pürüzü çıktı:
+  1. **"busy (another session)" mesajı yanıltıcı** — vault paylaşan başka bir
+     Claude Code session refine yapıyorsa, *tüm* açık session'ların statusline'ı
+     "busy" gösteriyor. Teknik olarak doğru ama kullanıcı "bu session'ımda mı
+     iş var?" sanıyor. Net mesaj: `mnemos: other session active`.
+  2. **`phase=idle` 30s TTL** — refine bittikten 30s sonra statusline sessizleşiyor.
+     Kullanıcı tam o zaman bakmazsa "ne oldu?" bilmiyor. İstenen: son N dakika
+     boyunca `mnemos: last refine Xm ago (Y notes)` göstersin, sonra sessizleşsin.
+  3. **`phase=starting` çok kısa görünür** — wrapper `starting` yazıyor, 1-2s
+     sonra bg worker `refining` yazıyor. Kullanıcı "starting 0m1s" snapshot'ı
+     görüp takıldı sanıyor. İstenen: `starting` fazını atla, wrapper direkt
+     `refining 0/3` yazsın.
+
+  **Çözüm:**
+  - `scripts/statusline_snippet.{sh,cmd}`: "busy" mesajını `other session active`
+    olarak güncelle
+  - `mnemos/auto_refine.py`: wrapper `starting` yerine direkt `refining 0/N` yazsın
+  - `write_status`'a `last_outcome` (ok/failed) + `last_finished_at` field'ları ekle
+    → idle fazında statusline "mnemos: last refine 2m ago · 3 notes · OK" gösterir
+  - `scripts/statusline_snippet.*`: idle formatını genişlet, TTL 30s → 10 dk
+
+  **Dosyalar:**
+  - `mnemos/auto_refine.py` — `write_status` signature genişler (yeni optional alanlar)
+  - `scripts/statusline_snippet.{sh,cmd}` — messages + idle TTL
+  - `tests/test_auto_refine.py` — yeni field'lar için test
+  - `docs/specs/2026-04-15-v0.3-task-3.7-auto-refine-hook-design.md` — §5.1 güncellenir
 
 - [ ] **3.7b `mnemos install-statusline` CLI** *(~30 dk, 3.7'den hemen sonra)*
 
