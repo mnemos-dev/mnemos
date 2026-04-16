@@ -346,17 +346,30 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
     3.7d kapsamında kaldırıldı; ilgili 4 dosya silindi (kullanıcı
     onayıyla). External user'lar için talimat README'de.
 
-- [ ] **3.9 New-user simülasyonu pilot** *(1h, tüm yukarıdakilerden sonra)*
-  Temiz throwaway klasörde:
-  1. Yeni vault klasörü oluştur
-  2. `pip install -e .` dev-install
-  3. Junction skill kur
-  4. `mnemos init` wizard baştan sona
-  5. Auto-refine hook'u `mnemos install-hook` ile kur
-  6. 5 JSONL pilot → Sessions/
-  7. `mnemos mine Sessions/` → search kalite
-  8. Patlayan her yeri not et, düzelt
-  9. Dokümantasyon boşluklarını README/CONTRIBUTING'e ekle
+- [x] **3.9 New-user simülasyonu pilot** *(commit `d65384f`, 2026-04-16)*
+  Temiz throwaway vault'ta (`C:/Temp/mnemos-pilot-2026-04-16/`) +
+  isolated fake HOME'da (`C:/Temp/mnemos-pilot-home-2026-04-16/`)
+  README'nin tüm onboarding flow'u sıfırdan koşturuldu:
+
+  - **Init wizard** (piped stdin: `en\n\nA\nn\nn`) → `mnemos.yaml`,
+    `Mnemos/` palace, `.mnemos-pending.json`. Discovery 341 JSONL +
+    1 curated `.md` buldu, [A]ll seçimi curated'i mine etti
+    (8 drawer + 24 entity, wing `pilot-vault-test` frontmatter'dan).
+  - **Search + status + re-mine** (`files_scanned: 0, skipped: 1`) → all green.
+  - **install-hook** & **install-statusline** isolated HOME'a karşı:
+    install / re-run → `already-installed` / `--uninstall` → temiz
+    cleanup. Her ikisi `.bak-2026-04-16` backup üretti.
+
+  **Pilot bug**: `cmd_search` formatter `r.get("wing")` okuyordu;
+  drawer'lar `metadata.wing`'de — tüm CLI search çıktısı `wing=?`
+  gösteriyordu. Fix: `r.get("metadata") or {}`'tan oku, eski
+  index'ler için `?` fallback. Yeni: `tests/test_cli_search.py`
+  (2 test). Pilot raporu: [`docs/pilots/2026-04-16-new-user-pilot.md`](pilots/2026-04-16-new-user-pilot.md).
+
+  **Pilot etmediklerimiz** (sebepleriyle pilot raporunda):
+  PyPI install (3.10 bekliyor), canlı SessionStart fire (Claude Code
+  içinden başlatılamaz; 3.7 production'da zaten doğrulandı), refine-skill
+  execution (interactive Claude Code gerekir).
 
 - [ ] **3.10 PyPI release v0.3.0**
   - `pyproject.toml` version bump
@@ -365,7 +378,7 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
 
 ### Başarı kriterleri
 
-- [ ] External user, README'deki 5 adımı izleyerek clean vault'ta çalışır mnemos kurabiliyor *(blocked on 3.9 pilot)*
+- [x] External user, README'deki 5 adımı izleyerek clean vault'ta çalışır mnemos kurabiliyor *(3.9 pilot doğruladı)*
 - [x] `mnemos init` 244 JSONL transcript'i keşfedip pilot + import önerebiliyor *(3.4a)*
 - [x] `.mnemos-pending.json` resume çalışıyor — oturum kesilirse baştan başlamak gerekmiyor *(3.3 + 3.4a)*
 - [x] `mnemos import` 5 formatın hepsini destekliyor *(3.5: claude-code/chatgpt/slack/markdown/memory)*
