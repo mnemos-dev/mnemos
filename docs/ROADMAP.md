@@ -14,8 +14,8 @@ archive; burada çelişki olursa bu dosya geçerlidir.
 |---|---|---|---|
 | v0.1.0 | First Breath | ✅ | ✅ |
 | v0.2.0 | Full Memory (= Phase 0 Foundation) | ✅ | ✅ |
-| **v0.3.0** | **First-Run Experience** | **🔄 in progress** | — |
-| v0.4.0 | AI Boost (= Phase 1) | ⏸ next | — |
+| v0.3.0 | First-Run Experience | ✅ | ✅ |
+| **v0.4.0** | **AI Boost (= Phase 1)** | **🔄 next** | — |
 | v0.5.0 | Automation (= Phase 2) | ⏸ | — |
 | v0.6.0 | Community & Ecosystem | ⏸ | — |
 
@@ -393,10 +393,10 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
   - Author'un mevcut `~/.claude/settings.json`'ı eski path'i taşıyor; fix
     sonrası `mnemos install-hook --uninstall && install-hook` ile refresh.
 
-- [ ] **3.10 PyPI release v0.3.0**
-  - `pyproject.toml` version bump
-  - `python -m build` + `twine upload`
-  - GitHub release notes + tag
+- [x] **3.10 PyPI release v0.3.0** *(2026-04-16)*
+  - PyPI: <https://pypi.org/project/mnemos-dev/0.3.0/>
+  - GitHub release: <https://github.com/mnemos-dev/mnemos/releases/tag/v0.3.0>
+  - Tag: `v0.3.0` (annotated). Wheel + sdist attached as release assets.
 
 ### Başarı kriterleri
 

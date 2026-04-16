@@ -1,7 +1,7 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-16 (v0.3 tasks 3.3 + 3.4a + 3.4b + 3.5 + 3.6 + 3.7 + 3.7b + 3.7c + 3.7d + 3.8 + 3.9 delivered; 3.7 verified in production)
-**Stable PyPI version:** `v0.2.0` · **In-progress:** `v0.3.0` (First-Run Experience)
+**Last updated:** 2026-04-16 (v0.3.0 released to PyPI + GitHub)
+**Stable PyPI version:** `v0.3.0` · **Next:** `v0.4.0` (AI Boost / Phase 1)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
 This file is the single-glance answer to: *why does Mnemos exist, what can it
@@ -72,7 +72,7 @@ gap.
 - ✅ LongMemEval benchmark harness (`mnemos benchmark longmemeval`)
 - 🟡 First measured recall: **~70% Recall@5** on a 10-question subset (Phase 1 will push this to ≥95%)
 
-### In-progress — `v0.3.0` (unreleased)
+### Released — `v0.3.0` First-Run Experience (2026-04-16)
 
 - ✅ `refine-transcripts` Claude Code skill — JSONL → refined Sessions/.md
   with ledger-based resume, zero LLM cost, ships inside the repo via junction/symlink
@@ -144,14 +144,29 @@ gap.
   the wrong nesting level — fixed and locked down with two regression
   tests in `test_cli_search.py`). Full pilot report:
   [`docs/pilots/2026-04-16-new-user-pilot.md`](docs/pilots/2026-04-16-new-user-pilot.md).
-- 🔲 PyPI release v0.3.0
+- ✅ PyPI release v0.3.0 — wheel + sdist published to
+  <https://pypi.org/project/mnemos-dev/0.3.0/>, GitHub release at
+  <https://github.com/mnemos-dev/mnemos/releases/tag/v0.3.0>.
+  Pre-release wheel inspection caught a release-blocker (3.10a):
+  `install-hook` and `install-statusline` resolved their script and
+  snippet paths to `<repo>/scripts/*` — a directory only present in
+  dev installs. Fixed by moving the resources into the `mnemos`
+  package (`mnemos/auto_refine_hook.py` invoked as `python -m
+  mnemos.auto_refine_hook`; `mnemos/_resources/statusline_snippet.{sh,cmd}`
+  resolved relatively). Bash-on-Windows (Git Bash MSYS path)
+  detection and target-suffix-aware block syntax were folded in too
+  so the appended block actually parses on the user's shell.
 
 ### Next session starts here
 
-v0.3 kalan sırası (ROADMAP §v0.3.0):
+v0.3 tamamlandı. v0.4 (AI Boost / Phase 1) sırada — ROADMAP §v0.4.0:
 
-1. **3.10 PyPI release v0.3.0** — version bump, `python -m build`, twine,
-   GitHub release + tag. Tüm v0.3 ön-koşulları (3.3–3.9) tamam.
+1. **4.1 Phase 1 design spec** — `docs/specs/YYYY-MM-DD-phase1-ai-boost-design.md`
+2. **4.2 LLM mining** — Claude API regex'in yakaladığını doğrular + emotional hall
+3. **4.3 LLM reranking** — top-50 → top-10 precision boost
+4. **4.4 Contradiction detection** — yeni memory eski memory ile çelişiyor mu?
+5. **4.5 Benchmark tekrar** — Recall@5 ≥ %95, Recall@10 ≥ %97 hedefi
+6. **4.6 PyPI release v0.4.0**
 
 **3.7 canlı doğrulama sonucu (2026-04-16):** kasamd vault'unda 6 gerçek
 session JSONL otomatik refine + mine edildi, subscription quota kullanıldı
