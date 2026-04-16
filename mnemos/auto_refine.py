@@ -66,7 +66,7 @@ def pick_recent_jsonls(projects_dir: Path, ledger_path: Path, n: int = 3) -> lis
 
     ledger_paths = _read_ledger_paths(ledger_path)
     candidates = sorted(
-        projects_dir.rglob("*.jsonl"),
+        (p for p in projects_dir.rglob("*.jsonl") if not _is_subagent_jsonl(p)),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
@@ -92,6 +92,8 @@ def compute_backlog(projects_dir: Path, ledger_path: Path) -> int:
     ledger_paths = _read_ledger_paths(ledger_path)
     total = 0
     for candidate in projects_dir.rglob("*.jsonl"):
+        if _is_subagent_jsonl(candidate):
+            continue
         if str(candidate) not in ledger_paths:
             total += 1
     return total
@@ -156,8 +158,23 @@ def write_status(
 # ---------------------------------------------------------------------------
 
 
+def _is_subagent_jsonl(path: Path) -> bool:
+    """True if the JSONL is a subagent transcript (nested under /subagents/).
+
+    Claude Code writes subagent logs under `<project>/<session>/subagents/agent-*.jsonl`.
+    The refine-skill default filter skips these — picker should match that default so
+    hook runs don't waste `claude --print` invocations on files the skill will SKIP.
+    """
+    return "subagents" in path.parts
+
+
 def _default_runner(cmd: Sequence[str]) -> int:
-    return subprocess.call(list(cmd))
+    """Invoke a subprocess, return exit code. Stdio inherited."""
+    kwargs: dict = {}
+    if os.name == "nt":
+        CREATE_NO_WINDOW = 0x08000000
+        kwargs["creationflags"] = CREATE_NO_WINDOW
+    return subprocess.call(list(cmd), **kwargs)
 
 
 def run(
@@ -223,7 +240,7 @@ def _run_locked(
     backlog = compute_backlog(projects_dir, ledger_path)
     write_status(vault, "mining", total, total, backlog, reminder_active, started_at)
     sessions_dir = Path(vault) / "Sessions"
-    rc = runner([sys.executable, "-m", "mnemos", "mine", str(sessions_dir), "--incremental"])
+    rc = runner([sys.executable, "-m", "mnemos.cli", "--vault", str(vault), "mine", str(sessions_dir)])
     with log_path.open("a", encoding="utf-8") as fh:
         fh.write(f"  mine exit={rc}\n")
 

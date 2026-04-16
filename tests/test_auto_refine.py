@@ -230,6 +230,7 @@ def test_run_invokes_refine_for_each_picked_jsonl(tmp_path):
     assert any("/mnemos-refine-transcripts" in c and str(a) in c for c in calls)
     assert any("--dangerously-skip-permissions" in c for c in calls)
     assert any("mnemos" in c and "mine" in c for c in calls)
+    assert any("-m" in c and "mnemos.cli" in c and "--vault" in c and "mine" in c for c in calls)
 
 
 def test_run_updates_reminder_timestamp_when_active(tmp_path):
@@ -279,3 +280,38 @@ def test_run_sets_phase_idle_when_done(tmp_path):
     )
     data = json.loads((tmp_path / ".mnemos-hook-status.json").read_text(encoding="utf-8"))
     assert data["phase"] == "idle"
+
+
+def test_pick_recent_excludes_subagent_jsonls(tmp_path):
+    from mnemos.auto_refine import pick_recent_jsonls
+
+    projects = tmp_path / "projects"
+    # Regular transcript
+    regular = projects / "proj" / "sess" / "main.jsonl"
+    regular.parent.mkdir(parents=True, exist_ok=True)
+    regular.write_text("{}\n", encoding="utf-8")
+    os.utime(regular, (2_000_000, 2_000_000))
+
+    # Subagent transcript — should be skipped
+    sub = projects / "proj" / "sess" / "subagents" / "agent-abc.jsonl"
+    sub.parent.mkdir(parents=True, exist_ok=True)
+    sub.write_text("{}\n", encoding="utf-8")
+    os.utime(sub, (3_000_000, 3_000_000))  # newer, but filtered
+
+    ledger = tmp_path / "ledger.tsv"
+    picked = pick_recent_jsonls(projects, ledger, n=3)
+    assert picked == [regular]
+
+
+def test_compute_backlog_excludes_subagent_jsonls(tmp_path):
+    from mnemos.auto_refine import compute_backlog
+
+    projects = tmp_path / "projects"
+    (projects / "proj").mkdir(parents=True, exist_ok=True)
+    (projects / "proj" / "a.jsonl").write_text("{}\n", encoding="utf-8")
+    (projects / "proj" / "subagents").mkdir()
+    (projects / "proj" / "subagents" / "x.jsonl").write_text("{}\n", encoding="utf-8")
+    (projects / "proj" / "subagents" / "y.jsonl").write_text("{}\n", encoding="utf-8")
+
+    ledger = tmp_path / "ledger.tsv"
+    assert compute_backlog(projects, ledger) == 1
