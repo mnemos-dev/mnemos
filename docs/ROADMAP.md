@@ -221,7 +221,7 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
   - `tests/test_auto_refine.py` — yeni field'lar için test
   - `docs/specs/2026-04-15-v0.3-task-3.7-auto-refine-hook-design.md` — §5.1 güncellenir
 
-- [ ] **3.7b `mnemos install-statusline` CLI** *(~30 dk, 3.7'den hemen sonra)*
+- [x] **3.7b `mnemos install-statusline` CLI** *(commit `15a21fa`, 2026-04-16)*
 
   **Sorun:** 3.7 hook'u `<vault>/.mnemos-hook-status.json` yazıyor + repo
   `scripts/statusline_snippet.{sh,cmd}` ship'liyor ama kullanıcının onları

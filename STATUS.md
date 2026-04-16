@@ -1,6 +1,6 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-16 (v0.3 tasks 3.3 + 3.4a + 3.4b + 3.5 + 3.6 + 3.7 delivered; 3.7 verified in production)
+**Last updated:** 2026-04-16 (v0.3 tasks 3.3 + 3.4a + 3.4b + 3.5 + 3.6 + 3.7 + 3.7b delivered; 3.7 verified in production)
 **Stable PyPI version:** `v0.2.0` · **In-progress:** `v0.3.0` (First-Run Experience)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
@@ -102,6 +102,14 @@ gap.
   user to install the hook (Y/n, default Y). Subagent JSONLs under
   `/subagents/` are filtered from the picker. `filelock` advisory
   locking prevents overlapping sessions from duplicating work.
+- ✅ `mnemos install-statusline` idempotently wires the auto-refine
+  progress snippet into `~/.claude/settings.json`. Two modes: append a
+  fenced `# --- mnemos-auto-refine-statusline ---` block to a user-owned
+  bash/.cmd statusline script (settings untouched) or fresh-install
+  `~/.claude/mnemos-statusline.{sh,cmd}` and point `statusLine.command`
+  at it. `--uninstall` removes the block (and the owned script +
+  `statusLine` key in fresh mode). `.bak-YYYY-MM-DD` backups. `mnemos
+  init` prompts for it after the hook step (i18n TR+EN).
 - 🔲 New-user simulation pilot
 - 🔲 PyPI release
 
@@ -109,23 +117,18 @@ gap.
 
 v0.3 kalan sırası (ROADMAP §v0.3.0):
 
-1. **3.7b `mnemos install-statusline` CLI** (~30 dk) — 3.7 hook'u progress
-   yazıyor ama kullanıcının görmesi için statusline snippet'ini elle
-   eklemesi gerek. Yeni komut: varolan statusline script'in sonuna
-   idempotent ekler veya hiç yoksa minimal bir tane oluşturur. Detay
-   ROADMAP §3.7b. `mnemos init` opsiyonel olarak prompt edebilir.
-2. **3.7c Statusline UX iyileştirmeleri** (~30-45 dk) — canlı pilot'ta 3
+1. **3.7c Statusline UX iyileştirmeleri** (~30-45 dk) — canlı pilot'ta 3
    UX pürüzü çıktı: "busy (another session)" yanıltıcı, idle 30s TTL çok
    kısa, starting fazı snapshot olarak "takıldı" sanılıyor. Detay §3.7c.
-3. **3.8 session-memory skill deprecation** (~15 dk) — *bekleme:* 3.7 hook'u
+2. **3.8 session-memory skill deprecation** (~15 dk) — *bekleme:* 3.7 hook'u
    birkaç gerçek session boyunca sorunsuz çalıştığını gözlemle. Sonra
    README/CONTRIBUTING'e migration notu ekle (`~/.claude/skills/session-memory/`
    klasörünü kaldırma rehberi). Silme işlemi kullanıcıya bırakılır.
-4. **3.9 New-user simülasyonu pilot** (~1h) — temiz throwaway klasörde
+3. **3.9 New-user simülasyonu pilot** (~1h) — temiz throwaway klasörde
    sıfırdan kurulum (pip install → junction skill → `mnemos init` → hook
    install → statusline install → 5 JSONL pilot). README'deki 5 adımın
    çalıştığını kanıtla. Dokümantasyon boşluklarını raporla.
-5. **3.10 PyPI release v0.3.0** — version bump, `python -m build`, twine,
+4. **3.10 PyPI release v0.3.0** — version bump, `python -m build`, twine,
    GitHub release + tag.
 
 **3.7 canlı doğrulama sonucu (2026-04-16):** kasamd vault'unda 6 gerçek
