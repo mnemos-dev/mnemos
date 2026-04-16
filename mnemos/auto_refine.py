@@ -169,11 +169,23 @@ def _is_subagent_jsonl(path: Path) -> bool:
 
 
 def _default_runner(cmd: Sequence[str]) -> int:
-    """Invoke a subprocess, return exit code. Stdio inherited."""
+    """Invoke a subprocess, return exit code.
+
+    For `claude` invocations, strip `ANTHROPIC_API_KEY` from the environment so
+    the subprocess falls back to OAuth/Claude Code subscription auth instead of
+    burning the user's API quota. Pilot finding (2026-04-16): when both auths
+    are available, claude prefers the API key — which silently fails with
+    'Credit balance too low' once the API quota runs out, even though the
+    user's interactive Claude Code session still works fine on subscription.
+    """
     kwargs: dict = {}
     if os.name == "nt":
         CREATE_NO_WINDOW = 0x08000000
         kwargs["creationflags"] = CREATE_NO_WINDOW
+    if cmd and cmd[0] == "claude":
+        env = os.environ.copy()
+        env.pop("ANTHROPIC_API_KEY", None)
+        kwargs["env"] = env
     return subprocess.call(list(cmd), **kwargs)
 
 
