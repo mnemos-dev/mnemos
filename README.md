@@ -88,6 +88,15 @@ Future Claude Code sessions automatically pull context via `mnemos_wake_up` + `m
 
 The skill does **not** call any LLM API — it runs inside your existing Claude Code session. Zero additional cost, zero extra dependencies.
 
+### Migrating from older session-memory setups
+
+If you were an early adopter and your `~/.claude/` still has any of these, they are now superseded by the auto-refine hook installed by `mnemos init` and can be removed safely:
+
+- `~/.claude/skills/session-memory/` — pre-mnemos manual SAVE-on-keyword skill. The auto-refine hook captures every transcript automatically; no need to type "bye" / "kaydet" anymore. Delete the folder.
+- `~/.claude/hooks/mnemos-session-mine.py` (and its `mnemos-mine-worker.py` / `mnemos-mined-transcripts.json` / `mnemos-mine.lock` siblings) — the original raw-transcript miner. Replaced by the refine-then-mine pipeline (refining drops 99% of tool noise before mining). Delete those files and remove the matching `SessionStart` entry from `~/.claude/settings.json` (keep only the entry whose `_managed_by` is `mnemos-auto-refine`).
+
+Mnemos itself doesn't auto-delete user files — these are one-time manual cleanups.
+
 ## Why Not Just Raw Transcripts?
 
 | | Raw JSONL | Refined Sessions/ |
@@ -273,8 +282,11 @@ mnemos benchmark longmemeval --mode raw-only
   `mnemos import {claude-code,chatgpt,slack,markdown,memory}` subcommand family ✅,
   CLI i18n (TR + EN) ✅,
   CONTRIBUTING.md ✅,
-  SessionStart auto-refine hook (`mnemos install-hook`) ✅.
-  Remaining: session-memory skill deprecation, new-user pilot, PyPI release.
+  SessionStart auto-refine hook (`mnemos install-hook`) ✅,
+  `mnemos install-statusline` ✅,
+  no-flicker / no-mid-conversation-refire fixes ✅,
+  legacy session-memory deprecation guide ✅.
+  Remaining: new-user pilot, PyPI release.
 - **v0.4** — AI engine: Claude API mining quality pass, reranking, contradiction detection
 - **v0.5** — Automation: session hooks, memory lifecycle, knowledge graph deepening
 - **v0.6** — Ecosystem: specialist agents, multi-source connectors, Obsidian plugin

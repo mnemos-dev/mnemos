@@ -1,6 +1,6 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-16 (v0.3 tasks 3.3 + 3.4a + 3.4b + 3.5 + 3.6 + 3.7 + 3.7b + 3.7c + 3.7d delivered; 3.7 verified in production)
+**Last updated:** 2026-04-16 (v0.3 tasks 3.3 + 3.4a + 3.4b + 3.5 + 3.6 + 3.7 + 3.7b + 3.7c + 3.7d + 3.8 delivered; 3.7 verified in production)
 **Stable PyPI version:** `v0.2.0` · **In-progress:** `v0.3.0` (First-Run Experience)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
@@ -131,6 +131,12 @@ gap.
   SessionStart entry removed from the author's `~/.claude/settings.json`
   (separate hook that mined raw transcripts; obsolete since 3.7's
   refine-then-mine pipeline).
+- ✅ Legacy session-memory deprecation guide: README §"Migrating from
+  older session-memory setups" lists exactly which `~/.claude/skills/
+  session-memory/` and `~/.claude/hooks/mnemos-*` files an early adopter
+  can safely remove now that the auto-refine hook captures everything
+  automatically. CONTRIBUTING gains a sibling note so contributors don't
+  reintroduce the legacy patterns.
 - 🔲 New-user simulation pilot
 - 🔲 PyPI release
 

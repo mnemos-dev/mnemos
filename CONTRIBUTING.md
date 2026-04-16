@@ -160,6 +160,21 @@ See `docs/specs/2026-04-15-v0.3-task-3.7-auto-refine-hook-design.md` for
 the full architecture rationale, UX channels, failure modes, and acceptance
 criteria.
 
+#### Legacy hooks early adopters may still have
+
+Some early users wired one or both of these directly into `~/.claude/`
+before the auto-refine hook existed. They are obsolete; user-facing
+removal steps are in the README's *Migrating from older session-memory
+setups* section. Don't reintroduce equivalents in the repo:
+
+- `~/.claude/skills/session-memory/` — manual SAVE-on-keyword skill
+  (Turkish triggers: `kaydet`, `bye`, `görüşürüz`, …). The auto-refine
+  hook captures the same content unconditionally.
+- `~/.claude/hooks/mnemos-session-mine.py` + `mnemos-mine-worker.py` —
+  raw-transcript miner that ran every SessionStart with its own lock
+  file. Refining-before-mining removes 99% of tool noise; running both
+  pipelines on the same vault wastes CPU and competes for the lock.
+
 ---
 
 
