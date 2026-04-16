@@ -125,12 +125,20 @@ def write_status(
     backlog: int,
     reminder_active: bool,
     started_at: str,
+    last_outcome: str | None = None,
+    last_finished_at: str | None = None,
 ) -> Path:
-    """Atomically write the statusline state file (tmp + os.replace)."""
+    """Atomically write the statusline state file (tmp + os.replace).
+
+    `last_outcome` ("ok" / "noop" / "failed") and `last_finished_at` are written
+    only when caller passes them — typically on the final `idle` transition so
+    the snippet can render "last refine Xm ago · N notes · OK" instead of going
+    silent immediately.
+    """
     path = Path(vault) / STATUS_FILENAME
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    payload = {
+    payload: dict = {
         "phase": phase,
         "current": current,
         "total": total,
@@ -139,6 +147,10 @@ def write_status(
         "started_at": started_at,
         "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
+    if last_outcome is not None:
+        payload["last_outcome"] = last_outcome
+    if last_finished_at is not None:
+        payload["last_finished_at"] = last_finished_at
 
     fd, tmp_name = tempfile.mkstemp(prefix=".mnemos-hook-status.", suffix=".tmp", dir=str(path.parent))
     try:
@@ -202,6 +214,10 @@ def run(
 
     Acquires a filelock advisory lock at <vault>/.mnemos-hook.lock to avoid
     concurrent auto-refine runs from overlapping sessions.
+
+    On lock timeout (another bg worker holds the lock) this function returns
+    silently WITHOUT touching the status file — the lock holder is keeping the
+    file fresh and any write here would only flicker its in-progress phase.
     """
     runner = runner or _default_runner
     lock = FileLock(str(Path(vault) / HOOK_LOCK_FILENAME), timeout=1)
@@ -218,8 +234,7 @@ def run(
                 runner=runner,
             )
     except Timeout:
-        backlog = compute_backlog(projects_dir, ledger_path)
-        write_status(vault, "busy", 0, 0, backlog, False, started_at)
+        return
 
 
 def _run_locked(
@@ -249,12 +264,13 @@ def _run_locked(
         with log_path.open("a", encoding="utf-8") as fh:
             fh.write(f"  exit={rc}\n")
 
-    backlog = compute_backlog(projects_dir, ledger_path)
-    write_status(vault, "mining", total, total, backlog, reminder_active, started_at)
-    sessions_dir = Path(vault) / "Sessions"
-    rc = runner([sys.executable, "-m", "mnemos.cli", "--vault", str(vault), "mine", str(sessions_dir)])
-    with log_path.open("a", encoding="utf-8") as fh:
-        fh.write(f"  mine exit={rc}\n")
+    if picked:
+        backlog = compute_backlog(projects_dir, ledger_path)
+        write_status(vault, "mining", total, total, backlog, reminder_active, started_at)
+        sessions_dir = Path(vault) / "Sessions"
+        rc = runner([sys.executable, "-m", "mnemos.cli", "--vault", str(vault), "mine", str(sessions_dir)])
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(f"  mine exit={rc}\n")
 
     if reminder_active:
         state = pending_load(vault)
@@ -262,4 +278,9 @@ def _run_locked(
         pending_save(vault, state)
 
     backlog = compute_backlog(projects_dir, ledger_path)
-    write_status(vault, "idle", total, total, backlog, False, started_at)
+    finished_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    write_status(
+        vault, "idle", total, total, backlog, False, started_at,
+        last_outcome="ok" if picked else "noop",
+        last_finished_at=finished_at,
+    )

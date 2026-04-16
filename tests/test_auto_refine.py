@@ -315,3 +315,176 @@ def test_compute_backlog_excludes_subagent_jsonls(tmp_path):
 
     ledger = tmp_path / "ledger.tsv"
     assert compute_backlog(projects, ledger) == 1
+
+
+# ---------------------------------------------------------------------------
+# v0.3 task 3.7c — behavior fixes (lock-silent, skip-empty-mining, outcome fields)
+# ---------------------------------------------------------------------------
+
+
+def test_run_silent_on_lock_timeout_does_not_overwrite_status(tmp_path, monkeypatch):
+    """When another worker holds the lock, run() must not touch the status file.
+
+    Previously, lock timeout wrote `phase=busy` which clobbered the lock-holder's
+    in-progress state (refining/mining), causing visible flicker.
+    """
+    import json
+    from filelock import Timeout
+    from mnemos import auto_refine
+
+    class _BusyLock:
+        def __init__(self, *a, **kw): pass
+        def __enter__(self): raise Timeout("simulated busy lock")
+        def __exit__(self, *a): pass
+
+    monkeypatch.setattr(auto_refine, "FileLock", _BusyLock)
+
+    # Pre-write a "refining" status — should remain untouched after run().
+    status_path = tmp_path / ".mnemos-hook-status.json"
+    pre_state = {
+        "phase": "refining", "current": 2, "total": 3, "backlog": 5,
+        "reminder_active": False,
+        "started_at": "2026-04-16T10:00:00+00:00",
+        "updated_at": "2026-04-16T10:00:30+00:00",
+    }
+    status_path.write_text(json.dumps(pre_state), encoding="utf-8")
+
+    auto_refine.run(
+        vault=tmp_path,
+        projects_dir=tmp_path / "projects",
+        ledger_path=tmp_path / "ledger.tsv",
+        picked=[],
+        reminder_active=False,
+        started_at="2026-04-16T10:01:00+00:00",
+        runner=lambda c: 0,
+    )
+
+    after = json.loads(status_path.read_text(encoding="utf-8"))
+    assert after == pre_state, "lock timeout must leave the status file untouched"
+
+
+def test_run_skips_mining_when_no_picked(tmp_path):
+    """picked=[] must NOT invoke `mnemos.cli mine` — it's a wasted lock-holding op."""
+    from mnemos.auto_refine import run
+
+    projects = tmp_path / "projects"
+    ledger = tmp_path / "ledger.tsv"
+    ledger.touch()
+
+    calls: list[list[str]] = []
+
+    def recording_runner(cmd):
+        calls.append([str(c) for c in cmd])
+        return 0
+
+    run(
+        vault=tmp_path,
+        projects_dir=projects,
+        ledger_path=ledger,
+        picked=[],
+        reminder_active=False,
+        started_at="2026-04-16T10:00:00+00:00",
+        runner=recording_runner,
+    )
+
+    mine_calls = [c for c in calls if "mine" in c]
+    assert mine_calls == [], f"runner should not be invoked when picked=[]; got {calls}"
+
+
+def test_run_still_mines_when_picked_nonempty(tmp_path):
+    """Sanity guard: behavior change must not regress the picked>0 case."""
+    from mnemos.auto_refine import run
+
+    projects = tmp_path / "projects"
+    a = _write_jsonl(projects, "a.jsonl", 1_000_000)
+    ledger = tmp_path / "ledger.tsv"
+    ledger.touch()
+
+    calls: list[list[str]] = []
+
+    def recording_runner(cmd):
+        calls.append([str(c) for c in cmd])
+        return 0
+
+    run(
+        vault=tmp_path,
+        projects_dir=projects,
+        ledger_path=ledger,
+        picked=[a],
+        reminder_active=False,
+        started_at="2026-04-16T10:00:00+00:00",
+        runner=recording_runner,
+    )
+
+    assert any("mine" in c for c in calls), f"mine must still run when picked is non-empty; got {calls}"
+
+
+def test_run_writes_last_outcome_ok_when_picked(tmp_path):
+    """After a successful refine+mine round, idle status must record outcome=ok and timestamp."""
+    import json
+    from mnemos.auto_refine import run
+
+    projects = tmp_path / "projects"
+    a = _write_jsonl(projects, "a.jsonl", 1_000_000)
+    ledger = tmp_path / "ledger.tsv"
+    ledger.touch()
+
+    run(
+        vault=tmp_path,
+        projects_dir=projects,
+        ledger_path=ledger,
+        picked=[a],
+        reminder_active=False,
+        started_at="2026-04-16T10:00:00+00:00",
+        runner=lambda c: 0,
+    )
+
+    data = json.loads((tmp_path / ".mnemos-hook-status.json").read_text(encoding="utf-8"))
+    assert data["phase"] == "idle"
+    assert data["last_outcome"] == "ok"
+    assert "last_finished_at" in data and data["last_finished_at"]
+
+
+def test_run_writes_last_outcome_noop_when_no_picked(tmp_path):
+    """picked=[] → idle status must record outcome=noop so the snippet can render 'no-op'."""
+    import json
+    from mnemos.auto_refine import run
+
+    projects = tmp_path / "projects"
+    ledger = tmp_path / "ledger.tsv"
+    ledger.touch()
+
+    run(
+        vault=tmp_path,
+        projects_dir=projects,
+        ledger_path=ledger,
+        picked=[],
+        reminder_active=False,
+        started_at="2026-04-16T10:00:00+00:00",
+        runner=lambda c: 0,
+    )
+
+    data = json.loads((tmp_path / ".mnemos-hook-status.json").read_text(encoding="utf-8"))
+    assert data["phase"] == "idle"
+    assert data["last_outcome"] == "noop"
+
+
+def test_write_status_accepts_optional_outcome_fields(tmp_path):
+    """write_status() backward-compatible signature: outcome fields are optional kwargs."""
+    import json
+    from mnemos.auto_refine import write_status
+
+    write_status(
+        vault=tmp_path,
+        phase="idle",
+        current=2,
+        total=2,
+        backlog=10,
+        reminder_active=False,
+        started_at="2026-04-16T10:00:00+00:00",
+        last_outcome="ok",
+        last_finished_at="2026-04-16T10:05:00+00:00",
+    )
+    data = json.loads((tmp_path / ".mnemos-hook-status.json").read_text(encoding="utf-8"))
+    assert data["last_outcome"] == "ok"
+    assert data["last_finished_at"] == "2026-04-16T10:05:00+00:00"
