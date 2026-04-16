@@ -103,6 +103,25 @@ def test_install_hook_writes_managed_by_marker(tmp_path, monkeypatch):
     assert HOOK_MARKER not in entry["hooks"][0]["command"]
 
 
+def test_install_hook_uses_cli_arg_no_cmd_wrapper(tmp_path, monkeypatch):
+    from mnemos.cli import install_hook
+
+    home = tmp_path / "home"
+    (home / ".claude").mkdir(parents=True)
+    monkeypatch.setattr("pathlib.Path.home", lambda: home)
+
+    install_hook(vault=tmp_path, uninstall=False)
+    settings = json.loads((home / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    cmd = settings["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+    # No cmd /c wrapper
+    assert "cmd /c" not in cmd
+    # Vault passed as CLI arg
+    assert "--vault" in cmd
+    # Script invoked directly
+    assert "python " in cmd
+    assert "auto_refine_hook.py" in cmd
+
+
 def test_install_hook_detects_legacy_command_marker(tmp_path, monkeypatch):
     from mnemos.cli import install_hook, HOOK_MARKER
 

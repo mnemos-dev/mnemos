@@ -19,7 +19,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-def _find_vault() -> Path | None:
+def _find_vault(argv: list[str]) -> Path | None:
+    # --vault <path> takes precedence
+    if "--vault" in argv:
+        idx = argv.index("--vault")
+        if idx + 1 < len(argv):
+            return Path(argv[idx + 1])
     env = os.environ.get("MNEMOS_VAULT")
     if env:
         return Path(env)
@@ -32,7 +37,7 @@ def main() -> int:
     except Exception:
         pass
 
-    vault = _find_vault()
+    vault = _find_vault(sys.argv[1:])
     if vault is None or not vault.exists():
         return 0
 
