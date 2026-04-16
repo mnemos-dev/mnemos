@@ -95,7 +95,15 @@ def install_hook(vault: Path, uninstall: bool = False) -> HookInstallResult:
                 f"(current CLI-arg based invocation still needs a quote-free path). "
                 f"Got vault={vault!r}, hook_script={hook_script!r}."
             )
-        full_cmd = f'python {hook_script} --vault {vault}'
+        # Claude Code's Windows hook dispatcher mangles backslash sequences
+        # that look like C escapes (\P, \m, \s, \a → eaten), so the literal
+        # backslashes in `C:\Projeler\mnemos\scripts\auto_refine_hook.py`
+        # arrive at the shell as `C:ProjelermnemosScriptsauto_refine_hook.py`
+        # and python can't find the file. Forward slashes survive intact and
+        # Python on Windows accepts them.
+        hook_script_fs = hook_script.replace("\\", "/")
+        vault_fs = str(vault).replace("\\", "/")
+        full_cmd = f'python {hook_script_fs} --vault {vault_fs}'
     else:
         full_cmd = f'python "{hook_script}" --vault "{vault}"'
 
