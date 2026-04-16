@@ -59,6 +59,12 @@ def install_hook(vault: Path, uninstall: bool = False) -> HookInstallResult:
 
     existing_idx: Optional[int] = None
     for i, entry in enumerate(sessionstart):
+        if entry.get("_managed_by") == HOOK_MARKER:
+            existing_idx = i
+            break
+        # Legacy detection: prior versions stored the marker as a shell comment
+        # inside the command string. Match these too so uninstall / upgrade can
+        # find them.
         for h in entry.get("hooks", []):
             if HOOK_MARKER in h.get("command", ""):
                 existing_idx = i
@@ -89,9 +95,10 @@ def install_hook(vault: Path, uninstall: bool = False) -> HookInstallResult:
 
     sessionstart.append({
         "matcher": "",
+        "_managed_by": HOOK_MARKER,
         "hooks": [{
             "type": "command",
-            "command": f"# {HOOK_MARKER}\n{full_cmd}",
+            "command": full_cmd,
             "timeout": 5,
         }],
     })

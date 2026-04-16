@@ -85,3 +85,51 @@ def test_install_hook_prompt_skips_on_no(tmp_path, monkeypatch, capsys):
     _install_hook_prompt(lang="en", vault=tmp_path)
     out = capsys.readouterr().out
     assert "skipped" in out.lower() or "atlandı" in out.lower() or "install later" in out.lower()
+
+
+def test_install_hook_writes_managed_by_marker(tmp_path, monkeypatch):
+    from mnemos.cli import install_hook, HOOK_MARKER
+
+    home = tmp_path / "home"
+    (home / ".claude").mkdir(parents=True)
+    monkeypatch.setattr("pathlib.Path.home", lambda: home)
+
+    install_hook(vault=tmp_path, uninstall=False)
+    settings = json.loads((home / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    entry = settings["hooks"]["SessionStart"][0]
+    assert entry["_managed_by"] == HOOK_MARKER
+    # Command must NOT have a # comment prefix (cmd.exe would fail on it)
+    assert not entry["hooks"][0]["command"].startswith("#")
+    assert HOOK_MARKER not in entry["hooks"][0]["command"]
+
+
+def test_install_hook_detects_legacy_command_marker(tmp_path, monkeypatch):
+    from mnemos.cli import install_hook, HOOK_MARKER
+
+    home = tmp_path / "home"
+    (home / ".claude").mkdir(parents=True)
+    monkeypatch.setattr("pathlib.Path.home", lambda: home)
+
+    # Simulate a settings.json from the buggy version (marker in command)
+    legacy = {
+        "hooks": {
+            "SessionStart": [{
+                "matcher": "",
+                "hooks": [{
+                    "type": "command",
+                    "command": f"# {HOOK_MARKER}\necho legacy",
+                    "timeout": 5,
+                }],
+            }]
+        }
+    }
+    (home / ".claude" / "settings.json").write_text(json.dumps(legacy), encoding="utf-8")
+
+    # Re-running install should detect the legacy entry as already-installed,
+    # not stack a second one.
+    result = install_hook(vault=tmp_path, uninstall=False)
+    assert result.status == "already-installed"
+
+    # Uninstall should also find it.
+    result2 = install_hook(vault=tmp_path, uninstall=True)
+    assert result2.status == "uninstalled"
