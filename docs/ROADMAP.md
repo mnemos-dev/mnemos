@@ -398,7 +398,7 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
   - GitHub release: <https://github.com/mnemos-dev/mnemos/releases/tag/v0.3.0>
   - Tag: `v0.3.0` (annotated). Wheel + sdist attached as release assets.
 
-- [~] **3.11 Auto-refine noise filter + truthful status reporting**
+- [x] **3.11 Auto-refine noise filter + truthful status reporting** *(commit `a86c57a`, 2026-04-16)*
 
   **Sorun (kullanıcı raporu, 2026-04-16 post-3.10 canlı kullanım):**
   Hook tetikleniyor, statusline "refining 1/3 · 0m1s · backlog 151" sonra
