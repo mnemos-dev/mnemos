@@ -327,17 +327,24 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
     statusline kurar, sadece mnemos progress satırı gösterir.
   - Re-run no-op (already-installed status).
 
-- [ ] **3.8 session-memory skill deprecation** *(15 dk, 3.7'den sonra)*
-  `~/.claude/skills/session-memory/` artık gereksiz — refine-transcripts
-  aynı bilgiyi daha kapsamlı üretir (JSONL log'unun tamamı, canlı Claude
-  hafızasının kısmi özeti değil).
+- [x] **3.8 session-memory skill deprecation** *(commit `77f1b78`, 2026-04-16)*
+  Eski `~/.claude/skills/session-memory/` (manuel SAVE-on-keyword skill) +
+  `~/.claude/hooks/mnemos-session-mine.py` (raw-transcript miner) artık
+  gereksiz — refine-transcripts skill her SessionStart'ta aynı bilgiyi
+  daha kapsamlı + tool-noise'sız üretiyor.
 
-  **Adımlar:**
-  - 3.7 hook'u en az 3 session boyunca sorunsuz çalıştığını doğrula
-  - README / CONTRIBUTING'e migration notu ekle: "Eski session-memory
-    skill kullanıcıları `~/.claude/skills/session-memory/` klasörünü
-    kaldırabilir; mnemos auto-refine hook aynı işi otomatik yapıyor"
-  - Silme işlemi kullanıcı kararı — mnemos silmez
+  **Delivered:**
+  - README'ye `### Migrating from older session-memory setups`
+    bölümü eklendi: hangi dosyaların silinebileceği + nasıl
+    `~/.claude/settings.json`'dan eski SessionStart entry'sinin
+    çıkarılacağı (managed-by marker'ına dikkat çekildi).
+  - CONTRIBUTING'in SessionStart hook bölümüne `#### Legacy hooks early
+    adopters may still have` alt-başlığı eklendi (kontribütör
+    perspektifi: bu hook'ları repo'ya geri ekleme).
+  - README roadmap satırı güncel: 3.7b/3.7c/3.7d/3.8 deliveredlistesinde.
+  - Yazarın kendi `~/.claude/settings.json`'ından legacy entry zaten
+    3.7d kapsamında kaldırıldı; ilgili 4 dosya silindi (kullanıcı
+    onayıyla). External user'lar için talimat README'de.
 
 - [ ] **3.9 New-user simülasyonu pilot** *(1h, tüm yukarıdakilerden sonra)*
   Temiz throwaway klasörde:
