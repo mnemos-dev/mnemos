@@ -13,16 +13,34 @@ import sys
 from pathlib import Path
 
 
-def _run_hook(tmp_path: Path, stdin: str, projects_jsonls: int = 0) -> subprocess.CompletedProcess:
+def _run_hook(
+    tmp_path: Path,
+    stdin: str,
+    projects_jsonls: int = 0,
+    user_turns_per_jsonl: int = 3,
+) -> subprocess.CompletedProcess:
     """Invoke the wrapper with an isolated HOME pointing inside tmp_path.
 
     `projects_jsonls` seeds N transcripts under <home>/.claude/projects/proj/.
+    Each seeded JSONL gets `user_turns_per_jsonl` real user turns so the v0.3.11
+    user-turn filter doesn't quietly drop them — pass 0 to test the filter itself.
     """
     home = tmp_path / "home"
     projects = home / ".claude" / "projects" / "proj"
     projects.mkdir(parents=True, exist_ok=True)
     for i in range(projects_jsonls):
-        (projects / f"session-{i}.jsonl").write_text("{}\n", encoding="utf-8")
+        path = projects / f"session-{i}.jsonl"
+        if user_turns_per_jsonl <= 0:
+            path.write_text("{}\n", encoding="utf-8")
+        else:
+            lines = []
+            for k in range(user_turns_per_jsonl):
+                lines.append(json.dumps({"type": "user", "message": {"role": "user", "content": f"q{k}"}}))
+                lines.append(json.dumps({
+                    "type": "assistant",
+                    "message": {"role": "assistant", "content": [{"type": "text", "text": f"a{k}"}]},
+                }))
+            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     env = {k: v for k, v in os.environ.items() if k != "MNEMOS_VAULT"}
     env["USERPROFILE"] = str(home)  # Windows
@@ -160,13 +178,22 @@ def test_hook_script_excludes_self_transcript_from_picks(tmp_path):
     because the ledger marks the file as already-OK.
     """
     # Seed three JSONLs and pick the newest as the "current" session transcript.
+    # Each JSONL needs >= MIN_USER_TURNS (3) real user turns or the v0.3.11 filter
+    # would drop them and total would always be 0 regardless of self-exclude logic.
     home = tmp_path / "home"
     projects_dir = home / ".claude" / "projects" / "proj"
     projects_dir.mkdir(parents=True)
     paths = []
     for i, mtime in enumerate([1_000_000, 2_000_000, 3_000_000]):
         p = projects_dir / f"session-{i}.jsonl"
-        p.write_text("{}\n", encoding="utf-8")
+        lines = []
+        for k in range(3):  # 3 real user turns per fixture
+            lines.append(json.dumps({"type": "user", "message": {"role": "user", "content": f"q{k}"}}))
+            lines.append(json.dumps({
+                "type": "assistant",
+                "message": {"role": "assistant", "content": [{"type": "text", "text": f"a{k}"}]},
+            }))
+        p.write_text("\n".join(lines) + "\n", encoding="utf-8")
         os.utime(p, (mtime, mtime))
         paths.append(p)
     self_transcript = paths[2]  # newest = current session

@@ -156,6 +156,19 @@ gap.
   resolved relatively). Bash-on-Windows (Git Bash MSYS path)
   detection and target-suffix-aware block syntax were folded in too
   so the appended block actually parses on the user's shell.
+- ✅ Auto-refine noise filter + truthful status (3.11): picker and
+  backlog skip JSONLs with fewer than 3 real user turns
+  (`MIN_USER_TURNS`, opt-out with `min_user_turns=0`) — `tool_result`
+  messages don't count as turns, so a 1-turn-with-tools session is
+  correctly treated as noise. `_run_locked` now reads the ledger
+  after each `claude --print` call to count real OK vs SKIP outcomes;
+  status JSON gains `last_ok` + `last_skip` fields and a new
+  `last_outcome="skip"` value for the all-SKIP case. Statusline
+  snippet renders the actual split: "1 note · 2 skipped · backlog 87"
+  or "0 notes (3 skipped)" instead of the prior "3 notes · OK" lie
+  that surfaced when every pick was a `/clear → mnemos` resume
+  session. Fixes the report where backlog grew 150 → 152 across two
+  fresh sessions because every fire wasted picks on noise.
 
 ### Next session starts here
 

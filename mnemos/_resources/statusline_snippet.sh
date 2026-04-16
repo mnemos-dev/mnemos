@@ -12,7 +12,7 @@ _mnemos_statusline() {
     # Require jq; silently skip if missing
     command -v jq >/dev/null 2>&1 || return 0
 
-    local phase current total backlog started_at updated_at last_outcome last_finished_at
+    local phase current total backlog started_at updated_at last_outcome last_finished_at last_ok last_skip
     phase=$(jq -r '.phase // "idle"' "$status_file")
     current=$(jq -r '.current // 0' "$status_file")
     total=$(jq -r '.total // 0' "$status_file")
@@ -21,6 +21,8 @@ _mnemos_statusline() {
     updated_at=$(jq -r '.updated_at // ""' "$status_file")
     last_outcome=$(jq -r '.last_outcome // ""' "$status_file")
     last_finished_at=$(jq -r '.last_finished_at // ""' "$status_file")
+    last_ok=$(jq -r '.last_ok // -1' "$status_file")
+    last_skip=$(jq -r '.last_skip // -1' "$status_file")
 
     local now_epoch
     now_epoch=$(date +%s)
@@ -51,22 +53,47 @@ _mnemos_statusline() {
         idle)
             # When we have meta from the last completed round, show it.
             if [ -n "$last_finished_at" ]; then
-                local finish_epoch ago_min outcome_label
+                local finish_epoch ago_min
                 finish_epoch=$(date -d "$last_finished_at" +%s 2>/dev/null || echo "")
                 if [ -n "$finish_epoch" ]; then
                     ago_min=$(( (now_epoch - finish_epoch) / 60 ))
                     case "$last_outcome" in
-                        ok)     outcome_label="OK" ;;
-                        noop)   outcome_label="no-op" ;;
-                        failed) outcome_label="FAIL" ;;
-                        *)      outcome_label="$last_outcome" ;;
+                        noop)
+                            printf "  mnemos: idle %dm · backlog %d" "$ago_min" "$backlog"
+                            ;;
+                        ok|skip)
+                            # v0.3.11: render real OK/SKIP split when present so
+                            # "3 notes · OK" no longer hides "3 SKIPs · 0 notes".
+                            if [ "$last_ok" -ge 0 ] && [ "$last_skip" -ge 0 ]; then
+                                if [ "$last_ok" -gt 0 ] && [ "$last_skip" -gt 0 ]; then
+                                    printf "  mnemos: last refine %dm ago · %d notes · %d skipped · backlog %d" \
+                                        "$ago_min" "$last_ok" "$last_skip" "$backlog"
+                                elif [ "$last_ok" -gt 0 ]; then
+                                    printf "  mnemos: last refine %dm ago · %d notes · backlog %d" \
+                                        "$ago_min" "$last_ok" "$backlog"
+                                else
+                                    printf "  mnemos: last refine %dm ago · 0 notes (%d skipped) · backlog %d" \
+                                        "$ago_min" "$last_skip" "$backlog"
+                                fi
+                            else
+                                # Backward compat: pre-v0.3.11 status JSONs lack last_ok/last_skip.
+                                local outcome_label
+                                case "$last_outcome" in
+                                    ok)   outcome_label="OK" ;;
+                                    skip) outcome_label="SKIP" ;;
+                                esac
+                                printf "  mnemos: last refine %dm ago · %d notes · %s · backlog %d" \
+                                    "$ago_min" "$total" "$outcome_label" "$backlog"
+                            fi
+                            ;;
+                        failed)
+                            printf "  mnemos: last refine %dm ago · FAIL · backlog %d" "$ago_min" "$backlog"
+                            ;;
+                        *)
+                            printf "  mnemos: last refine %dm ago · %s · backlog %d" \
+                                "$ago_min" "$last_outcome" "$backlog"
+                            ;;
                     esac
-                    if [ "$last_outcome" = "noop" ]; then
-                        printf "  mnemos: idle %dm · backlog %d" "$ago_min" "$backlog"
-                    else
-                        printf "  mnemos: last refine %dm ago · %d notes · %s · backlog %d" \
-                            "$ago_min" "$total" "$outcome_label" "$backlog"
-                    fi
                 else
                     printf "  mnemos: done (backlog %d)" "$backlog"
                 fi

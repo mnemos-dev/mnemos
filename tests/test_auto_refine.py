@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 
@@ -22,10 +23,26 @@ def test_resolve_ledger_path_env_override(monkeypatch, tmp_path):
     assert resolve_ledger_path() == custom
 
 
-def _write_jsonl(projects_dir: Path, name: str, mtime: float) -> Path:
+def _write_jsonl(projects_dir: Path, name: str, mtime: float, user_turns: int = 3) -> Path:
+    """Create a JSONL fixture with `user_turns` real user-typed turns.
+
+    Default 3 turns keeps existing tests above the v0.3 task 3.11 user-turn
+    threshold so picker/backlog filters don't quietly exclude fixtures meant
+    to test other behavior. Pass `user_turns=0` for empty placeholders.
+    """
     path = projects_dir / "proj" / name
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("{}\n", encoding="utf-8")
+    if user_turns <= 0:
+        path.write_text("{}\n", encoding="utf-8")
+    else:
+        lines: list[str] = []
+        for i in range(user_turns):
+            lines.append(json.dumps({"type": "user", "message": {"role": "user", "content": f"q{i}"}}))
+            lines.append(json.dumps({
+                "type": "assistant",
+                "message": {"role": "assistant", "content": [{"type": "text", "text": f"a{i}"}]},
+            }))
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     os.utime(path, (mtime, mtime))
     return path
 
@@ -286,14 +303,11 @@ def test_pick_recent_excludes_subagent_jsonls(tmp_path):
     from mnemos.auto_refine import pick_recent_jsonls
 
     projects = tmp_path / "projects"
-    # Regular transcript
-    regular = projects / "proj" / "sess" / "main.jsonl"
-    regular.parent.mkdir(parents=True, exist_ok=True)
-    regular.write_text("{}\n", encoding="utf-8")
-    os.utime(regular, (2_000_000, 2_000_000))
+    # Regular transcript (with real turns so the v0.3.11 turn-filter doesn't drop it).
+    regular = _write_jsonl(projects, "main.jsonl", 2_000_000, user_turns=3)
 
-    # Subagent transcript — should be skipped
-    sub = projects / "proj" / "sess" / "subagents" / "agent-abc.jsonl"
+    # Subagent transcript — should be skipped by path filter regardless of content.
+    sub = projects / "proj" / "subagents" / "agent-abc.jsonl"
     sub.parent.mkdir(parents=True, exist_ok=True)
     sub.write_text("{}\n", encoding="utf-8")
     os.utime(sub, (3_000_000, 3_000_000))  # newer, but filtered
@@ -304,6 +318,11 @@ def test_pick_recent_excludes_subagent_jsonls(tmp_path):
 
 
 def test_compute_backlog_excludes_subagent_jsonls(tmp_path):
+    """Subagent path filter must exclude under /subagents/ regardless of content.
+
+    Uses min_user_turns=0 so the orthogonal v0.3.11 turn-filter doesn't mask the
+    behavior under test (subagent path exclusion).
+    """
     from mnemos.auto_refine import compute_backlog
 
     projects = tmp_path / "projects"
@@ -314,7 +333,7 @@ def test_compute_backlog_excludes_subagent_jsonls(tmp_path):
     (projects / "proj" / "subagents" / "y.jsonl").write_text("{}\n", encoding="utf-8")
 
     ledger = tmp_path / "ledger.tsv"
-    assert compute_backlog(projects, ledger) == 1
+    assert compute_backlog(projects, ledger, min_user_turns=0) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -420,7 +439,12 @@ def test_run_still_mines_when_picked_nonempty(tmp_path):
 
 
 def test_run_writes_last_outcome_ok_when_picked(tmp_path):
-    """After a successful refine+mine round, idle status must record outcome=ok and timestamp."""
+    """After a refine round that actually produces ≥1 OK note, idle records outcome=ok.
+
+    Updated for v0.3.11 semantics: 'ok' now requires the skill to have written
+    an OK ledger row (the prior 'picked nonempty → ok' contract was the lie that
+    showed "3 notes · OK · backlog 150" when 0 notes were actually created).
+    """
     import json
     from mnemos.auto_refine import run
 
@@ -436,7 +460,7 @@ def test_run_writes_last_outcome_ok_when_picked(tmp_path):
         picked=[a],
         reminder_active=False,
         started_at="2026-04-16T10:00:00+00:00",
-        runner=lambda c: 0,
+        runner=_ledger_writing_runner(ledger, {a: "OK"}),
     )
 
     data = json.loads((tmp_path / ".mnemos-hook-status.json").read_text(encoding="utf-8"))
@@ -536,3 +560,270 @@ def test_pick_recent_jsonls_exclude_default_none(tmp_path):
     ledger = tmp_path / "ledger.tsv"
     assert pick_recent_jsonls(projects, ledger, n=3) == [b, a]
     assert pick_recent_jsonls(projects, ledger, n=3, exclude=None) == [b, a]
+
+
+# ---------------------------------------------------------------------------
+# v0.3 task 3.11 — user-turn filter + accurate OK/SKIP status reporting
+# ---------------------------------------------------------------------------
+
+
+def test_min_user_turns_default_is_three():
+    """The shipped threshold is 3 — sessions with fewer turns are noise (resume-only)."""
+    from mnemos.auto_refine import MIN_USER_TURNS
+    assert MIN_USER_TURNS == 3
+
+
+def test_count_user_turns_minimal_session(tmp_path):
+    """One real user message → count 1."""
+    from mnemos.auto_refine import _count_user_turns
+    p = tmp_path / "x.jsonl"
+    p.write_text(
+        json.dumps({"type": "user", "message": {"role": "user", "content": "hello"}}) + "\n"
+        + json.dumps({"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "hi"}]}}) + "\n",
+        encoding="utf-8",
+    )
+    assert _count_user_turns(p) == 1
+
+
+def test_count_user_turns_excludes_tool_results(tmp_path):
+    """Tool result messages have type=user but must NOT be counted as turns.
+
+    Without this, a 1-turn session with heavy tool use would falsely register
+    as N turns and bypass the noise filter.
+    """
+    from mnemos.auto_refine import _count_user_turns
+    p = tmp_path / "x.jsonl"
+    p.write_text(
+        json.dumps({"type": "user", "message": {"role": "user", "content": "do thing"}}) + "\n"
+        + json.dumps({"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "t1", "name": "X", "input": {}}]}}) + "\n"
+        + json.dumps({"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "done"}]}}) + "\n"
+        + json.dumps({"type": "user", "message": {"role": "user", "content": "thanks"}}) + "\n",
+        encoding="utf-8",
+    )
+    assert _count_user_turns(p) == 2
+
+
+def test_count_user_turns_handles_missing_file(tmp_path):
+    from mnemos.auto_refine import _count_user_turns
+    assert _count_user_turns(tmp_path / "nope.jsonl") == 0
+
+
+def test_count_user_turns_tolerates_malformed_lines(tmp_path):
+    """Malformed JSON / blank lines are skipped, not raised."""
+    from mnemos.auto_refine import _count_user_turns
+    p = tmp_path / "x.jsonl"
+    p.write_text(
+        "not-json\n"
+        + json.dumps({"type": "user", "message": {"role": "user", "content": "a"}}) + "\n"
+        + "\n"
+        + "{}\n"
+        + json.dumps({"type": "user", "message": {"role": "user", "content": "b"}}) + "\n",
+        encoding="utf-8",
+    )
+    assert _count_user_turns(p) == 2
+
+
+def test_pick_recent_filters_short_transcripts_by_default(tmp_path):
+    """A 1-turn JSONL must NOT be picked even if it's the newest."""
+    from mnemos.auto_refine import pick_recent_jsonls
+
+    projects = tmp_path / "projects"
+    short = _write_jsonl(projects, "short.jsonl", 3_000_000, user_turns=1)  # newest, too short
+    real = _write_jsonl(projects, "real.jsonl", 2_000_000, user_turns=5)
+    ledger = tmp_path / "ledger.tsv"
+
+    picked = pick_recent_jsonls(projects, ledger, n=3)  # default min_user_turns=3
+    assert short not in picked
+    assert real in picked
+
+
+def test_pick_recent_filter_threshold_boundary(tmp_path):
+    """Exactly min_user_turns is accepted (>=, not >)."""
+    from mnemos.auto_refine import pick_recent_jsonls
+
+    projects = tmp_path / "projects"
+    edge = _write_jsonl(projects, "edge.jsonl", 1_000_000, user_turns=3)
+    ledger = tmp_path / "ledger.tsv"
+
+    assert edge in pick_recent_jsonls(projects, ledger, n=3, min_user_turns=3)
+
+
+def test_pick_recent_min_turns_zero_disables_filter(tmp_path):
+    """min_user_turns=0 = explicit opt-out (used by tests of orthogonal behavior)."""
+    from mnemos.auto_refine import pick_recent_jsonls
+
+    projects = tmp_path / "projects"
+    short = _write_jsonl(projects, "short.jsonl", 1_000_000, user_turns=1)
+    ledger = tmp_path / "ledger.tsv"
+
+    assert short in pick_recent_jsonls(projects, ledger, n=3, min_user_turns=0)
+
+
+def test_compute_backlog_filters_short_transcripts(tmp_path):
+    """Short transcripts vanish from the visible backlog (the user's real complaint:
+    150-backlog stayed flat because every fire wasted picks on noise files)."""
+    from mnemos.auto_refine import compute_backlog
+
+    projects = tmp_path / "projects"
+    _write_jsonl(projects, "short1.jsonl", 1_000_000, user_turns=1)
+    _write_jsonl(projects, "short2.jsonl", 1_500_000, user_turns=2)
+    _write_jsonl(projects, "real.jsonl", 2_000_000, user_turns=5)
+    ledger = tmp_path / "ledger.tsv"
+
+    assert compute_backlog(projects, ledger) == 1
+
+
+def test_write_status_accepts_last_ok_and_last_skip(tmp_path):
+    """Status payload must carry per-round OK/SKIP counts so the snippet renders truthfully."""
+    from mnemos.auto_refine import write_status
+
+    write_status(
+        vault=tmp_path,
+        phase="idle",
+        current=3, total=3, backlog=10,
+        reminder_active=False,
+        started_at="2026-04-16T10:00:00+00:00",
+        last_outcome="skip",
+        last_finished_at="2026-04-16T10:05:00+00:00",
+        last_ok=0, last_skip=3,
+    )
+    data = json.loads((tmp_path / ".mnemos-hook-status.json").read_text(encoding="utf-8"))
+    assert data["last_ok"] == 0
+    assert data["last_skip"] == 3
+    assert data["last_outcome"] == "skip"
+
+
+def test_write_status_omits_outcome_counts_when_unset(tmp_path):
+    """Backward compat: if caller doesn't pass last_ok/last_skip, JSON omits them."""
+    from mnemos.auto_refine import write_status
+
+    write_status(
+        vault=tmp_path,
+        phase="refining",
+        current=1, total=2, backlog=5,
+        reminder_active=False,
+        started_at="2026-04-16T10:00:00+00:00",
+    )
+    data = json.loads((tmp_path / ".mnemos-hook-status.json").read_text(encoding="utf-8"))
+    assert "last_ok" not in data
+    assert "last_skip" not in data
+
+
+def _ledger_writing_runner(ledger: Path, outcomes: dict[Path, str]):
+    """Build a fake runner that simulates refine-skill writing OK/SKIP rows.
+
+    `outcomes` maps each picked path to the status the skill would record.
+    The mine call is treated as a no-op.
+    """
+    def runner(cmd):
+        cmd_str = " ".join(str(c) for c in cmd)
+        if "/mnemos-refine-transcripts" not in cmd_str:
+            return 0
+        for path, status in outcomes.items():
+            if str(path) in cmd_str:
+                with ledger.open("a", encoding="utf-8") as fh:
+                    note = "note.md" if status == "OK" else "skipped"
+                    fh.write(f"{path}\t{status}\t{note}\n")
+                return 0
+        return 0
+    return runner
+
+
+def test_run_records_last_ok_and_last_skip_from_ledger_delta(tmp_path):
+    """After a round, status.last_ok / last_skip reflect what the skill actually wrote."""
+    from mnemos.auto_refine import run
+
+    projects = tmp_path / "projects"
+    a = _write_jsonl(projects, "a.jsonl", 1_000_000, user_turns=5)
+    b = _write_jsonl(projects, "b.jsonl", 2_000_000, user_turns=5)
+    ledger = tmp_path / "ledger.tsv"
+    ledger.touch()
+
+    run(
+        vault=tmp_path,
+        projects_dir=projects,
+        ledger_path=ledger,
+        picked=[a, b],
+        reminder_active=False,
+        started_at="2026-04-16T10:00:00+00:00",
+        runner=_ledger_writing_runner(ledger, {a: "OK", b: "SKIP"}),
+    )
+
+    data = json.loads((tmp_path / ".mnemos-hook-status.json").read_text(encoding="utf-8"))
+    assert data["last_ok"] == 1
+    assert data["last_skip"] == 1
+
+
+def test_run_last_outcome_skip_when_all_picked_were_skipped(tmp_path):
+    """All picks SKIP → outcome must be 'skip', NOT the misleading 'ok' that v0.3.7c shipped.
+
+    This is the user's primary complaint surface: statusline showed
+    '3 notes · OK' when actually 0 notes were created (all 3 SKIP).
+    """
+    from mnemos.auto_refine import run
+
+    projects = tmp_path / "projects"
+    a = _write_jsonl(projects, "a.jsonl", 1_000_000, user_turns=5)
+    ledger = tmp_path / "ledger.tsv"
+    ledger.touch()
+
+    run(
+        vault=tmp_path,
+        projects_dir=projects,
+        ledger_path=ledger,
+        picked=[a],
+        reminder_active=False,
+        started_at="2026-04-16T10:00:00+00:00",
+        runner=_ledger_writing_runner(ledger, {a: "SKIP"}),
+    )
+
+    data = json.loads((tmp_path / ".mnemos-hook-status.json").read_text(encoding="utf-8"))
+    assert data["last_outcome"] == "skip"
+    assert data["last_ok"] == 0
+    assert data["last_skip"] == 1
+
+
+def test_run_last_outcome_ok_when_at_least_one_real_note(tmp_path):
+    """≥1 OK across the round → outcome=ok (preserves prior semantics for non-mixed rounds)."""
+    from mnemos.auto_refine import run
+
+    projects = tmp_path / "projects"
+    a = _write_jsonl(projects, "a.jsonl", 1_000_000, user_turns=5)
+    b = _write_jsonl(projects, "b.jsonl", 2_000_000, user_turns=5)
+    ledger = tmp_path / "ledger.tsv"
+    ledger.touch()
+
+    run(
+        vault=tmp_path,
+        projects_dir=projects,
+        ledger_path=ledger,
+        picked=[a, b],
+        reminder_active=False,
+        started_at="2026-04-16T10:00:00+00:00",
+        runner=_ledger_writing_runner(ledger, {a: "OK", b: "SKIP"}),
+    )
+
+    data = json.loads((tmp_path / ".mnemos-hook-status.json").read_text(encoding="utf-8"))
+    assert data["last_outcome"] == "ok"
+
+
+def test_run_last_outcome_noop_when_picked_empty(tmp_path):
+    """picked=[] → outcome=noop (regression guard for v0.3.7c semantics)."""
+    from mnemos.auto_refine import run
+
+    projects = tmp_path / "projects"
+    ledger = tmp_path / "ledger.tsv"
+    ledger.touch()
+
+    run(
+        vault=tmp_path,
+        projects_dir=projects,
+        ledger_path=ledger,
+        picked=[],
+        reminder_active=False,
+        started_at="2026-04-16T10:00:00+00:00",
+        runner=lambda c: 0,
+    )
+
+    data = json.loads((tmp_path / ".mnemos-hook-status.json").read_text(encoding="utf-8"))
+    assert data["last_outcome"] == "noop"

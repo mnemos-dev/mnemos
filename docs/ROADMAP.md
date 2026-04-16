@@ -398,6 +398,67 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
   - GitHub release: <https://github.com/mnemos-dev/mnemos/releases/tag/v0.3.0>
   - Tag: `v0.3.0` (annotated). Wheel + sdist attached as release assets.
 
+- [~] **3.11 Auto-refine noise filter + truthful status reporting**
+
+  **Sorun (kullanıcı raporu, 2026-04-16 post-3.10 canlı kullanım):**
+  Hook tetikleniyor, statusline "refining 1/3 · 0m1s · backlog 151" sonra
+  "last refine 4m ago · 3 notes · OK · backlog 152" gösteriyor — ama backlog
+  150 → 151 → 152 büyüyor, hiç küçülmüyor. Soruşturmada iki ortogonal kök
+  neden bulundu:
+
+  1. **Picker en yeni 3'ü mtime'a göre alıyor.** Yazarın akışında en yeni
+     JSONL'lar genelde `/clear → mnemos` resume session'ları (16-30 satırlık
+     1-2 user turn). Refine-skill bunları doğru SKIP'liyor ama her yeni
+     session +1 JSONL ekliyor → backlog asla küçülmüyor, picker hep noise
+     dolaşıyor. Pilot sayıları doğruluyor: ledger 6 OK / 44 SKIP.
+  2. **Statusline yalan söylüyor.** `last_outcome="ok"` `picked` boş değilse
+     atanıyor — "3 notes · OK" aslında "3 JSONL ziyaret edildi (hepsi SKIP,
+     0 markdown yazıldı)" demek. Kullanıcı "iş yapılmadı" hissi alıyor.
+
+  **Çözüm:**
+  - `mnemos/auto_refine.py`:
+    - Yeni `MIN_USER_TURNS = 3` constant + `_count_user_turns(path)` helper
+      (Claude Code JSONL'i parse eder, `tool_result` mesajlarını gerçek user
+      turn olarak saymaz — sayım üst sınırı 500 satır, ucuz)
+    - `pick_recent_jsonls` ve `compute_backlog`'a `min_user_turns: int =
+      MIN_USER_TURNS` kwarg → kısa transcript'ler hem pick'e hem backlog'a
+      görünmez (default 3, opt-out için `0`)
+    - `_latest_outcome_for_path(ledger, path)` helper — ledger'ın son
+      kaydını okur (append-only, latest wins)
+    - `_run_locked` her refine sonrası bu helper'la OK / SKIP delta sayar;
+      `last_ok` + `last_skip` status'a yazılır
+    - Final `last_outcome`: `picked=[]` → "noop"; `ok>0` → "ok";
+      `picked>0 ama ok=0` → **"skip"** (yeni state, yalanı kapatır)
+    - `write_status` `last_ok`, `last_skip` opsiyonel kwarg alır; unset
+      ise JSON'da yer almaz (geriye dönük uyum)
+  - `mnemos/_resources/statusline_snippet.{sh,cmd}`:
+    - Idle render `last_ok`/`last_skip` varsa kullanır:
+      - `ok>0 & skip>0` → "X notes · Y skipped"
+      - `ok>0 & skip=0` → "X notes"
+      - `ok=0 & skip>0` → "0 notes (Y skipped)"
+    - Eski status JSON formatında bu alanlar yoksa eski `total + outcome`
+      render'ına düşer
+
+  **Test (TDD):**
+  - `tests/test_auto_refine.py`: `_count_user_turns` (minimal, tool_result
+    exclude, missing file, malformed lines), picker turn-filter (newest
+    short skipped, threshold boundary, 0=disable), backlog turn-filter,
+    write_status outcome counts (set + omit), `_run_locked` ledger delta
+    (mixed OK+SKIP, all SKIP → outcome=skip, all OK → outcome=ok, empty
+    → outcome=noop). 12 yeni test + mevcut `_write_jsonl` helper'a
+    `user_turns=3` default eklendi (mevcut testler bozulmadan)
+  - `tests/test_auto_refine_hook_script.py`: `_run_hook` helper'ı 3-turn
+    JSONL üretir (filtre subprocess'te de aktif olduğu için)
+
+  **Etki:**
+  - Backlog gerçek "işlenebilir" sayıyı yansıtır (test edilen vault'ta
+    ~150 → muhtemelen ~30, çoğu noise filter'da düşer)
+  - Her session açışta 30-60s × 3 boş `claude --print` çağrısı (subscription
+    quota kullanıyor) durur
+  - Statusline gerçekten yapılanı gösterir: "0 notes (3 skipped)" →
+    kullanıcı sistem çalıştığını görüp picker'ın yanlış pick yaptığını
+    anlar
+
 ### Başarı kriterleri
 
 - [x] External user, README'deki 5 adımı izleyerek clean vault'ta çalışır mnemos kurabiliyor *(3.9 pilot doğruladı)*
