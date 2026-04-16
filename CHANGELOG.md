@@ -2,7 +2,7 @@
 
 All notable changes to Mnemos are documented here.
 
-## [Unreleased] — v0.3.0 First-Run Experience (in progress)
+## [0.3.0] — 2026-04-16 — First-Run Experience
 
 **Goal:** Make the path from `pip install` to "my AI remembers my history" a single command.
 
@@ -13,22 +13,29 @@ All notable changes to Mnemos are documented here.
 - **`mnemos init` 5-phase onboarding wizard** — replaces the legacy "mine vault now?" prompt. Phase 1: intro. Phase 2: discover Claude Code JSONL transcripts + vault `Sessions/`/`memory/`/`Topics/` with file counts and time estimates. Phase 3: `[A]ll` / `[S]elective` / `[L]ater` choice. Phase 4: per-source process loop (curated → mine immediately, raw → register pending with refine-skill hint, skip / later branches). Phase 5: hook activation placeholder. Re-run safe via `.mnemos-pending.json`. *(commit `fc17751`)*
 - **`mnemos import <kind>` command family** — `claude-code` (registers JSONL transcripts as pending, prints refine-skill instructions), `chatgpt` / `slack` (single-file JSON exports → mine), `markdown` / `memory` (curated `.md` directories → mine). Every import updates `.mnemos-pending.json`. Shared `_mine_and_record` helper consolidates the in-progress → handle_mine → done flow. *(commit `d9e97a9`)*
 - **CLI i18n (`mnemos.i18n`)** — locale-aware string lookup with TR + EN translations for intro, discovery prompts, choice options, per-source prompts, outcomes, and hook placeholder. `t(key, lang, **fmt)` + `resolve_lang(cfg)` API. Locale picked from `mnemos.yaml`'s `languages` setting (first supported wins; EN fallback). Windows cp1252 console safe via auto stdout UTF-8 reconfigure in `main()`. *(commit `0ddaae9`)*
+- **`mnemos install-hook` SessionStart auto-refine hook** — registers a `~/.claude/settings.json` SessionStart entry that refines the last 3 unprocessed Claude Code transcripts in a detached background worker, then mines `<vault>/Sessions/`. Vault-root `.mnemos-hook-status.json` drives a live statusline; weekly backlog reminder via `additionalContext`. Subagent JSONLs filtered. `filelock` advisory locking prevents overlapping sessions from duplicating work. Strips `ANTHROPIC_API_KEY` from the `claude --print` subprocess so it falls back to the user's subscription quota (zero API cost). *(commit `725d569`, hardened in `512e3dd`/`138a4cf`/`4ad8505`/`47f58af`/`96aa07f`)*
+- **`mnemos install-statusline` CLI** — idempotently wires the auto-refine progress snippet into `~/.claude/settings.json`. Two modes: append a fenced `# --- mnemos-auto-refine-statusline ---` block to a user-owned bash/.cmd statusline script (settings untouched) or fresh-install `~/.claude/mnemos-statusline.{sh,cmd}` and point `statusLine.command` at it. `--uninstall` removes the block (and the owned script + `statusLine` key in fresh mode). `.bak-YYYY-MM-DD` backups. `mnemos init` prompts for it after the hook step (i18n TR+EN). *(commit `15a21fa`)*
 - **README repositioned** around the Claude Code history use case — hero claim "Turn your Claude Code history into a searchable memory palace", refinement skill section, "Why Not Just Raw Transcripts?" comparison table. *(commit `0fd64fc`)*
 - **`STATUS.md` external status doc** — single-glance "why does Mnemos exist, what works today, where the roadmap ends up". Linked from README header. *(commit `af6f60f`)*
 - **`CONTRIBUTING.md`** — dev setup, ROADMAP discipline, commit style, coding conventions, marker language addition guide, refinement skill workflow, four architectural lines that should not be crossed. *(commit `4eef132`)*
 - **Project-level `CLAUDE.md`** — one-word `mnemos` resume protocol for Claude Code. *(commit `655ce11`)*
+- **Migration guide for legacy session-memory + `mnemos-session-mine.py` hooks** — README §"Migrating from older session-memory setups" lists the exact files early adopters can remove now that the auto-refine hook captures everything automatically. CONTRIBUTING gains a sibling note so the legacy patterns don't sneak back into the repo. *(commit `77f1b78`)*
+- **New-user simulation pilot report** — `docs/pilots/2026-04-16-new-user-pilot.md` documents an end-to-end clean-vault run of the README onboarding (init → mining → search → install-hook → install-statusline), with what worked, what was caught, and what couldn't be tested from inside Claude Code. *(commit `d65384f`)*
+
+### Fixed
+
+- **Auto-refine no longer flickers between sessions** — `auto_refine.run()` returns silently on lock timeout instead of writing a destructive `phase=busy` over the lock-holder's `refining 2/3` row. The SessionStart wrapper short-circuits subagent dispatches (`transcript_path` under `/subagents/`) so agent-heavy workflows don't spawn fresh bg workers. When there's nothing to refine, the bg skips `mnemos mine` and the wrapper writes no status. Wrapper writes `phase=refining, current=0` directly (no `starting` snapshot). The idle render uses new `last_outcome` + `last_finished_at` fields to show `mnemos: last refine Xm ago · N notes · OK · backlog Y` for 10 minutes (was 30s). *(commit `ef69170`)*
+- **Auto-refine no longer re-fires mid-conversation** — wrapper whitelists SessionStart `source` values (`{"", "startup", "resume", "clear"}`) so auto-compaction (`source=compact`) and any future ephemeral event types short-circuit. `pick_recent_jsonls(exclude=...)` accepts the current session's own `transcript_path` from the hook input, so the in-progress conversation is never marked OK in the ledger before it actually ends — fixes the silent loss of post-refine turns. *(commit `d6cbeed`)*
+- **`mnemos search` CLI showed `wing=?  hall=?` for every hit** — formatter read top-level `r.get("wing")`, but search results carry wing/hall under `metadata`. Caught by the new-user pilot, fixed by reading `r.get("metadata") or {}` first with `?` fallback for ancient indexes. *(commit `d65384f`)*
+- **`install-hook` and `install-statusline` were broken under `pip install mnemos-dev`** — both wrote paths to `<repo>/scripts/*` resources that only existed in dev installs. Three changes: (1) `auto_refine_hook.py` moved into the package and invoked as `python -m mnemos.auto_refine_hook` (no filesystem path in `settings.json`); (2) statusline snippets moved to `mnemos/_resources/` so they ship in the wheel; (3) `_parse_existing_target` recognises Git Bash POSIX paths (`/c/Users/...`) and `_build_block` picks bash-vs-cmd syntax from the target script's suffix, not the host OS — fixes a Windows + Git Bash regression where the appended block used `rem`/`set`/`call` inside a `.sh` script.
 
 ### Tests
 
-- **+47 new tests** (10 pending, 25 onboarding incl. import-claude-code + path-validation, 14 i18n) on top of v0.2.0's 226. Full suite: ~273 tests.
+- **+99 new tests** on top of v0.2.0's 226 (10 pending + 25 onboarding + 14 i18n + 9 install-hook + 13 install-statusline + 27 auto-refine behavior + 4 hook-script integration + 2 cli-search formatter). Full suite: 326 passed, 2 skipped.
 
 ### Workflow
 
 - **ROADMAP `[ ] → [~] → [x]` discipline** — every task carries a commit hash and date when delivered. Delivered v0.1 + Phase 0 design/plan artifacts archived under `docs/archive/`. *(commits `1394be5`, `1dfeb66`)*
-
-### Remaining v0.3
-
-Auto-refine SessionStart hook (3.7), session-memory skill deprecation (3.8), new-user simulation pilot (3.9), PyPI release (3.10).
 
 ---
 

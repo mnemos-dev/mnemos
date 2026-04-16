@@ -12,7 +12,7 @@
     <img src="https://img.shields.io/badge/inspired%20by-MemPalace-purple.svg" alt="Inspired by MemPalace">
   </a>
   <a href="https://github.com/mnemos-dev/mnemos/releases">
-    <img src="https://img.shields.io/badge/version-0.2.0-orange.svg" alt="v0.2.0">
+    <img src="https://img.shields.io/badge/version-0.3.0-orange.svg" alt="v0.3.0">
   </a>
 </p>
 
@@ -275,18 +275,17 @@ mnemos benchmark longmemeval --mode raw-only
 
 - **v0.1** — Core palace architecture, 8 MCP tools, basic regex mining
 - **v0.2** — Dual collection, 5 conversation formats, 172 markers, LongMemEval benchmark harness
-- **v0.3** — **First-run experience** (in progress):
-  refine-transcripts skill ✅,
-  `.mnemos-pending.json` resume mechanism ✅,
-  `mnemos init` 5-phase discover/classify/import wizard ✅,
-  `mnemos import {claude-code,chatgpt,slack,markdown,memory}` subcommand family ✅,
-  CLI i18n (TR + EN) ✅,
-  CONTRIBUTING.md ✅,
-  SessionStart auto-refine hook (`mnemos install-hook`) ✅,
-  `mnemos install-statusline` ✅,
-  no-flicker / no-mid-conversation-refire fixes ✅,
-  legacy session-memory deprecation guide ✅.
-  Remaining: new-user pilot, PyPI release.
+- **v0.3** — **First-run experience** ✅ released:
+  refine-transcripts skill,
+  `.mnemos-pending.json` resume mechanism,
+  `mnemos init` 5-phase discover/classify/import wizard,
+  `mnemos import {claude-code,chatgpt,slack,markdown,memory}` subcommand family,
+  CLI i18n (TR + EN), CONTRIBUTING.md,
+  SessionStart auto-refine hook (`mnemos install-hook`),
+  `mnemos install-statusline`,
+  no-flicker / no-mid-conversation-refire fixes,
+  legacy session-memory deprecation guide,
+  new-user simulation pilot.
 - **v0.4** — AI engine: Claude API mining quality pass, reranking, contradiction detection
 - **v0.5** — Automation: session hooks, memory lifecycle, knowledge graph deepening
 - **v0.6** — Ecosystem: specialist agents, multi-source connectors, Obsidian plugin

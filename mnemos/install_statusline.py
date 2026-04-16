@@ -51,16 +51,49 @@ def _utc_date_str() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
-def _repo_snippet_path() -> Path:
-    """Location of the shipped snippet source (source of truth for the block body)."""
-    repo_root = Path(__file__).resolve().parent.parent
-    name = "statusline_snippet.cmd" if os.name == "nt" else "statusline_snippet.sh"
-    return repo_root / "scripts" / name
+def _repo_snippet_path(suffix: str | None = None) -> Path:
+    """Location of the shipped snippet source for a given target shell.
+
+    `suffix` may be `.sh` or `.cmd`; if omitted, defaults to the OS-native
+    shell convention (`.cmd` on Windows, `.sh` elsewhere). Callers should
+    pass the *target script's* suffix when appending to a user-owned
+    statusline so a bash target on Windows (Git Bash) gets the bash snippet.
+
+    Lives inside the `mnemos` package so it ships in the wheel for
+    `pip install mnemos-dev` users. Pre-3.10a this resolved to
+    `<repo>/scripts/...` which only existed in dev installs.
+    """
+    pkg_dir = Path(__file__).resolve().parent
+    if suffix is None:
+        suffix = ".cmd" if os.name == "nt" else ".sh"
+    name = f"statusline_snippet{suffix}"
+    return pkg_dir / "_resources" / name
 
 
 def _owned_script_path() -> Path:
     name = "mnemos-statusline.cmd" if os.name == "nt" else "mnemos-statusline.sh"
     return Path.home() / ".claude" / name
+
+
+_MSYS_PATH_RE = re.compile(r'^/([a-zA-Z])/(.*)$')
+
+
+def _normalize_msys_path(p: str) -> str:
+    """Convert Git Bash POSIX-style `/c/Users/...` to native `C:/Users/...` on Windows.
+
+    On Windows, `~/.claude/settings.json` often stores statusLine commands as
+    `bash /c/Users/.../foo.sh` (Git Bash convention). Python's `Path` on
+    Windows treats `/c/...` as `\\c\\...` and `.exists()` returns False, so
+    `_parse_existing_target` would miss the user's existing script and fall
+    through to fresh mode (silently replacing their custom statusline). This
+    helper rewrites the prefix so `Path` resolves correctly on either OS.
+    """
+    if os.name != "nt":
+        return p
+    m = _MSYS_PATH_RE.match(p)
+    if not m:
+        return p
+    return f"{m.group(1).upper()}:/{m.group(2)}"
 
 
 def _parse_existing_target(command: str) -> Optional[Path]:
@@ -70,7 +103,8 @@ def _parse_existing_target(command: str) -> Optional[Path]:
       - `bash <path>.sh` / `sh <path>.sh`
       - `<path>.sh` (direct)
       - `<path>.cmd` (direct, Windows)
-    Quoted paths are unwrapped.
+    Quoted paths are unwrapped. Git Bash POSIX paths (`/c/...`) are normalised
+    to native Windows form before existence-checking.
     """
     if not command:
         return None
@@ -82,24 +116,36 @@ def _parse_existing_target(command: str) -> Optional[Path]:
     # Unwrap optional quotes.
     if (cmd.startswith('"') and cmd.endswith('"')) or (cmd.startswith("'") and cmd.endswith("'")):
         cmd = cmd[1:-1]
+    cmd = _normalize_msys_path(cmd)
     path = Path(cmd)
     if path.suffix.lower() in (".sh", ".cmd") and path.exists():
         return path
     return None
 
 
-def _build_block(vault: Path) -> str:
-    """Return the text block to insert into the statusline script."""
-    snippet = _repo_snippet_path().resolve()
+def _build_block(vault: Path, target: Path) -> str:
+    """Return the text block to insert into the statusline script.
+
+    Block syntax follows the *target* script's extension, NOT the host OS:
+    a `.sh` target (Git Bash on Windows, or any POSIX shell) gets bash-style
+    `# --- ... --- / source ...`; a `.cmd` target gets cmd-style
+    `rem --- ... --- / call ...`. Pre-3.10a the block syntax was picked from
+    `os.name`, so a Git-Bash-on-Windows user got a cmd-style block appended
+    to their bash script — the `rem`/`set`/`call` lines are syntax errors in
+    bash and the snippet never ran.
+    """
+    suffix = target.suffix.lower()
+    snippet = _repo_snippet_path(suffix=suffix).resolve()
     snippet_fs = str(snippet).replace("\\", "/")
     vault_fs = str(Path(vault).resolve()).replace("\\", "/")
-    if os.name == "nt":
+    if suffix == ".cmd":
         return (
             f'rem --- {STATUSLINE_MARKER} (managed by mnemos install-statusline) ---\n'
             f'set "MNEMOS_VAULT={vault_fs}"\n'
             f'call "{snippet_fs}"\n'
             f'rem --- end {STATUSLINE_MARKER} ---\n'
         )
+    # .sh (and any unknown suffix → assume bash-compatible).
     return (
         f'# --- {STATUSLINE_MARKER} (managed by mnemos install-statusline) ---\n'
         f'export MNEMOS_VAULT="{vault_fs}"\n'
@@ -216,8 +262,9 @@ def install_statusline(vault: Path, uninstall: bool = False) -> StatuslineInstal
     if target.exists() and target.stat().st_size > 0:
         script_backup = _backup(target)
 
-    # Write/append the block.
-    block = _build_block(vault)
+    # Write/append the block. Block syntax follows the target's suffix so a
+    # bash target on Windows (Git Bash) gets bash syntax, not cmd syntax.
+    block = _build_block(vault, target)
     if target.exists():
         body = target.read_text(encoding="utf-8")
         if body and not body.endswith("\n"):

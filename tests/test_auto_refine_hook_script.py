@@ -1,4 +1,9 @@
-"""Small tests for scripts/auto_refine_hook.py CLI arg handling + SessionStart filtering."""
+"""Tests for `mnemos.auto_refine_hook` module CLI arg handling + SessionStart filtering.
+
+After v0.3.0a the hook is a proper package module invoked as
+`python -m mnemos.auto_refine_hook --vault <path>` (no filesystem path
+to a script directory — that path didn't exist for pip-installed users).
+"""
 from __future__ import annotations
 
 import json
@@ -8,16 +13,11 @@ import sys
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-
-
 def _run_hook(tmp_path: Path, stdin: str, projects_jsonls: int = 0) -> subprocess.CompletedProcess:
     """Invoke the wrapper with an isolated HOME pointing inside tmp_path.
 
     `projects_jsonls` seeds N transcripts under <home>/.claude/projects/proj/.
     """
-    script = REPO_ROOT / "scripts" / "auto_refine_hook.py"
-
     home = tmp_path / "home"
     projects = home / ".claude" / "projects" / "proj"
     projects.mkdir(parents=True, exist_ok=True)
@@ -29,7 +29,7 @@ def _run_hook(tmp_path: Path, stdin: str, projects_jsonls: int = 0) -> subproces
     env["HOME"] = str(home)         # POSIX
 
     return subprocess.run(
-        [sys.executable, str(script), "--vault", str(tmp_path)],
+        [sys.executable, "-m", "mnemos.auto_refine_hook", "--vault", str(tmp_path)],
         input=stdin,
         capture_output=True,
         text=True,
@@ -171,7 +171,6 @@ def test_hook_script_excludes_self_transcript_from_picks(tmp_path):
         paths.append(p)
     self_transcript = paths[2]  # newest = current session
 
-    script = REPO_ROOT / "scripts" / "auto_refine_hook.py"
     env = {k: v for k, v in os.environ.items() if k != "MNEMOS_VAULT"}
     env["USERPROFILE"] = str(home)
     env["HOME"] = str(home)
@@ -182,7 +181,7 @@ def test_hook_script_excludes_self_transcript_from_picks(tmp_path):
         "source": "startup",
     })
     result = subprocess.run(
-        [sys.executable, str(script), "--vault", str(tmp_path)],
+        [sys.executable, "-m", "mnemos.auto_refine_hook", "--vault", str(tmp_path)],
         input=payload, capture_output=True, text=True, timeout=15, env=env,
     )
     assert result.returncode == 0, f"stderr: {result.stderr}"

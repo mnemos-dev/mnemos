@@ -29,11 +29,6 @@ class HookInstallResult:
     backup_path: Optional[Path] = None
 
 
-def _hook_script_path() -> str:
-    repo_root = Path(__file__).resolve().parent.parent
-    return str(repo_root / "scripts" / "auto_refine_hook.py")
-
-
 def _utc_date_str() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
@@ -87,25 +82,22 @@ def install_hook(vault: Path, uninstall: bool = False) -> HookInstallResult:
     if existing_idx is not None:
         return HookInstallResult(status="already-installed", settings_path=settings_path)
 
-    hook_script = _hook_script_path()
+    # Module invocation (`python -m mnemos.auto_refine_hook`) — no filesystem
+    # path to ship; works for `pip install mnemos-dev` and `pip install -e .`
+    # alike. Pre-3.10a we wrote the path to `<repo>/scripts/auto_refine_hook.py`
+    # which only existed in dev installs.
     if os.name == "nt":
-        if " " in str(vault) or " " in hook_script:
+        if " " in str(vault):
             raise ValueError(
-                f"vault and hook_script paths must not contain spaces "
-                f"(current CLI-arg based invocation still needs a quote-free path). "
-                f"Got vault={vault!r}, hook_script={hook_script!r}."
+                f"vault path must not contain spaces (current CLI-arg based "
+                f"invocation still needs a quote-free path). Got vault={vault!r}."
             )
-        # Claude Code's Windows hook dispatcher mangles backslash sequences
-        # that look like C escapes (\P, \m, \s, \a → eaten), so the literal
-        # backslashes in `C:\Projeler\mnemos\scripts\auto_refine_hook.py`
-        # arrive at the shell as `C:ProjelermnemosScriptsauto_refine_hook.py`
-        # and python can't find the file. Forward slashes survive intact and
-        # Python on Windows accepts them.
-        hook_script_fs = hook_script.replace("\\", "/")
+        # Forward slashes survive Claude Code's Windows hook dispatcher (which
+        # eats backslash escape sequences like \P, \m, \s, \a).
         vault_fs = str(vault).replace("\\", "/")
-        full_cmd = f'python {hook_script_fs} --vault {vault_fs}'
+        full_cmd = f'python -m mnemos.auto_refine_hook --vault {vault_fs}'
     else:
-        full_cmd = f'python "{hook_script}" --vault "{vault}"'
+        full_cmd = f'python -m mnemos.auto_refine_hook --vault "{vault}"'
 
     sessionstart.append({
         "matcher": "",

@@ -103,7 +103,10 @@ def test_install_hook_writes_managed_by_marker(tmp_path, monkeypatch):
     assert HOOK_MARKER not in entry["hooks"][0]["command"]
 
 
-def test_install_hook_uses_cli_arg_no_cmd_wrapper(tmp_path, monkeypatch):
+def test_install_hook_uses_module_invocation(tmp_path, monkeypatch):
+    """v0.3.0a fix: settings.json must use `python -m mnemos.auto_refine_hook`,
+    NOT a filesystem path to `scripts/auto_refine_hook.py`. The latter only
+    exists in dev installs; pip-installed users would get a missing file."""
     from mnemos.cli import install_hook
 
     home = tmp_path / "home"
@@ -113,13 +116,15 @@ def test_install_hook_uses_cli_arg_no_cmd_wrapper(tmp_path, monkeypatch):
     install_hook(vault=tmp_path, uninstall=False)
     settings = json.loads((home / ".claude" / "settings.json").read_text(encoding="utf-8"))
     cmd = settings["hooks"]["SessionStart"][0]["hooks"][0]["command"]
-    # No cmd /c wrapper
-    assert "cmd /c" not in cmd
+
+    # Module invocation, not file-path invocation
+    assert "-m mnemos.auto_refine_hook" in cmd
+    # No filesystem path to the old scripts/ location
+    assert "scripts/auto_refine_hook.py" not in cmd.replace("\\", "/")
     # Vault passed as CLI arg
     assert "--vault" in cmd
-    # Script invoked directly
-    assert "python " in cmd
-    assert "auto_refine_hook.py" in cmd
+    # No cmd /c wrapper
+    assert "cmd /c" not in cmd
 
 
 def test_install_hook_detects_legacy_command_marker(tmp_path, monkeypatch):

@@ -186,3 +186,85 @@ def test_uninstall_when_nothing_installed(tmp_path, monkeypatch):
     _home(tmp_path, monkeypatch)
     result = install_statusline(vault=tmp_path, uninstall=True)
     assert result.status == "not-found"
+
+
+# ---------------------------------------------------------------------------
+# v0.3.0a fix — packaged snippet path (must work for pip-install users too)
+# ---------------------------------------------------------------------------
+
+
+def test_snippet_path_resolves_inside_mnemos_package():
+    """The snippet source-of-truth must live inside the `mnemos` package so
+    it ships in the wheel. Pre-3.10a this lived at `<repo>/scripts/`, which
+    was excluded from the wheel — pip-installed users got a broken block."""
+    from pathlib import Path
+    from mnemos.install_statusline import _repo_snippet_path
+
+    p = _repo_snippet_path()
+    assert p.exists(), f"packaged snippet must exist at install time, got {p}"
+    # Must be reachable from the mnemos package directory.
+    import mnemos
+    pkg_dir = Path(mnemos.__file__).resolve().parent
+    assert pkg_dir in p.resolve().parents, \
+        f"snippet must live inside the mnemos package; got {p} (pkg={pkg_dir})"
+
+
+def test_install_fresh_block_references_packaged_snippet(tmp_path, monkeypatch):
+    """The block written into the user's statusline script must reference the
+    packaged snippet path, not the old `<repo>/scripts/` path."""
+    from mnemos.install_statusline import install_statusline
+
+    _home(tmp_path, monkeypatch)
+    result = install_statusline(vault=tmp_path, uninstall=False)
+    body = Path(result.script_path).read_text(encoding="utf-8")
+    # Must NOT reference the legacy scripts/ path; must reference _resources/.
+    assert "/scripts/statusline_snippet" not in body.replace("\\", "/"), \
+        f"block still references legacy <repo>/scripts/; got:\n{body}"
+    assert "_resources/statusline_snippet" in body.replace("\\", "/"), \
+        f"block must reference mnemos/_resources/; got:\n{body}"
+
+
+def test_install_appends_to_existing_msys_path_on_windows(tmp_path, monkeypatch):
+    """Settings.json on Windows often stores the statusline command as
+    `bash /c/Users/.../foo.sh` (Git Bash POSIX style). The installer must
+    recognize that path so it appends to the user's existing script
+    instead of falling through to fresh mode (which would replace the
+    user's custom statusline with a minimal mnemos-only one)."""
+    if not _is_windows():
+        import pytest
+        pytest.skip("MSYS path semantics are Windows-only")
+    from mnemos.install_statusline import install_statusline, STATUSLINE_MARKER
+
+    home = _home(tmp_path, monkeypatch)
+    user_script = home / ".claude" / "statusline.sh"
+    user_script.write_text("#!/usr/bin/env bash\necho hello\n", encoding="utf-8")
+
+    # Simulate Git Bash POSIX path. tmp_path is e.g. C:\Users\...\T\pytest-of-...\test_x0
+    # MSYS form: /c/Users/.../T/pytest-of-.../test_x0/home/.claude/statusline.sh
+    win_path = str(user_script)
+    drive = win_path[0].lower()
+    rest = win_path[2:].replace("\\", "/")
+    msys_path = f"/{drive}{rest}"
+
+    (home / ".claude" / "settings.json").write_text(
+        json.dumps({"statusLine": {"type": "command", "command": f"bash {msys_path}"}}),
+        encoding="utf-8",
+    )
+
+    result = install_statusline(vault=tmp_path, uninstall=False)
+    assert result.status == "installed"
+    assert not result.owned, \
+        "should be append-mode, not fresh-mode (user already has a statusline script)"
+    body = user_script.read_text(encoding="utf-8")
+    assert "echo hello" in body  # user content preserved
+    assert STATUSLINE_MARKER in body
+    # Target is a .sh script — block must use bash syntax, NOT cmd syntax.
+    # (Pre-fix this picked syntax from os.name and produced `rem`/`set`/`call`
+    # for a bash target on Windows.)
+    assert "source " in body, f"bash-target block must use `source`; got:\n{body}"
+    assert "export MNEMOS_VAULT" in body
+    assert "rem ---" not in body
+    assert "call \"" not in body
+    # And it must point at the .sh snippet, not the .cmd one.
+    assert "statusline_snippet.sh" in body
+    assert "statusline_snippet.cmd" not in body
