@@ -105,6 +105,26 @@ gap.
 - 🔲 New-user simulation pilot
 - 🔲 PyPI release
 
+### Next session starts here
+
+v0.3 kalan sırası (ROADMAP §v0.3.0):
+
+1. **3.8 session-memory skill deprecation** (~15 dk) — *bekleme:* 3.7 hook'u
+   en az 3 gerçek session boyunca sorunsuz çalıştığını gözlemle. Sonra
+   README/CONTRIBUTING'e migration notu ekle (`~/.claude/skills/session-memory/`
+   klasörünü kaldırma rehberi). Silme işlemi kullanıcıya bırakılır.
+2. **3.9 New-user simülasyonu pilot** (~1h) — temiz throwaway klasörde
+   sıfırdan kurulum (pip install → junction skill → `mnemos init` → hook
+   install → 5 JSONL pilot). README'deki 5 adımın çalıştığını kanıtla.
+   Dokümantasyon boşluklarını raporla.
+3. **3.10 PyPI release v0.3.0** — version bump, `python -m build`, twine,
+   GitHub release + tag.
+
+Aktif bug gözlemleri (3.7 canlı test'inden): bir JSONL refine'ı tek seferlik
+`exit=1` döndü (izole, flow etkilenmedi). Bir ledger satırında `\t` escape
+render bozukluğu var (kozmetik — `_read_ledger_paths` tolere ediyor).
+İkisi de v0.3.0 blocker değil, 3.9 pilotu benzerini üretirse incele.
+
 ### Practical stats (author's vault)
 
 - 277 drawers across 9 wings, 2-language (TR+EN) regex mining

@@ -165,44 +165,22 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
   (Obsidian master, no LLM in mnemos itself, dual-collection separation,
   junction/symlink drift forbidden).
 
-- [x] **3.7 SessionStart auto-refine hook** *(commit `725d569`, 2026-04-16)*
-  Claude Code session açılırken önceki session'ın JSONL'ini otomatik
-  refine et → Sessions/'a yaz → mnemos mine tetikle. Kullanıcı manuel
-  `/mnemos-refine-transcripts` demek zorunda kalmaz.
+- [x] **3.7 SessionStart auto-refine hook** *(commit `725d569` + docs `a3a1ef0`, 2026-04-16)*
+  SessionStart hook + `scripts/auto_refine_hook.py` senkron wrapper → son 3
+  unprocessed JSONL için `claude --print --dangerously-skip-permissions
+  "/mnemos-refine-transcripts <path>"` subprocess zinciri (detached,
+  `filelock`'lu) → `python -m mnemos.cli --vault <v> mine <v>/Sessions`.
+  Statusline `.mnemos-hook-status.json`'dan canlı okur; haftalık backlog
+  reminder `additionalContext`'le AI'a iletilir. Subagent JSONL'leri
+  (`/subagents/`) picker'da filtrelenir. `mnemos install-hook` idempotent,
+  settings.json'u yedekler. `mnemos init` son fazı hook'u kullanıcı onayıyla
+  kurar. Pilot başarılı (commit öncesi fix'ler dahil: mine komutu yanlış
+  `python -m mnemos`'tu → `.cli` eklendi; subagent filter eklendi; Windows
+  `CREATE_NO_WINDOW` flag'i eklendi).
 
-  **Akış:**
-  ```
-  Claude Code SessionStart hook çalışır (settings.json'da tanımlı)
-    ↓
-  Hook script: ledger'da olmayan JSONL'leri bul (~/.claude/projects/**/*.jsonl)
-    ↓
-  Her unprocessed JSONL için:
-    claude --print --skill mnemos-refine-transcripts "<jsonl-path>"
-    (kullanıcının kendi Claude Code quota'sı — ek API ücreti yok)
-    ↓
-  Sessions/ notları oluşur, ledger güncellenir
-    ↓
-  mnemos mine Sessions/ --incremental
-    ↓
-  mnemos watcher ChromaDB'yi yeniler
-    ↓
-  Yeni session'da mnemos_wake_up + mnemos_search taze veriyi bulur
-  ```
-
-  **Dosyalar:**
-  - `scripts/auto_refine_hook.py` — hook script (Python, Windows+Unix uyumlu)
-  - `scripts/hook-template.json` — kullanıcının `~/.claude/settings.json`'una
-    ekleyeceği hook config template
-  - `mnemos install-hook` CLI komutu — settings.json'a otomatik ekler
-
-  **Kritik prensip ihlali YOK:** `claude --print` subprocess kullanıcının
-  kendi Claude Code oturumu; Anthropic SDK direkt çağrısı değil. "mnemos
-  LLM API çağırmaz" prensibi korunur.
-
-  **Doğrulama adımları:** `claude --print` skill çağırabiliyor mu (Claude
-  Code feature parity check) → yoksa fallback: hook sadece JSONL listesini
-  `.mnemos-pending.json`'a yazar, kullanıcı bir sonraki session'da skill'i
-  manuel tetikler.
+  **Canonical docs:**
+  - Spec: [`docs/specs/2026-04-15-v0.3-task-3.7-auto-refine-hook-design.md`](specs/2026-04-15-v0.3-task-3.7-auto-refine-hook-design.md)
+  - Plan + pilot outcomes: [`docs/plans/2026-04-15-v0.3-task-3.7-auto-refine-hook-implementation.md`](plans/2026-04-15-v0.3-task-3.7-auto-refine-hook-implementation.md)
 
 - [ ] **3.8 session-memory skill deprecation** *(15 dk, 3.7'den sonra)*
   `~/.claude/skills/session-memory/` artık gereksiz — refine-transcripts
