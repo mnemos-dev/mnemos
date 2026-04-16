@@ -135,6 +135,35 @@ To add (say) German:
 
 ## Working on the refinement skill
 
+### SessionStart auto-refine hook
+
+`mnemos install-hook` (invoked by `mnemos init`, or manually) adds a
+`SessionStart` entry to `~/.claude/settings.json`. The hook points at
+`scripts/auto_refine_hook.py`, a synchronous wrapper that:
+
+1. Reads `.mnemos-pending.json` and `~/.claude/skills/mnemos-refine-transcripts/state/processed.tsv`.
+2. Picks the last 3 unprocessed JSONLs (excluding subagent logs under
+   `/subagents/`) and computes the total backlog.
+3. Writes `<vault>/.mnemos-hook-status.json` for statusline consumption.
+4. Emits SessionStart `additionalContext` JSON if the weekly backlog
+   reminder is due.
+5. Spawns a detached `python -m mnemos.auto_refine_background` worker,
+   then exits 0 in <1 second.
+
+The background worker acquires a `filelock` on `<vault>/.mnemos-hook.lock`
+to prevent concurrent sessions from duplicating work. It runs
+`claude --print --dangerously-skip-permissions "/mnemos-refine-transcripts <path>"`
+for each picked JSONL (no LLM API cost — uses the user's own Claude Code
+quota), then `python -m mnemos.cli --vault <vault> mine <vault>/Sessions`.
+
+See `docs/specs/2026-04-15-v0.3-task-3.7-auto-refine-hook-design.md` for
+the full architecture rationale, UX channels, failure modes, and acceptance
+criteria.
+
+---
+
+
+
 The skill at `skills/mnemos-refine-transcripts/` is junctioned into
 `~/.claude/skills/`. **The repo is canonical** — only edit
 `SKILL.md` here, never the linked copy.

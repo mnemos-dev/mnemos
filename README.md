@@ -68,6 +68,11 @@ mnemos mine Sessions/                   # extract memories into the palace
 
 Or skip the manual flow above and let `mnemos init` walk you through everything. Add sources later with `mnemos import claude-code`, `mnemos import chatgpt <export.json>`, etc.
 
+After init, every new Claude Code session automatically refines + mines the
+most recent transcripts in the background (via a SessionStart hook installed
+by `mnemos init`). Check your statusline for live progress, or tail
+`<vault>/.mnemos-hook.log`.
+
 Future Claude Code sessions automatically pull context via `mnemos_wake_up` + `mnemos_search`.
 
 ## The Refinement Skill
@@ -267,8 +272,9 @@ mnemos benchmark longmemeval --mode raw-only
   `mnemos init` 5-phase discover/classify/import wizard ✅,
   `mnemos import {claude-code,chatgpt,slack,markdown,memory}` subcommand family ✅,
   CLI i18n (TR + EN) ✅,
-  CONTRIBUTING.md ✅.
-  Remaining: auto-refine SessionStart hook, session-memory skill deprecation, new-user pilot, PyPI release.
+  CONTRIBUTING.md ✅,
+  SessionStart auto-refine hook (`mnemos install-hook`) ✅.
+  Remaining: session-memory skill deprecation, new-user pilot, PyPI release.
 - **v0.4** — AI engine: Claude API mining quality pass, reranking, contradiction detection
 - **v0.5** — Automation: session hooks, memory lifecycle, knowledge graph deepening
 - **v0.6** — Ecosystem: specialist agents, multi-source connectors, Obsidian plugin

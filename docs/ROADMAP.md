@@ -4,7 +4,7 @@
 Eski `docs/specs/2026-04-*` ve `docs/plans/2026-04-*` dosyaları historical
 archive; burada çelişki olursa bu dosya geçerlidir.
 
-**Son güncelleme:** 2026-04-15
+**Son güncelleme:** 2026-04-16
 
 ---
 
@@ -165,7 +165,7 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
   (Obsidian master, no LLM in mnemos itself, dual-collection separation,
   junction/symlink drift forbidden).
 
-- [~] **3.7 SessionStart auto-refine hook** *(in progress 2026-04-15)*
+- [x] **3.7 SessionStart auto-refine hook** *(commit `725d569`, 2026-04-16)*
   Claude Code session açılırken önceki session'ın JSONL'ini otomatik
   refine et → Sessions/'a yaz → mnemos mine tetikle. Kullanıcı manuel
   `/mnemos-refine-transcripts` demek zorunda kalmaz.

@@ -1,6 +1,6 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-15 (v0.3 tasks 3.3 + 3.4a + 3.4b + 3.5 + 3.6 delivered)
+**Last updated:** 2026-04-16 (v0.3 tasks 3.3 + 3.4a + 3.4b + 3.5 + 3.6 + 3.7 delivered)
 **Stable PyPI version:** `v0.2.0` · **In-progress:** `v0.3.0` (First-Run Experience)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
@@ -93,9 +93,15 @@ gap.
   messages localized to TR + EN. Locale resolved from `mnemos.yaml`'s
   `languages` setting (first supported wins; English fallback). Windows
   cp1252 console safe via auto stdout UTF-8 reconfigure.
-- 🔲 `mnemos init` wizard expansion (discover → classify → pilot → confirm)
-- 🔲 `mnemos import <source>` subcommand family (claude-code, chatgpt, slack, markdown, memory)
-- 🔲 CONTRIBUTING.md
+- ✅ `mnemos install-hook` registers a SessionStart auto-refine hook that
+  refines the last 3 unprocessed Claude Code JSONL transcripts in the
+  background and mines the vault, without blocking session start. A
+  vault-root `.mnemos-hook-status.json` file drives a live statusline;
+  a weekly (≥7 day) backlog reminder surfaces via `additionalContext`
+  on first-turn AI context. `mnemos init`'s final phase prompts the
+  user to install the hook (Y/n, default Y). Subagent JSONLs under
+  `/subagents/` are filtered from the picker. `filelock` advisory
+  locking prevents overlapping sessions from duplicating work.
 - 🔲 New-user simulation pilot
 - 🔲 PyPI release
 
