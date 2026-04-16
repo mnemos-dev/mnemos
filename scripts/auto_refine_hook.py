@@ -73,6 +73,21 @@ def _is_subagent_event(hook_input: dict) -> bool:
     return "/subagents/" in norm
 
 
+# SessionStart `source` whitelist — only these are treated as "fresh-session"
+# events worth running auto-refine for. `compact` (auto-compaction) fires
+# mid-conversation while the transcript is still being written and would cause
+# the picker to refine an in-progress JSONL, silently losing later content.
+# Empty string is allowed for backward compat with older Claude Code releases
+# that didn't pipe a `source` field. Unknown future sources default-skip so a
+# new event type doesn't trigger unintended refines until we vet it.
+_FRESH_SESSION_SOURCES = {"", "startup", "resume", "clear"}
+
+
+def _is_fresh_session_source(hook_input: dict) -> bool:
+    source = hook_input.get("source") or ""
+    return source in _FRESH_SESSION_SOURCES
+
+
 def main() -> int:
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -89,6 +104,12 @@ def main() -> int:
         # entirely so the primary session's bg worker stays uncontested.
         return 0
 
+    if not _is_fresh_session_source(hook_input):
+        # Mid-conversation events (`compact`) and unknown future event types
+        # don't represent the user starting fresh; refining now would lock the
+        # in-progress transcript into the ledger before it's actually finished.
+        return 0
+
     try:
         from mnemos.auto_refine import (
             compute_backlog,
@@ -103,7 +124,11 @@ def main() -> int:
 
     projects_dir = Path.home() / ".claude" / "projects"
     ledger = resolve_ledger_path()
-    picked = pick_recent_jsonls(projects_dir, ledger, n=3)
+    # Exclude the current session's own transcript so we never refine an
+    # in-progress conversation — its later turns would be silently dropped.
+    self_transcript = hook_input.get("transcript_path") or ""
+    exclude = {self_transcript} if self_transcript else None
+    picked = pick_recent_jsonls(projects_dir, ledger, n=3, exclude=exclude)
     backlog = compute_backlog(projects_dir, ledger)
 
     today = datetime.now(timezone.utc)

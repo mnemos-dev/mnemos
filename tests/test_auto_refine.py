@@ -488,3 +488,51 @@ def test_write_status_accepts_optional_outcome_fields(tmp_path):
     data = json.loads((tmp_path / ".mnemos-hook-status.json").read_text(encoding="utf-8"))
     assert data["last_outcome"] == "ok"
     assert data["last_finished_at"] == "2026-04-16T10:05:00+00:00"
+
+
+# ---------------------------------------------------------------------------
+# v0.3 task 3.7d — exclude param on picker (skip in-progress self-transcript)
+# ---------------------------------------------------------------------------
+
+
+def test_pick_recent_jsonls_exclude_path(tmp_path):
+    """Picker must skip paths in the `exclude` set even if they are the most recent."""
+    from mnemos.auto_refine import pick_recent_jsonls
+
+    projects = tmp_path / "projects"
+    a = _write_jsonl(projects, "a.jsonl", 1_000_000)
+    b = _write_jsonl(projects, "b.jsonl", 2_000_000)
+    self_transcript = _write_jsonl(projects, "self.jsonl", 3_000_000)  # newest, must skip
+
+    ledger = tmp_path / "ledger.tsv"
+    picked = pick_recent_jsonls(projects, ledger, n=3, exclude={str(self_transcript)})
+    assert picked == [b, a]
+    assert self_transcript not in picked
+
+
+def test_pick_recent_jsonls_exclude_normalises_paths(tmp_path):
+    """Exclude set must compare via Path() so backslash/slash differences don't leak."""
+    from mnemos.auto_refine import pick_recent_jsonls
+
+    projects = tmp_path / "projects"
+    self_transcript = _write_jsonl(projects, "self.jsonl", 3_000_000)
+
+    # Build a string with the opposite separator style to what str(Path) produces.
+    raw_path = str(self_transcript)
+    twisted = raw_path.replace("\\", "/") if "\\" in raw_path else raw_path.replace("/", "\\")
+
+    ledger = tmp_path / "ledger.tsv"
+    picked = pick_recent_jsonls(projects, ledger, n=3, exclude={twisted})
+    assert self_transcript not in picked
+
+
+def test_pick_recent_jsonls_exclude_default_none(tmp_path):
+    """exclude=None must behave exactly like the old single-arg call (backward compat)."""
+    from mnemos.auto_refine import pick_recent_jsonls
+
+    projects = tmp_path / "projects"
+    a = _write_jsonl(projects, "a.jsonl", 1_000_000)
+    b = _write_jsonl(projects, "b.jsonl", 2_000_000)
+    ledger = tmp_path / "ledger.tsv"
+    assert pick_recent_jsonls(projects, ledger, n=3) == [b, a]
+    assert pick_recent_jsonls(projects, ledger, n=3, exclude=None) == [b, a]

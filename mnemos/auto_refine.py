@@ -59,12 +59,25 @@ def _read_ledger_paths(ledger_path: Path) -> set[str]:
     return paths
 
 
-def pick_recent_jsonls(projects_dir: Path, ledger_path: Path, n: int = 3) -> list[Path]:
-    """Return up to `n` most-recent (by mtime) JSONLs not already in the ledger."""
+def pick_recent_jsonls(
+    projects_dir: Path,
+    ledger_path: Path,
+    n: int = 3,
+    exclude: set[str] | None = None,
+) -> list[Path]:
+    """Return up to `n` most-recent (by mtime) JSONLs not already in the ledger.
+
+    `exclude` is a set of path strings to filter out (typically the current
+    session's `transcript_path` so we never refine an in-progress conversation —
+    doing so would mark it OK in the ledger and silently drop the rest of the
+    transcript). Path strings are normalised via Path() so backslash/slash
+    differences between caller and stored values don't leak.
+    """
     if not projects_dir.exists():
         return []
 
     ledger_paths = _read_ledger_paths(ledger_path)
+    excluded = {str(Path(p)) for p in (exclude or set())}
     candidates = sorted(
         (p for p in projects_dir.rglob("*.jsonl") if not _is_subagent_jsonl(p)),
         key=lambda p: p.stat().st_mtime,
@@ -72,7 +85,8 @@ def pick_recent_jsonls(projects_dir: Path, ledger_path: Path, n: int = 3) -> lis
     )
     picked: list[Path] = []
     for candidate in candidates:
-        if str(candidate) in ledger_paths:
+        key = str(candidate)
+        if key in ledger_paths or key in excluded:
             continue
         picked.append(candidate)
         if len(picked) >= n:

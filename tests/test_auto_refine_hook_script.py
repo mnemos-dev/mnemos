@@ -91,3 +91,102 @@ def test_hook_script_writes_refining_phase_when_picked(tmp_path):
         f"wrapper should skip 'starting' and write 'refining' directly; got {data['phase']!r}"
     assert data["current"] == 0
     assert data["total"] >= 1
+
+
+# ---------------------------------------------------------------------------
+# v0.3 task 3.7d — source filter (skip mid-conversation events) + self-exclude
+# ---------------------------------------------------------------------------
+
+
+def test_hook_script_skips_compact_source(tmp_path):
+    """source=compact fires on auto-compaction mid-conversation — wrapper must no-op."""
+    payload = json.dumps({
+        "session_id": "abc",
+        "transcript_path": str(tmp_path / "proj" / "sess" / "main.jsonl"),
+        "hook_event_name": "SessionStart",
+        "source": "compact",
+    })
+    # Even with picks available, the source filter must short-circuit.
+    result = _run_hook(tmp_path, stdin=payload, projects_jsonls=2)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    assert not (tmp_path / ".mnemos-hook-status.json").exists(), \
+        "compact-source SessionStart must not touch the status file"
+
+
+def test_hook_script_skips_unknown_source(tmp_path):
+    """Unknown sources must default-skip (forward-compat: don't run on new event types we haven't vetted)."""
+    payload = json.dumps({
+        "session_id": "abc",
+        "transcript_path": str(tmp_path / "proj" / "sess" / "main.jsonl"),
+        "hook_event_name": "SessionStart",
+        "source": "future-event-we-do-not-know",
+    })
+    result = _run_hook(tmp_path, stdin=payload, projects_jsonls=2)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    assert not (tmp_path / ".mnemos-hook-status.json").exists()
+
+
+def test_hook_script_runs_on_resume_source(tmp_path):
+    """source=resume is a legitimate fresh-session event — wrapper must run normally."""
+    payload = json.dumps({
+        "session_id": "abc",
+        "transcript_path": str(tmp_path / "proj" / "sess" / "main.jsonl"),
+        "hook_event_name": "SessionStart",
+        "source": "resume",
+    })
+    result = _run_hook(tmp_path, stdin=payload, projects_jsonls=1)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    assert (tmp_path / ".mnemos-hook-status.json").exists()
+
+
+def test_hook_script_runs_on_clear_source(tmp_path):
+    """source=clear (after /clear) is a legitimate fresh-context event."""
+    payload = json.dumps({
+        "session_id": "abc",
+        "transcript_path": str(tmp_path / "proj" / "sess" / "main.jsonl"),
+        "hook_event_name": "SessionStart",
+        "source": "clear",
+    })
+    result = _run_hook(tmp_path, stdin=payload, projects_jsonls=1)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    assert (tmp_path / ".mnemos-hook-status.json").exists()
+
+
+def test_hook_script_excludes_self_transcript_from_picks(tmp_path):
+    """The current session's own transcript must NOT end up in the picked-for-refine list.
+
+    Without this, the in-progress conversation's JSONL would be refined while the user
+    is still adding turns — the second half of the conversation would be silently lost
+    because the ledger marks the file as already-OK.
+    """
+    # Seed three JSONLs and pick the newest as the "current" session transcript.
+    home = tmp_path / "home"
+    projects_dir = home / ".claude" / "projects" / "proj"
+    projects_dir.mkdir(parents=True)
+    paths = []
+    for i, mtime in enumerate([1_000_000, 2_000_000, 3_000_000]):
+        p = projects_dir / f"session-{i}.jsonl"
+        p.write_text("{}\n", encoding="utf-8")
+        os.utime(p, (mtime, mtime))
+        paths.append(p)
+    self_transcript = paths[2]  # newest = current session
+
+    script = REPO_ROOT / "scripts" / "auto_refine_hook.py"
+    env = {k: v for k, v in os.environ.items() if k != "MNEMOS_VAULT"}
+    env["USERPROFILE"] = str(home)
+    env["HOME"] = str(home)
+    payload = json.dumps({
+        "session_id": "abc",
+        "transcript_path": str(self_transcript),
+        "hook_event_name": "SessionStart",
+        "source": "startup",
+    })
+    result = subprocess.run(
+        [sys.executable, str(script), "--vault", str(tmp_path)],
+        input=payload, capture_output=True, text=True, timeout=15, env=env,
+    )
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    data = json.loads((tmp_path / ".mnemos-hook-status.json").read_text(encoding="utf-8"))
+    # total == 2 means the picker dropped the self-transcript and only picked the other two.
+    assert data["total"] == 2, \
+        f"self-transcript must be excluded from picks; got total={data['total']!r}"
