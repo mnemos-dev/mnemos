@@ -109,15 +109,20 @@ gap.
 
 v0.3 kalan sırası (ROADMAP §v0.3.0):
 
-1. **3.8 session-memory skill deprecation** (~15 dk) — *bekleme:* 3.7 hook'u
+1. **3.7b `mnemos install-statusline` CLI** (~30 dk) — 3.7 hook'u progress
+   yazıyor ama kullanıcının görmesi için statusline snippet'ini elle
+   eklemesi gerek. Yeni komut: varolan statusline script'in sonuna
+   idempotent ekler veya hiç yoksa minimal bir tane oluşturur. Detay
+   ROADMAP §3.7b. `mnemos init` opsiyonel olarak prompt edebilir.
+2. **3.8 session-memory skill deprecation** (~15 dk) — *bekleme:* 3.7 hook'u
    en az 3 gerçek session boyunca sorunsuz çalıştığını gözlemle. Sonra
    README/CONTRIBUTING'e migration notu ekle (`~/.claude/skills/session-memory/`
    klasörünü kaldırma rehberi). Silme işlemi kullanıcıya bırakılır.
-2. **3.9 New-user simülasyonu pilot** (~1h) — temiz throwaway klasörde
+3. **3.9 New-user simülasyonu pilot** (~1h) — temiz throwaway klasörde
    sıfırdan kurulum (pip install → junction skill → `mnemos init` → hook
-   install → 5 JSONL pilot). README'deki 5 adımın çalıştığını kanıtla.
-   Dokümantasyon boşluklarını raporla.
-3. **3.10 PyPI release v0.3.0** — version bump, `python -m build`, twine,
+   install → statusline install → 5 JSONL pilot). README'deki 5 adımın
+   çalıştığını kanıtla. Dokümantasyon boşluklarını raporla.
+4. **3.10 PyPI release v0.3.0** — version bump, `python -m build`, twine,
    GitHub release + tag.
 
 Aktif bug gözlemleri (3.7 canlı test'inden): bir JSONL refine'ı tek seferlik

@@ -182,6 +182,46 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
   - Spec: [`docs/specs/2026-04-15-v0.3-task-3.7-auto-refine-hook-design.md`](specs/2026-04-15-v0.3-task-3.7-auto-refine-hook-design.md)
   - Plan + pilot outcomes: [`docs/plans/2026-04-15-v0.3-task-3.7-auto-refine-hook-implementation.md`](plans/2026-04-15-v0.3-task-3.7-auto-refine-hook-implementation.md)
 
+- [ ] **3.7b `mnemos install-statusline` CLI** *(~30 dk, 3.7'den hemen sonra)*
+
+  **Sorun:** 3.7 hook'u `<vault>/.mnemos-hook-status.json` yazıyor + repo
+  `scripts/statusline_snippet.{sh,cmd}` ship'liyor ama kullanıcının onları
+  manuel olarak kendi `statusline-command.sh`'ine eklemesi gerekiyor.
+  Otomatize edilmeden "herkes göremez" → otomatik feedback yok.
+
+  **Çözüm:** `install-hook` deseninde yeni bir komut. Akış:
+  1. `~/.claude/settings.json`'daki `statusLine.command` field'ını oku.
+  2. Eğer mevcut bir statusline script'i varsa (`bash <path>` formatında):
+     - O script'in sonuna idempotent şekilde 3 satır ekle:
+       ```bash
+       # --- mnemos auto-refine statusline (managed by mnemos install-statusline) ---
+       export MNEMOS_VAULT="<resolved-vault>"
+       source "<repo>/scripts/statusline_snippet.sh"
+       ```
+     - "managed by" marker ile re-run'da skip et.
+  3. Eğer hiç statusline yoksa:
+     - `~/.claude/mnemos-statusline.sh` oluştur (sadece bizim snippet'i çağırır).
+     - `settings.json`'a `statusLine: {type: "command", command: "bash ~/.claude/mnemos-statusline.sh"}` ekle.
+  4. Yedek: `settings.json` ve hedef script için `.bak-YYYY-MM-DD` (install-hook gibi).
+  5. `--uninstall` opsiyonu: snippet bloğunu marker'la bul + sil; ayrı script
+     oluşturulmuşsa onu sil ve `statusLine` config'i kaldır.
+
+  **Dosyalar:**
+  - `mnemos/install_statusline.py` (yeni) — pure mantık, test edilebilir
+  - `mnemos/cli.py` — `install-statusline` subparser + handler
+  - `tests/test_install_statusline.py` — varolan script'e ekleme,
+    sıfırdan oluşturma, idempotency, uninstall, settings.json preserve
+  - `mnemos init` opsiyonel: hook prompt'tan sonra "statusline da kurayım
+    mı? [Y/n]" prompt'u (i18n: `statusline_install_prompt/done/declined`)
+
+  **Kabul kriteri:**
+  - Mevcut statusline'ı olan kullanıcı: `install-statusline` çalıştırır →
+    sonraki Claude Code session'da chatbox altında auto-refine progress
+    görünür, tüm önceki statusline davranışı korunur.
+  - Statusline'ı olmayan kullanıcı: `install-statusline` minimal bir
+    statusline kurar, sadece mnemos progress satırı gösterir.
+  - Re-run no-op (already-installed status).
+
 - [ ] **3.8 session-memory skill deprecation** *(15 dk, 3.7'den sonra)*
   `~/.claude/skills/session-memory/` artık gereksiz — refine-transcripts
   aynı bilgiyi daha kapsamlı üretir (JSONL log'unun tamamı, canlı Claude
