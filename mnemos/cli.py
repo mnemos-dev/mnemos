@@ -89,7 +89,17 @@ def install_hook(vault: Path, uninstall: bool = False) -> HookInstallResult:
 
     hook_script = _hook_script_path()
     if os.name == "nt":
-        full_cmd = f'cmd /c "set MNEMOS_VAULT={vault}&& python \\"{hook_script}\\""'
+        # cmd.exe /c outer-quote stripping mangles nested \" — pilot showed
+        # python received a literal '"<path>"' as the script argument and
+        # tried to open cwd/'"<path>"', failing. Drop the inner quotes; rely
+        # on the typical case where neither vault nor hook_script has spaces.
+        if " " in str(vault) or " " in hook_script:
+            raise ValueError(
+                f"vault and hook_script paths must not contain spaces "
+                f"(Windows cmd /c quoting limitation). Got vault={vault!r}, "
+                f"hook_script={hook_script!r}."
+            )
+        full_cmd = f'cmd /c "set MNEMOS_VAULT={vault}&& python {hook_script}"'
     else:
         full_cmd = f'MNEMOS_VAULT="{vault}" python "{hook_script}"'
 
