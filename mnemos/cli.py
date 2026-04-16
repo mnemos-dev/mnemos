@@ -593,8 +593,9 @@ def cmd_search(args: argparse.Namespace) -> None:
 
     for i, r in enumerate(results, 1):
         score = r.get("score", 0.0)
-        wing = r.get("wing", "?")
-        hall = r.get("hall", "?")
+        meta = r.get("metadata") or {}
+        wing = meta.get("wing", "?")
+        hall = meta.get("hall", "?")
         text = r.get("text", "").strip()
         # Truncate long texts for readability
         preview = text[:200] + "..." if len(text) > 200 else text

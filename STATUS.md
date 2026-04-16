@@ -1,6 +1,6 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-16 (v0.3 tasks 3.3 + 3.4a + 3.4b + 3.5 + 3.6 + 3.7 + 3.7b + 3.7c + 3.7d + 3.8 delivered; 3.7 verified in production)
+**Last updated:** 2026-04-16 (v0.3 tasks 3.3 + 3.4a + 3.4b + 3.5 + 3.6 + 3.7 + 3.7b + 3.7c + 3.7d + 3.8 + 3.9 delivered; 3.7 verified in production)
 **Stable PyPI version:** `v0.2.0` · **In-progress:** `v0.3.0` (First-Run Experience)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
@@ -137,23 +137,21 @@ gap.
   can safely remove now that the auto-refine hook captures everything
   automatically. CONTRIBUTING gains a sibling note so contributors don't
   reintroduce the legacy patterns.
-- 🔲 New-user simulation pilot
-- 🔲 PyPI release
+- ✅ New-user pilot validated the README's onboarding works end-to-end
+  on a clean throwaway vault (`mnemos init` → mining → search →
+  install-hook → install-statusline). Caught one real CLI display bug
+  (`mnemos search` showed `wing=?  hall=?` because the formatter read
+  the wrong nesting level — fixed and locked down with two regression
+  tests in `test_cli_search.py`). Full pilot report:
+  [`docs/pilots/2026-04-16-new-user-pilot.md`](docs/pilots/2026-04-16-new-user-pilot.md).
+- 🔲 PyPI release v0.3.0
 
 ### Next session starts here
 
 v0.3 kalan sırası (ROADMAP §v0.3.0):
 
-1. **3.8 session-memory skill deprecation** (~15 dk) — *bekleme:* 3.7 hook'u
-   birkaç gerçek session boyunca sorunsuz çalıştığını gözlemle. Sonra
-   README/CONTRIBUTING'e migration notu ekle (`~/.claude/skills/session-memory/`
-   klasörünü kaldırma rehberi). Silme işlemi kullanıcıya bırakılır.
-2. **3.9 New-user simülasyonu pilot** (~1h) — temiz throwaway klasörde
-   sıfırdan kurulum (pip install → junction skill → `mnemos init` → hook
-   install → statusline install → 5 JSONL pilot). README'deki 5 adımın
-   çalıştığını kanıtla. Dokümantasyon boşluklarını raporla.
-3. **3.10 PyPI release v0.3.0** — version bump, `python -m build`, twine,
-   GitHub release + tag.
+1. **3.10 PyPI release v0.3.0** — version bump, `python -m build`, twine,
+   GitHub release + tag. Tüm v0.3 ön-koşulları (3.3–3.9) tamam.
 
 **3.7 canlı doğrulama sonucu (2026-04-16):** kasamd vault'unda 6 gerçek
 session JSONL otomatik refine + mine edildi, subscription quota kullanıldı
