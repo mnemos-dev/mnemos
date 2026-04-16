@@ -371,6 +371,28 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
   içinden başlatılamaz; 3.7 production'da zaten doğrulandı), refine-skill
   execution (interactive Claude Code gerekir).
 
+- [x] **3.10a Package-data fix (release-blocker)** *(commit `de47085`, 2026-04-16)*
+  v0.3.0 wheel inceleme sırasında bulundu: `mnemos/cli.py:_hook_script_path()`
+  ve `mnemos/install_statusline.py:_repo_snippet_path()` repo kökündeki
+  `scripts/auto_refine_hook.py` + `scripts/statusline_snippet.{sh,cmd}`
+  dosyalarına `Path(__file__).resolve().parent.parent / "scripts"` ile
+  işaret ediyor. Wheel sadece `mnemos/` paketini ship'liyor (`packages =
+  ["mnemos"]`), `scripts/` wheel'de yok. `pip install mnemos-dev`
+  kullanıcılarında `install-hook` + `install-statusline` mevcut olmayan
+  path'lere yazıyor → SessionStart'ta `python: can't open file`.
+
+  **Fix:**
+  - `scripts/auto_refine_hook.py` → `mnemos/auto_refine_hook.py`
+    (importable module). `install-hook` artık `python -m mnemos.auto_refine_hook
+    --vault X` yazıyor (filesystem path yok, sadece module invocation).
+  - `scripts/statusline_snippet.{sh,cmd}` → `mnemos/_resources/...`.
+    `_repo_snippet_path()` `Path(__file__).resolve().parent / "_resources" /
+    name` döndürür (paket içinden çözer, hem dev hem pip install'ta çalışır).
+  - `pyproject.toml`'da `_resources/*` non-py dosyalarını ship etmek için
+    hatch `force-include` ya da `include` ayarı.
+  - Author'un mevcut `~/.claude/settings.json`'ı eski path'i taşıyor; fix
+    sonrası `mnemos install-hook --uninstall && install-hook` ile refresh.
+
 - [ ] **3.10 PyPI release v0.3.0**
   - `pyproject.toml` version bump
   - `python -m build` + `twine upload`
