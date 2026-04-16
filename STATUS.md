@@ -1,6 +1,6 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-16 (v0.3 tasks 3.3 + 3.4a + 3.4b + 3.5 + 3.6 + 3.7 + 3.7b delivered; 3.7 verified in production)
+**Last updated:** 2026-04-16 (v0.3 tasks 3.3 + 3.4a + 3.4b + 3.5 + 3.6 + 3.7 + 3.7b + 3.7c delivered; 3.7 verified in production)
 **Stable PyPI version:** `v0.2.0` · **In-progress:** `v0.3.0` (First-Run Experience)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
@@ -110,6 +110,16 @@ gap.
   at it. `--uninstall` removes the block (and the owned script +
   `statusLine` key in fresh mode). `.bak-YYYY-MM-DD` backups. `mnemos
   init` prompts for it after the hook step (i18n TR+EN).
+- ✅ Auto-refine no longer flickers between sessions: lock-timeout
+  returns silently instead of writing a destructive `phase=busy` over
+  the lock-holder's `refining 2/3` row, and the SessionStart wrapper
+  short-circuits subagent dispatches (`transcript_path` under
+  `/subagents/`) so agent-heavy workflows don't spawn fresh bg workers.
+  When there's nothing to refine, the bg skips `mnemos mine` and the
+  wrapper writes no status at all. Wrapper writes `phase=refining,
+  current=0` directly (no `starting` snapshot). The idle render uses new
+  `last_outcome` + `last_finished_at` fields to show `mnemos: last
+  refine Xm ago · N notes · OK · backlog Y` for 10 minutes (was 30s).
 - 🔲 New-user simulation pilot
 - 🔲 PyPI release
 
@@ -117,18 +127,15 @@ gap.
 
 v0.3 kalan sırası (ROADMAP §v0.3.0):
 
-1. **3.7c Statusline UX iyileştirmeleri** (~30-45 dk) — canlı pilot'ta 3
-   UX pürüzü çıktı: "busy (another session)" yanıltıcı, idle 30s TTL çok
-   kısa, starting fazı snapshot olarak "takıldı" sanılıyor. Detay §3.7c.
-2. **3.8 session-memory skill deprecation** (~15 dk) — *bekleme:* 3.7 hook'u
+1. **3.8 session-memory skill deprecation** (~15 dk) — *bekleme:* 3.7 hook'u
    birkaç gerçek session boyunca sorunsuz çalıştığını gözlemle. Sonra
    README/CONTRIBUTING'e migration notu ekle (`~/.claude/skills/session-memory/`
    klasörünü kaldırma rehberi). Silme işlemi kullanıcıya bırakılır.
-3. **3.9 New-user simülasyonu pilot** (~1h) — temiz throwaway klasörde
+2. **3.9 New-user simülasyonu pilot** (~1h) — temiz throwaway klasörde
    sıfırdan kurulum (pip install → junction skill → `mnemos init` → hook
    install → statusline install → 5 JSONL pilot). README'deki 5 adımın
    çalıştığını kanıtla. Dokümantasyon boşluklarını raporla.
-4. **3.10 PyPI release v0.3.0** — version bump, `python -m build`, twine,
+3. **3.10 PyPI release v0.3.0** — version bump, `python -m build`, twine,
    GitHub release + tag.
 
 **3.7 canlı doğrulama sonucu (2026-04-16):** kasamd vault'unda 6 gerçek

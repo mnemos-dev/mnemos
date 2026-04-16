@@ -192,34 +192,58 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
   - Spec: [`docs/specs/2026-04-15-v0.3-task-3.7-auto-refine-hook-design.md`](specs/2026-04-15-v0.3-task-3.7-auto-refine-hook-design.md)
   - Plan + pilot outcomes: [`docs/plans/2026-04-15-v0.3-task-3.7-auto-refine-hook-implementation.md`](plans/2026-04-15-v0.3-task-3.7-auto-refine-hook-implementation.md)
 
-- [ ] **3.7c Statusline UX iyileştirmeleri** *(~30-45 dk, 3.7b'den sonra)*
+- [x] **3.7c Statusline UX + auto-refine davranış düzeltmeleri** *(commit `ef69170`, 2026-04-16)*
 
-  **Sorun:** 3.7 canlı test'te 3 UX pürüzü çıktı:
-  1. **"busy (another session)" mesajı yanıltıcı** — vault paylaşan başka bir
-     Claude Code session refine yapıyorsa, *tüm* açık session'ların statusline'ı
-     "busy" gösteriyor. Teknik olarak doğru ama kullanıcı "bu session'ımda mı
-     iş var?" sanıyor. Net mesaj: `mnemos: other session active`.
-  2. **`phase=idle` 30s TTL** — refine bittikten 30s sonra statusline sessizleşiyor.
-     Kullanıcı tam o zaman bakmazsa "ne oldu?" bilmiyor. İstenen: son N dakika
-     boyunca `mnemos: last refine Xm ago (Y notes)` göstersin, sonra sessizleşsin.
-  3. **`phase=starting` çok kısa görünür** — wrapper `starting` yazıyor, 1-2s
-     sonra bg worker `refining` yazıyor. Kullanıcı "starting 0m1s" snapshot'ı
-     görüp takıldı sanıyor. İstenen: `starting` fazını atla, wrapper direkt
-     `refining 0/3` yazsın.
+  **Sorun (3.7 canlı testinden 5 kök neden):**
+  1. **Yıkıcı `busy` yazısı (asıl bug)** — `auto_refine.run()` lock'u alamayınca
+     `phase=busy` yazıyor; bu paylaşılan status dosyasında lock'u tutan
+     worker'ın `refining 2/3` yazısının üzerine biniyor. Statusline flicker:
+     `refining → busy → refining → busy → idle → busy → idle`. Kullanıcı her
+     subagent dispatch'inde flicker görüyor.
+  2. **Subagent SessionStart fire'lıyor** — `matcher: ""` her event'te tetikleniyor,
+     subagent kick'leri dahil. Her Agent dispatch'i (Explore, Plan, vb.) yeni bg
+     worker spawn ediyor → çoğu zaman lock fail → `busy` yazıyor.
+  3. **İş yokken bile mining yapılıyor** — `picked=[]` olsa bile bg `mnemos mine
+     Sessions/` çalıştırıyor (3-5 sn lock tutuyor). Boş subagent dispatch'leri
+     bile contention yaratıyor.
+  4. **`phase=idle` 30s TTL Git Bash'te kırık olabilir** — `date -d "$updated_at"`
+     ISO offset parse'ı bazı ortamlarda fail; fallback diff=0 → "30s sonra sessiz"
+     hiç tetiklenmez. Spec'in istediği "Xm ago, N notes" mesajı için `last_outcome`
+     + `last_finished_at` alanları gerekli.
+  5. **`phase=starting` snapshot'ı yanıltıcı** — wrapper `starting 0m1s` yazıp
+     1-2s sonra bg `refining` yazıyor; ilk render `starting`'de takılı kalıyor
+     gibi görünüyor.
 
-  **Çözüm:**
-  - `scripts/statusline_snippet.{sh,cmd}`: "busy" mesajını `other session active`
-    olarak güncelle
-  - `mnemos/auto_refine.py`: wrapper `starting` yerine direkt `refining 0/N` yazsın
-  - `write_status`'a `last_outcome` (ok/failed) + `last_finished_at` field'ları ekle
-    → idle fazında statusline "mnemos: last refine 2m ago · 3 notes · OK" gösterir
-  - `scripts/statusline_snippet.*`: idle formatını genişlet, TTL 30s → 10 dk
+  **Çözüm (davranış + kozmetik):**
+  - `mnemos/auto_refine.py`:
+    - `run()` lock alamazsa **status dosyasına dokunmadan sessizce çık** (lock
+      holder zaten file'ı güncel tutuyor; yıkıcı `busy` yazısı bug #1'i giderir)
+    - `_run_locked()` `picked=[]` ise `mnemos mine` çağrısını **atla**
+      (gereksiz lock-holding ve CPU). Reminder marking yine yapılır.
+    - `write_status`'a `last_outcome` (`ok` / `noop`) + `last_finished_at`
+      optional alanları (idle'a son round'un meta-bilgisini iletmek için)
+  - `scripts/auto_refine_hook.py`:
+    - **Subagent filter**: hook stdin JSON'unda `transcript_path` `/subagents/`
+      içeriyorsa anında `exit 0` (bg spawn yok, status write yok). #2 fix.
+    - `picked=[]` ve `reminder=False` ise wrapper **status dosyasına yazmadan
+      ve bg spawn etmeden** çık (boş dispatch'lerde ekran sessiz kalır)
+    - `picked>0` durumunda `phase=starting` yerine direkt `phase=refining,
+      current=0, total=N` yaz (#5 fix)
+  - `scripts/statusline_snippet.{sh,cmd}`:
+    - idle TTL 30s → 600s (10 dk)
+    - idle render: `last_outcome` + `last_finished_at` varsa
+      `mnemos: last refine Xm ago · N notes · OK` formatı
+    - `busy` mesajı: `mnemos: other session active` (geriye dönük; yeni
+      kodda zaten yazılmıyor ama eski status dosyaları için)
 
   **Dosyalar:**
-  - `mnemos/auto_refine.py` — `write_status` signature genişler (yeni optional alanlar)
-  - `scripts/statusline_snippet.{sh,cmd}` — messages + idle TTL
-  - `tests/test_auto_refine.py` — yeni field'lar için test
-  - `docs/specs/2026-04-15-v0.3-task-3.7-auto-refine-hook-design.md` — §5.1 güncellenir
+  - `mnemos/auto_refine.py` — lock-silent, skip-empty-mining, last_outcome
+  - `scripts/auto_refine_hook.py` — stdin JSON parse, subagent filter, no-op skip,
+    refining-without-starting
+  - `scripts/statusline_snippet.{sh,cmd}` — TTL + idle format + busy wording
+  - `tests/test_auto_refine.py` — lock-fail silent, skip-mining, last_outcome
+  - `tests/test_auto_refine_hook_script.py` — subagent skip, no-op skip
+  - `docs/specs/2026-04-15-v0.3-task-3.7-auto-refine-hook-design.md` — §5.1 güncel
 
 - [x] **3.7b `mnemos install-statusline` CLI** *(commit `15a21fa`, 2026-04-16)*
 
