@@ -15,7 +15,8 @@ archive; burada çelişki olursa bu dosya geçerlidir.
 | v0.1.0 | First Breath | ✅ | ✅ |
 | v0.2.0 | Full Memory (= Phase 0 Foundation) | ✅ | ✅ |
 | v0.3.0 | First-Run Experience | ✅ | ✅ |
-| **v0.4.0** | **AI Boost (= Phase 1)** | **🔄 next** | — |
+| **v0.3.1** | **Backend UX (keşif + migrate + recovery)** | **🔄 next** | — |
+| v0.4.0 | AI Boost (= Phase 1) | ⏸ | — |
 | v0.5.0 | Automation (= Phase 2) | ⏸ | — |
 | v0.6.0 | Community & Ecosystem | ⏸ | — |
 
@@ -526,6 +527,71 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
 - [x] `mnemos import` 5 formatın hepsini destekliyor *(3.5: claude-code/chatgpt/slack/markdown/memory)*
 - [x] Skill install (junction/symlink) dokümante + test edilmiş *(3.6 CONTRIBUTING + 3.1 SKILL.md)*
 - [x] Auto-refine hook production-hardened: noise filter, PID exclusion, mtime fallback, per-session statusline, backlog 0 *(3.11-3.13)*
+
+---
+
+## v0.3.1 — Backend UX 🔄 *(başladı 2026-04-17)*
+
+**Sorun:** Kod iki vector backend'i destekliyor (ChromaDB + sqlite-vec).
+2026-04-17 parity benchmark'ında dördüncü ondalığa kadar aynı sayılar
+verdiler (R@5=0.90). Ama external user bu alternatiften habersiz:
+`mnemos init` sormuyor, README'de tek parantezli cümle, ChromaDB corrupt
+olunca cryptic traceback. MemPalace'te (42K★) de aynı durum — onların
+repair komutu (#239) + Qdrant (#700) + LanceDB (#574) PR'ları hâlâ open.
+
+Biz zaten sqlite-vec'i ship'ledik; iş kullanıcının bunu keşfetmesini,
+güvenle geçmesini ve hata sırasında yol bulmasını sağlamak.
+
+**Canonical spec:**
+[`docs/specs/2026-04-17-v0.3.1-backend-ux-design.md`](specs/2026-04-17-v0.3.1-backend-ux-design.md)
+
+### Görevler
+
+- [ ] **3.14c BackendInitError wrapper** *(~1h)*
+  `mnemos/errors.py` (yeni) + `mnemos/search.py`'de factory wrapper. ChromaDB
+  HNSW load veya sqlite-vec DB open hatası yakalanır, kullanıcıya "migrate
+  --backend X" önerisi bastırır. `--verbose` olmadan traceback gizli.
+  `tests/test_backend_errors.py`.
+
+- [ ] **3.14e `mnemos status` backend bilgisi** *(~30 min)*
+  `SearchBackend` abstract'a `storage_path()` eklenir; iki implement eder.
+  `cmd_status` `Backend: <name> (<path> · N drawers · X MB)` satırı render
+  eder. Tests: iki backend için path resolution + CLI smoke.
+
+- [ ] **3.14b `mnemos migrate --backend X` komutu** *(~3h)*
+  `mnemos/migrate.py` (yeni) + CLI subparser. Pre-flight plan (drawer +
+  source file sayısı + süre tahmini, ±%30 marj), `--dry-run`, backup
+  (`.chroma.bak-YYYY-MM-DD` / `search.sqlite3.bak-YYYY-MM-DD`), yaml update,
+  rebuild, rollback on failure. Migration-lock + recovery. Drawer-drop
+  uyarısı. `tests/test_migrate.py`.
+
+- [ ] **3.14a `mnemos init` backend prompt** *(~2h)*
+  Faz 3 ile Faz 5 arası yeni mini-prompt. `_resolve_backend_hint()` platform
+  helper (Windows+Py3.14 ek satır). i18n keys (EN+TR): `backend_prompt`,
+  `backend_chose_chromadb`, `backend_chose_sqlite`, `backend_hint_windows_py314`.
+  `.mnemos-pending.json`'a `backend_chosen` alanı, re-run idempotent.
+
+- [ ] **3.14d README Troubleshooting + hero tweak** *(~30 min)*
+  README sonuna "Troubleshooting → ChromaDB index corruption" bölümü (iki
+  komut: migrate sqlite-vec, migrate chromadb). Hero'da "Two vector
+  backends" vurgusu. CONTRIBUTING'e "mevcut iki backend yeter, 3. backend
+  PR için yüksek bar" notu.
+
+- [ ] **3.14f Pilot + PyPI release v0.3.1** *(~1h)*
+  Clean throwaway vault'ta end-to-end: init → sqlite-vec seç → mine →
+  search → migrate --backend chromadb → re-search. Sorun varsa düzelt,
+  wheel + sdist build, PyPI upload, GitHub release tag.
+
+### Başarı kriterleri
+
+- [ ] External user `mnemos init`'te backend seçimini görüyor, `mnemos.yaml`
+      elle açmak zorunda kalmıyor
+- [ ] ChromaDB corruption durumunda error mesajı `mnemos migrate --backend
+      sqlite-vec` komutunu gösteriyor, kullanıcı copy-paste ile kurtuluyor
+- [ ] `mnemos status` çıktısında backend satırı var — destek isteyen
+      kullanıcı hangi backend'de olduğunu görebiliyor
+- [ ] İki yönlü migrate çalışıyor (chromadb ↔ sqlite-vec), backup'lar güvende
+- [ ] README Troubleshooting tek paragrafta problemi + çözümü veriyor
 
 ---
 

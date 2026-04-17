@@ -186,7 +186,23 @@ v0.3 tamamlandı + production hardening yapıldı (3.11-3.13). Tüm Claude Code
 geçmişi (122 transcript → 52 OK note + 70 SKIP) refine + mine edildi,
 backlog **0**. Vault'ta 66 Sessions/*.md notu aranabilir durumda.
 
-v0.4 (AI Boost / Phase 1) sırada — ROADMAP §v0.4.0:
+**v0.3.1 Backend UX sırada** — ROADMAP §v0.3.1:
+
+1. **3.14c BackendInitError wrapper** — ChromaDB/sqlite-vec init hatasında
+   `mnemos migrate --backend X` önerisi
+2. **3.14e `mnemos status` backend satırı** — kullanıcı hangi backend'de?
+3. **3.14b `mnemos migrate --backend X`** — backup + rebuild + rollback
+4. **3.14a `mnemos init` backend prompt** — i18n + platform hint
+5. **3.14d README Troubleshooting** — index corruption → migrate
+6. **3.14f Pilot + PyPI v0.3.1 release**
+
+Motivasyon: 2026-04-17 parity benchmark'ı sqlite-vec ve ChromaDB'nin
+dördüncü ondalığa kadar aynı sayılar verdiğini gösterdi (R@5=0.90). Kod iki
+backend'i destekliyor ama external user keşfedemiyor. MemPalace (42K★)
+aynı ChromaDB sorunlarını hâlâ açık issue'da tutuyor — bizde UX tamam
+olursa gerçek farklılaştırıcı.
+
+**v0.3.1 sonrası v0.4 (AI Boost / Phase 1)** — ROADMAP §v0.4.0:
 
 1. **4.1 Phase 1 design spec** — `docs/specs/YYYY-MM-DD-phase1-ai-boost-design.md`
 2. **4.2 LLM mining** — Claude API regex'in yakaladığını doğrular + emotional hall
