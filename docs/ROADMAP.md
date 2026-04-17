@@ -577,11 +577,13 @@ güvenle geçmesini ve hata sırasında yol bulmasını sağlamak.
   conftest.py stdout UTF-8 reconfigure eklendi (cp1252 Windows test
   runner'larında unicode glyph crash fix). 18 yeni test + 63 pass full suite.
 
-- [ ] **3.14d README Troubleshooting + hero tweak** *(~30 min)*
-  README sonuna "Troubleshooting → ChromaDB index corruption" bölümü (iki
-  komut: migrate sqlite-vec, migrate chromadb). Hero'da "Two vector
-  backends" vurgusu. CONTRIBUTING'e "mevcut iki backend yeter, 3. backend
-  PR için yüksek bar" notu.
+- [x] **3.14d README Troubleshooting + hero tweak** *(commit `1209457`, 2026-04-17)*
+  README hero paragrafı iki backend'i açıkça anıyor + parity benchmark referansı.
+  Yeni "Troubleshooting" bölümü 3 recipe: `mnemos status` (hangi backend),
+  corruption → `migrate --backend sqlite-vec` (+ `--dry-run`), geri dönüş.
+  Architecture diagram sqlite-vec'i peer olarak gösteriyor. CONTRIBUTING'e
+  yeni architectural-line: "backend count stays at two" + 3. backend PR'ı
+  için yüksek bar kriteri.
 
 - [ ] **3.14f Pilot + PyPI release v0.3.1** *(~1h)*
   Clean throwaway vault'ta end-to-end: init → sqlite-vec seç → mine →
