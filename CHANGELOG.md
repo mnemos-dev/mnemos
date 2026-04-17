@@ -32,9 +32,9 @@ All notable changes to Mnemos are documented here.
 
 ### Release
 
-- Wheel + sdist: `dist/mnemos_dev-0.3.1-py3-none-any.whl` + `.tar.gz`.
+- PyPI: <https://pypi.org/project/mnemos-dev/0.3.1/>
 - GitHub release with assets: <https://github.com/mnemos-dev/mnemos/releases/tag/v0.3.1>
-- PyPI upload pending (user's credentials).
+- Wheel + sdist: `dist/mnemos_dev-0.3.1-py3-none-any.whl` + `.tar.gz`.
 
 ## [0.3.0] — 2026-04-16 — First-Run Experience
 

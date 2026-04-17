@@ -15,7 +15,7 @@ archive; burada çelişki olursa bu dosya geçerlidir.
 | v0.1.0 | First Breath | ✅ | ✅ |
 | v0.2.0 | Full Memory (= Phase 0 Foundation) | ✅ | ✅ |
 | v0.3.0 | First-Run Experience | ✅ | ✅ |
-| v0.3.1 | Backend UX (keşif + migrate + recovery) | ✅ | ⏸ *(twine upload pending)* |
+| v0.3.1 | Backend UX (keşif + migrate + recovery) | ✅ | ✅ |
 | **v0.4.0** | **AI Boost (= Phase 1)** | **🔄 next** | — |
 | v0.5.0 | Automation (= Phase 2) | ⏸ | — |
 | v0.6.0 | Community & Ecosystem | ⏸ | — |
