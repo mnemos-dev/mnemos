@@ -459,7 +459,7 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
     kullanıcı sistem çalıştığını görüp picker'ın yanlış pick yaptığını
     anlar
 
-- [~] **3.12 PID-based active-session exclusion**
+- [x] **3.12 PID-based active-session exclusion** *(commit `136f49b`, 2026-04-17)*
 
   **Sorun:** 3.7d sadece kendi transcript'ini (self) exclude ediyor. 3-4
   eşzamanlı Claude Code penceresi açıksa picker diğer açık session'ların
