@@ -560,12 +560,14 @@ güvenle geçmesini ve hata sırasında yol bulmasını sağlamak.
   `Backend: <name> (<path> · N drawers · X MB)` satırını JSON öncesinde bastırır.
   9 yeni test + 50 pass full suite, real vault smoke doğruladı.
 
-- [ ] **3.14b `mnemos migrate --backend X` komutu** *(~3h)*
+- [x] **3.14b `mnemos migrate --backend X` komutu** *(commit `a70f7ed`, 2026-04-17)*
   `mnemos/migrate.py` (yeni) + CLI subparser. Pre-flight plan (drawer +
   source file sayısı + süre tahmini, ±%30 marj), `--dry-run`, backup
-  (`.chroma.bak-YYYY-MM-DD` / `search.sqlite3.bak-YYYY-MM-DD`), yaml update,
-  rebuild, rollback on failure. Migration-lock + recovery. Drawer-drop
-  uyarısı. `tests/test_migrate.py`.
+  (`.chroma.bak-YYYY-MM-DD` / `search.sqlite3.bak-YYYY-MM-DD`, aynı gün ikinci
+  migrate `.bak-DATE.2` suffix), yaml update, mine_log clear, rebuild,
+  drawer-drop uyarısı (>%20 düşüş → "backup preserved"). 8 test + real-vault
+  dry-run smoke doğruladı. Rollback-on-failure + migration-lock recovery
+  follow-up iş olarak kayıtlı.
 
 - [ ] **3.14a `mnemos init` backend prompt** *(~2h)*
   Faz 3 ile Faz 5 arası yeni mini-prompt. `_resolve_backend_hint()` platform
