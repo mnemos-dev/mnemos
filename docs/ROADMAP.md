@@ -553,10 +553,12 @@ güvenle geçmesini ve hata sırasında yol bulmasını sağlamak.
   --backend X" önerisi bastırır. CLI main() tek noktada catch + stderr + exit 2.
   `tests/test_backend_errors.py` 7 test; full search+miner+pending suite 59 pass.
 
-- [ ] **3.14e `mnemos status` backend bilgisi** *(~30 min)*
-  `SearchBackend` abstract'a `storage_path()` eklenir; iki implement eder.
-  `cmd_status` `Backend: <name> (<path> · N drawers · X MB)` satırı render
-  eder. Tests: iki backend için path resolution + CLI smoke.
+- [x] **3.14e `mnemos status` backend bilgisi** *(commit `c944dff`, 2026-04-17)*
+  `SearchBackend.storage_path()` abstract (default None) + iki backend override.
+  `get_stats()` çıktısında `storage_bytes` (shared `_path_size_bytes()` helper).
+  `handle_status` `backend: {name, path, storage_bytes}` bloğu döner. CLI
+  `Backend: <name> (<path> · N drawers · X MB)` satırını JSON öncesinde bastırır.
+  9 yeni test + 50 pass full suite, real vault smoke doğruladı.
 
 - [ ] **3.14b `mnemos migrate --backend X` komutu** *(~3h)*
   `mnemos/migrate.py` (yeni) + CLI subparser. Pre-flight plan (drawer +
