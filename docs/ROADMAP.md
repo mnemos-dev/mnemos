@@ -569,11 +569,13 @@ güvenle geçmesini ve hata sırasında yol bulmasını sağlamak.
   dry-run smoke doğruladı. Rollback-on-failure + migration-lock recovery
   follow-up iş olarak kayıtlı.
 
-- [ ] **3.14a `mnemos init` backend prompt** *(~2h)*
-  Faz 3 ile Faz 5 arası yeni mini-prompt. `_resolve_backend_hint()` platform
-  helper (Windows+Py3.14 ek satır). i18n keys (EN+TR): `backend_prompt`,
-  `backend_chose_chromadb`, `backend_chose_sqlite`, `backend_hint_windows_py314`.
-  `.mnemos-pending.json`'a `backend_chosen` alanı, re-run idempotent.
+- [x] **3.14a `mnemos init` backend prompt** *(commit `3d99c17`, 2026-04-17)*
+  `use_llm` prompt'u sonrası (yaml yazımından önce) backend picker — böylece
+  ilk mining doğru backend'e gider. `_ask_backend_choice` + platform sniff
+  `_resolve_backend_hint` (Windows+Py3.14 ek satır). 8 yeni i18n key (EN+TR).
+  Re-run idempotency: yaml'da `search_backend` zaten varsa sormaz.
+  conftest.py stdout UTF-8 reconfigure eklendi (cp1252 Windows test
+  runner'larında unicode glyph crash fix). 18 yeni test + 63 pass full suite.
 
 - [ ] **3.14d README Troubleshooting + hero tweak** *(~30 min)*
   README sonuna "Troubleshooting → ChromaDB index corruption" bölümü (iki
