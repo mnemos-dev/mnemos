@@ -181,11 +181,31 @@ def cmd_init(args: argparse.Namespace) -> None:
     use_llm_raw = input("Enable LLM-assisted mining? [y/N]: ").strip().lower()
     use_llm = use_llm_raw == "y"
 
+    # --- Backend (v0.3.1 task 3.14a) ---
+    # Skip the prompt when an existing yaml already pins a backend — we
+    # don't overwrite previously-set choices on re-run.
+    existing_backend: Optional[str] = None
+    yaml_path_check = vault_dir / "mnemos.yaml"
+    if yaml_path_check.exists():
+        try:
+            prev = yaml.safe_load(yaml_path_check.read_text(encoding="utf-8")) or {}
+            if isinstance(prev, dict) and prev.get("search_backend"):
+                existing_backend = str(prev["search_backend"])
+        except Exception:
+            existing_backend = None
+
+    if existing_backend:
+        print(f"  Keeping existing backend: {existing_backend}")
+        search_backend = existing_backend
+    else:
+        search_backend = _ask_backend_choice(lang=lang)
+
     # --- Build config ---
     config_data: dict = {
         "vault_path": vault_path,
         "languages": languages,
         "use_llm": use_llm,
+        "search_backend": search_backend,
         "halls": list(HALLS_DEFAULT),
         "watcher_ignore": list(WATCHER_IGNORE_DEFAULT),
     }
@@ -211,6 +231,7 @@ def cmd_init(args: argparse.Namespace) -> None:
         vault_path=vault_path,
         languages=languages,
         use_llm=use_llm,
+        search_backend=search_backend,
     )
     palace = Palace(cfg)
     palace.ensure_structure()
@@ -260,6 +281,51 @@ def _print_intro(lang: str = "en") -> None:
     """Phase 1 — what Mnemos is and how it works."""
     from mnemos.i18n import t
     print(t("intro.body", lang))
+
+
+def _resolve_backend_hint(lang: str = "en") -> Optional[str]:
+    """Platform-aware extra copy for the backend prompt (v0.3.1 task 3.14a).
+
+    On Windows + Python 3.14 we've seen fewer HNSW flush issues with
+    sqlite-vec than ChromaDB, so it's worth a gentle nudge. On every
+    other platform we stay neutral and return None — the main prompt
+    copy is enough.
+    """
+    if sys.platform != "win32":
+        return None
+    if sys.version_info < (3, 14):
+        return None
+    from mnemos.i18n import t
+    return t("backend.hint_windows_py314", lang)
+
+
+def _ask_backend_choice(lang: str = "en") -> str:
+    """Interactive picker for `search_backend` (v0.3.1 task 3.14a).
+
+    Returns ``"chromadb"`` or ``"sqlite-vec"``. Bare Enter keeps the
+    legacy default (ChromaDB) so existing muscle memory isn't broken.
+    """
+    from mnemos.i18n import t
+
+    print(t("backend.prompt_header", lang))
+    print(t("backend.option_c", lang))
+    print(t("backend.option_s", lang))
+    hint = _resolve_backend_hint(lang)
+    if hint:
+        print(hint)
+    print()
+
+    prompt = t("backend.prompt", lang)
+    invalid = t("backend.invalid", lang)
+    while True:
+        raw = input(prompt).strip().lower()
+        if raw in ("", "c", "chromadb"):
+            print(t("backend.chose_chromadb", lang))
+            return "chromadb"
+        if raw in ("s", "sqlite-vec", "sqlite_vec", "sqlitevec"):
+            print(t("backend.chose_sqlite", lang))
+            return "sqlite-vec"
+        prompt = invalid
 
 
 def _run_onboarding(cfg, lang: str = "en") -> None:  # type: ignore[no-untyped-def]

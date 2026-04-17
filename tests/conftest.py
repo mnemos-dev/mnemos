@@ -1,12 +1,24 @@
 """Shared pytest fixtures for Mnemos test suite."""
 from __future__ import annotations
 
+import sys
 import textwrap
 from pathlib import Path
 
 import pytest
 
 from mnemos.config import MnemosConfig
+
+
+# Windows test runners sometimes default to cp1252 stdout/stderr; mnemos CLI
+# code prints non-ASCII (Turkish onboarding, arrows, em dashes) that normally
+# works because main() reconfigures to UTF-8 — pytest doesn't run main(), so
+# we do the same here once per session.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+    except (AttributeError, OSError):
+        pass
 
 
 # ---------------------------------------------------------------------------

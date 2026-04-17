@@ -159,6 +159,59 @@ _STRINGS: Dict[str, Dict[str, str]] = {
         "en": "Skipped. Install later with: mnemos install-hook",
         "tr": "Atlandı. Daha sonra kurmak için: mnemos install-hook",
     },
+    # ---------------- Backend selection (v0.3.1 task 3.14a) ----------------
+    "backend.prompt_header": {
+        "en": "\nVector backend — choose how embeddings are indexed:",
+        "tr": "\nVektör arka ucu — gömü indeksleme yöntemini seç:",
+    },
+    "backend.option_c": {
+        "en": (
+            "  [C] ChromaDB (default)\n"
+            "      Mature, widely used. Occasional index corruption has been reported."
+        ),
+        "tr": (
+            "  [C] ChromaDB (varsayılan)\n"
+            "      Olgun, yaygın. Zaman zaman indeks bozulması raporlanmıştır."
+        ),
+    },
+    "backend.option_s": {
+        "en": (
+            "  [S] sqlite-vec\n"
+            "      Single-file SQLite + vec0 extension. Same recall as ChromaDB\n"
+            "      (verified 2026-04-17), recommended if you hit ChromaDB issues."
+        ),
+        "tr": (
+            "  [S] sqlite-vec\n"
+            "      Tek dosyalı SQLite + vec0 eklentisi. ChromaDB ile aynı recall\n"
+            "      (2026-04-17'de doğrulandı), ChromaDB sorun çıkarırsa önerilir."
+        ),
+    },
+    "backend.hint_windows_py314": {
+        "en": (
+            "  Note: on Windows + Python 3.14 sqlite-vec has shown fewer flush\n"
+            "  issues in our own testing — you may prefer [S] here."
+        ),
+        "tr": (
+            "  Not: Windows + Python 3.14'te sqlite-vec'in daha az flush sorunu\n"
+            "  çıkardığını gözlemledik — bu ortamda [S] tercih edilebilir."
+        ),
+    },
+    "backend.prompt": {
+        "en": "[C]hromaDB (default) / [S]qlite-vec: ",
+        "tr": "[C]hromaDB (varsayılan) / [S]qlite-vec: ",
+    },
+    "backend.invalid": {
+        "en": "Please type C or S (or press Enter for the default): ",
+        "tr": "Lütfen C veya S yaz (ya da varsayılan için Enter'a bas): ",
+    },
+    "backend.chose_chromadb": {
+        "en": "  → Using ChromaDB.",
+        "tr": "  → ChromaDB kullanılıyor.",
+    },
+    "backend.chose_sqlite": {
+        "en": "  → Using sqlite-vec.",
+        "tr": "  → sqlite-vec kullanılıyor.",
+    },
     # ---------------- Statusline install (v0.3 task 3.7b) ----------------
     "statusline_install_prompt": {
         "en": "Install the statusline snippet so auto-refine progress shows in the chatbox footer? [Y/n]: ",
