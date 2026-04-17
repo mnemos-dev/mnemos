@@ -59,9 +59,19 @@ _mnemos_statusline() {
         fi
     fi
 
+    # Running tally string (v0.3.12c): show OK/SKIP counts mid-flight
+    local tally=""
+    if [ "$last_ok" -gt 0 ] 2>/dev/null && [ "$last_skip" -gt 0 ] 2>/dev/null; then
+        tally=" · ${last_ok} OK ${last_skip} skip"
+    elif [ "$last_ok" -gt 0 ] 2>/dev/null; then
+        tally=" · ${last_ok} OK"
+    elif [ "$last_skip" -gt 0 ] 2>/dev/null; then
+        tally=" · ${last_skip} skip"
+    fi
+
     case "$phase" in
-        refining) printf "  mnemos: refining %d/%d · %s · backlog %d" "$current" "$total" "$elapsed" "$backlog" ;;
-        mining)   printf "  mnemos: mining · %s · backlog %d" "$elapsed" "$backlog" ;;
+        refining) printf "  mnemos: refining %d/%d%s · %s · backlog %d" "$current" "$total" "$tally" "$elapsed" "$backlog" ;;
+        mining)   printf "  mnemos: mining%s · %s · backlog %d" "$tally" "$elapsed" "$backlog" ;;
         busy)     printf "  mnemos: other session active" ;;
         idle)
             # When we have meta from the last completed round, show it.
