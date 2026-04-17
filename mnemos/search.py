@@ -107,6 +107,22 @@ class SearchBackend(ABC):
 # ---------------------------------------------------------------------------
 
 
+def _dedup_by_id(
+    items: list[tuple[str, str, dict]],
+) -> list[tuple[str, str, dict]]:
+    """Collapse duplicate drawer IDs in a bulk-upsert batch, last write wins.
+
+    Miner pipelines occasionally emit two drawers with the same ID when two
+    chunks share a slugged prefix (e.g. short repeated user replies). Both
+    backends reject duplicates within a single batch (Chroma DuplicateIDError
+    and sqlite UNIQUE on vec_*), so we dedup here with upsert semantics.
+    """
+    by_id: dict[str, tuple[str, str, dict]] = {}
+    for item in items:
+        by_id[item[0]] = item
+    return list(by_id.values())
+
+
 def _clean_metadata(metadata: dict) -> dict[str, Any]:
     """Coerce metadata values to scalar types suitable for backend storage."""
     clean: dict[str, Any] = {}
@@ -223,6 +239,7 @@ class ChromaBackend(SearchBackend):
     def _bulk_upsert(self, col, items: list[tuple[str, str, dict]]) -> None:
         if not items:
             return
+        items = _dedup_by_id(items)
         ids = [i[0] for i in items]
         docs = [i[1] for i in items]
         metas = [_clean_metadata(i[2]) for i in items]
@@ -539,6 +556,7 @@ class SqliteVecBackend(SearchBackend):
         if not items:
             return
 
+        items = _dedup_by_id(items)
         texts = [i[1] for i in items]
         # One embedding call for the whole batch
         embeddings = self._embed_fn(texts)

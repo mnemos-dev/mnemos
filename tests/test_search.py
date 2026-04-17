@@ -484,3 +484,28 @@ def test_score_unrelated_text_is_lower(engine: SearchEngine) -> None:
     by_id = {r["drawer_id"]: r["score"] for r in results}
     # Food-related query should score the coffee doc well above the k8s doc
     assert by_id["relevant"] > by_id["unrelated"] + 0.1
+
+
+def test_bulk_upsert_dedups_duplicate_ids(engine: SearchEngine) -> None:
+    """Bulk indexing tolerates duplicate drawer IDs within a batch (last wins).
+
+    Regression guard: before the dedup fix, Chroma raised DuplicateIDError and
+    sqlite-vec raised UNIQUE constraint when the miner emitted two drawers with
+    the same slugged ID in one batch. Both backends must now collapse to the
+    last occurrence, matching upsert semantics.
+    """
+    items = [
+        ("dup", "first version of the text", {"wing": "W", "room": "R", "hall": "facts"}),
+        ("dup", "second version — should win", {"wing": "W", "room": "R", "hall": "facts"}),
+        ("other", "an unrelated drawer entirely", {"wing": "W", "room": "R", "hall": "facts"}),
+    ]
+
+    engine.index_drawers_bulk(items)  # must not raise
+
+    stats = engine.get_stats()
+    assert stats["total_drawers"] == 2, stats
+
+    results = engine.search("second version", limit=5, collection="mined")
+    dup_hit = next((r for r in results if r["drawer_id"] == "dup"), None)
+    assert dup_hit is not None
+    assert "second version" in dup_hit["text"]
