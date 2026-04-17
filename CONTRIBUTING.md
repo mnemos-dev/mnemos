@@ -215,6 +215,14 @@ one, raise it in an issue first:
 - **Junction / symlink drift is forbidden.** The repo and the linked
   skill copy must never diverge. If your change touches the skill,
   edit the repo file and let the junction reflect it automatically.
+- **The backend count stays at two.** ChromaDB and sqlite-vec share a
+  thin `SearchBackend` abstract. A 2026-04-17 parity benchmark proved
+  they produce identical recall, so the user-facing question is
+  reliability / environment fit, not quality. PRs that add a third
+  backend (Qdrant, LanceDB, pgvector, …) will be held to a very high
+  bar: concrete gap the existing two don't cover, maintenance commitment,
+  and full feature parity with `mnemos migrate`. Most of the time the
+  right answer is improving one of the two we have.
 
 ---
 

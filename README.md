@@ -36,7 +36,7 @@ Mnemos turns that history into a **memory palace** any future Claude Code sessio
 2. **Mine** — regex + optional LLM extraction pulls individual memories out of those notes and classifies them by project, topic, and type.
 3. **Recall** — 8 MCP tools let any Claude Code / Cursor / ChatGPT session search, graph, and load relevant context.
 
-Storage is plain markdown in your vault. You read it, edit it, organize it. ChromaDB indexes it for semantic search, but **Obsidian is the source of truth** — delete a note in Obsidian and the memory is gone.
+Storage is plain markdown in your vault. You read it, edit it, organize it. Two swappable vector backends index it for semantic search — **ChromaDB** (default, mature) or **sqlite-vec** (single-file, robust on Windows/Python 3.14). A 2026-04-17 parity benchmark showed they produce identical recall; switch any time with `mnemos migrate --backend <name>`. **Obsidian is the source of truth** — delete a note in Obsidian and the memory is gone.
 
 ## Quick Start
 
@@ -128,7 +128,7 @@ Your Obsidian Vault
       +-- _recycled/          (soft-deleted memories)
 ```
 
-Every memory is a `.md` file with YAML frontmatter. ChromaDB (or optional sqlite-vec) runs alongside as a vector index. If it's not in your vault, it doesn't exist.
+Every memory is a `.md` file with YAML frontmatter. Two backends ship behind the same interface: **ChromaDB** (default) or **sqlite-vec**. Pick one during `mnemos init`, or swap later with `mnemos migrate --backend sqlite-vec`. If it's not in your vault, it doesn't exist.
 
 ## MCP Tools
 
@@ -232,6 +232,44 @@ halls:
   - problems
 ```
 
+## Troubleshooting
+
+### Which backend am I on?
+
+```bash
+mnemos status
+```
+
+The first line tells you — e.g.
+
+    Backend: sqlite-vec (search.sqlite3 · 8027 drawers · 42.3 MB)
+
+### ChromaDB index corruption or errors
+
+If `mnemos search` / `mnemos mine` fails with an HNSW / DatabaseError / segfault-style message from ChromaDB, the single recovery command is:
+
+```bash
+mnemos migrate --backend sqlite-vec
+```
+
+This backs up the broken `.chroma/` directory (date-stamped, never overwritten), updates `mnemos.yaml`, and rebuilds the index from your vault's `Sessions/` + `Topics/` + `memory/` folders. **No memories are lost** — your `.md` files are the source of truth. Run `--dry-run` first if you want to see the plan without changing anything:
+
+```bash
+mnemos migrate --backend sqlite-vec --dry-run
+```
+
+`mnemos init` and every runtime error path also suggest this command, so a user seeing an unfamiliar traceback has an actionable recovery line.
+
+### Switching back to ChromaDB
+
+Same command, other way around:
+
+```bash
+mnemos migrate --backend chromadb
+```
+
+Backups are kept under `<palace>/.chroma.bak-YYYY-MM-DD/` and `<palace>/search.sqlite3.bak-YYYY-MM-DD` — delete them manually when you're confident the new backend is good.
+
 ## Architecture
 
 ```
@@ -245,7 +283,8 @@ Claude Code / Cursor / ChatGPT
   +-----|------|------+
         |      |
    ChromaDB   SQLite
-   (dual)     (knowledge graph)
+   (or        (knowledge graph)
+   sqlite-vec)
     |    |
   raw  mined       ← Reciprocal Rank Fusion merge
     |    |
