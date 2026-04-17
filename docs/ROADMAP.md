@@ -585,10 +585,14 @@ güvenle geçmesini ve hata sırasında yol bulmasını sağlamak.
   yeni architectural-line: "backend count stays at two" + 3. backend PR'ı
   için yüksek bar kriteri.
 
-- [ ] **3.14f Pilot + PyPI release v0.3.1** *(~1h)*
-  Clean throwaway vault'ta end-to-end: init → sqlite-vec seç → mine →
-  search → migrate --backend chromadb → re-search. Sorun varsa düzelt,
-  wheel + sdist build, PyPI upload, GitHub release tag.
+- [~] **3.14f Pilot + PyPI release v0.3.1** *(pilot + build done 2026-04-17)*
+  Clean vault pilot (`docs/pilots/2026-04-17-v0.3.1-backend-pilot.md`) init →
+  sqlite-vec → mine → dry-run migrate → real migrate → migrate back → search
+  → same-backend noop — hepsi yeşil. Version bump `0.3.0 → 0.3.1`, wheel +
+  sdist build başarılı (`dist/mnemos_dev-0.3.1-*`), kritik dosyalar (migrate,
+  errors, auto_refine_hook, _resources) wheel'de mevcut — 3.10a package-data
+  bug'ı tekrar etmedi. **Kalan:** `twine upload` (kullanıcı tarafından) +
+  `git tag v0.3.1` + GitHub release.
 
 ### Başarı kriterleri
 

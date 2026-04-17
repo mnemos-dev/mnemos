@@ -1,7 +1,7 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-16 (v0.3.0 released to PyPI + GitHub)
-**Stable PyPI version:** `v0.3.0` · **Next:** `v0.4.0` (AI Boost / Phase 1)
+**Last updated:** 2026-04-17 (v0.3.1 Backend UX)
+**Stable PyPI version:** `v0.3.0` · **Preparing:** `v0.3.1` (Backend UX) · **After:** `v0.4.0` (AI Boost / Phase 1)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
 This file is the single-glance answer to: *why does Mnemos exist, what can it

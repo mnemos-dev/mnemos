@@ -12,7 +12,7 @@
     <img src="https://img.shields.io/badge/inspired%20by-MemPalace-purple.svg" alt="Inspired by MemPalace">
   </a>
   <a href="https://github.com/mnemos-dev/mnemos/releases">
-    <img src="https://img.shields.io/badge/version-0.3.0-orange.svg" alt="v0.3.0">
+    <img src="https://img.shields.io/badge/version-0.3.1-orange.svg" alt="v0.3.1">
   </a>
 </p>
 

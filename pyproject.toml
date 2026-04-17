@@ -7,7 +7,7 @@ packages = ["mnemos"]
 
 [project]
 name = "mnemos-dev"
-version = "0.3.0"
+version = "0.3.1"
 description = "Obsidian-native AI memory palace with semantic search"
 readme = "README.md"
 license = "MIT"
