@@ -180,29 +180,43 @@ gap.
   the picker could refine an in-progress transcript and silently
   lose later turns.
 
+### Released — v0.3.1 Backend UX (2026-04-17, GitHub)
+
+- ✅ **2026-04-17 parity benchmark** — sqlite-vec ve ChromaDB LongMemEval
+  10q subset'inde dördüncü ondalığa kadar aynı: R@5=0.90, R@10=0.90,
+  NDCG@10=0.7393, 8027 drawer, ~62 dk. Backend seçimi recall-nötr.
+- ✅ **`mnemos init` backend prompt** — `use_llm` sonrası, yaml yazımından
+  önce. [C]hromaDB (default) / [S]qlite-vec, TR+EN i18n, Windows+Py3.14
+  platform hint. Re-run idempotent (yaml'da `search_backend` varsa sormaz).
+- ✅ **`mnemos migrate --backend X`** — pre-flight plan (drawer + source
+  file sayısı + süre tahmini ±%30), `--dry-run`, dated backups (aynı gün
+  ikinci migrate `.bak-DATE.2` suffix), yaml update, mine_log clear, rebuild,
+  `--no-rebuild` opt-out, drawer-drop uyarısı (>%20 düşüş → "backup preserved").
+- ✅ **`BackendInitError` wrapper** — ChromaDB HNSW / sqlite-vec DatabaseError
+  gibi init hataları tek satır "use `mnemos migrate --backend <other>`"
+  önerisiyle surface oluyor. Traceback `--verbose` için saklı.
+- ✅ **`mnemos status` backend satırı** — `Backend: <name> (<path> · N drawers · X MB)`.
+  `SearchBackend.storage_path()` abstract + `get_stats()["storage_bytes"]`.
+- ✅ **README Troubleshooting + hero tweak** — "Two vector backends" vurgusu,
+  index corruption → migrate sqlite-vec recipe. CONTRIBUTING "backend count
+  stays at two" architectural line (Qdrant/LanceDB gibi 3. backend PR'ı için
+  yüksek bar).
+- ✅ **Miner regression hotfix** — `_dedup_by_id` bulk indexer'da duplicate
+  drawer ID'yi tolere ediyor (v0.2 bulk API sonrası çıkan crash).
+- ✅ **Clean-vault pilot** (`docs/pilots/2026-04-17-v0.3.1-backend-pilot.md`):
+  init → sqlite-vec → mine → dry-run migrate → real migrate → migrate back
+  → search → same-backend noop hepsi yeşil. Tag `v0.3.1` + GitHub release at
+  <https://github.com/mnemos-dev/mnemos/releases/tag/v0.3.1> (wheel + sdist
+  asset'li). **PyPI upload pending** (kullanıcı tarafından).
+
 ### Next session starts here
 
-v0.3 tamamlandı + production hardening yapıldı (3.11-3.13). Tüm Claude Code
-geçmişi (122 transcript → 52 OK note + 70 SKIP) refine + mine edildi,
-backlog **0**. Vault'ta 66 Sessions/*.md notu aranabilir durumda.
+v0.3.1 GitHub'da canlı, PyPI upload bekliyor. v0.3 tamamlandı + production
+hardening yapıldı (3.11-3.14). Tüm Claude Code geçmişi (122 transcript →
+52 OK + 70 SKIP) refine + mine edildi. Kod iki backend'i ship'liyor ve
+parity ile destekliyor; migrate/error UX kullanıcı-hazır.
 
-**v0.3.1 Backend UX sırada** — ROADMAP §v0.3.1:
-
-1. **3.14c BackendInitError wrapper** — ChromaDB/sqlite-vec init hatasında
-   `mnemos migrate --backend X` önerisi
-2. **3.14e `mnemos status` backend satırı** — kullanıcı hangi backend'de?
-3. **3.14b `mnemos migrate --backend X`** — backup + rebuild + rollback
-4. **3.14a `mnemos init` backend prompt** — i18n + platform hint
-5. **3.14d README Troubleshooting** — index corruption → migrate
-6. **3.14f Pilot + PyPI v0.3.1 release**
-
-Motivasyon: 2026-04-17 parity benchmark'ı sqlite-vec ve ChromaDB'nin
-dördüncü ondalığa kadar aynı sayılar verdiğini gösterdi (R@5=0.90). Kod iki
-backend'i destekliyor ama external user keşfedemiyor. MemPalace (42K★)
-aynı ChromaDB sorunlarını hâlâ açık issue'da tutuyor — bizde UX tamam
-olursa gerçek farklılaştırıcı.
-
-**v0.3.1 sonrası v0.4 (AI Boost / Phase 1)** — ROADMAP §v0.4.0:
+**v0.4 (AI Boost / Phase 1) sırada** — ROADMAP §v0.4.0:
 
 1. **4.1 Phase 1 design spec** — `docs/specs/YYYY-MM-DD-phase1-ai-boost-design.md`
 2. **4.2 LLM mining** — Claude API regex'in yakaladığını doğrular + emotional hall
