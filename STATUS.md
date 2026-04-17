@@ -182,7 +182,11 @@ gap.
 
 ### Next session starts here
 
-v0.3 tamamlandı. v0.4 (AI Boost / Phase 1) sırada — ROADMAP §v0.4.0:
+v0.3 tamamlandı + production hardening yapıldı (3.11-3.13). Tüm Claude Code
+geçmişi (122 transcript → 52 OK note + 70 SKIP) refine + mine edildi,
+backlog **0**. Vault'ta 66 Sessions/*.md notu aranabilir durumda.
+
+v0.4 (AI Boost / Phase 1) sırada — ROADMAP §v0.4.0:
 
 1. **4.1 Phase 1 design spec** — `docs/specs/YYYY-MM-DD-phase1-ai-boost-design.md`
 2. **4.2 LLM mining** — Claude API regex'in yakaladığını doğrular + emotional hall
@@ -191,22 +195,22 @@ v0.3 tamamlandı. v0.4 (AI Boost / Phase 1) sırada — ROADMAP §v0.4.0:
 5. **4.5 Benchmark tekrar** — Recall@5 ≥ %95, Recall@10 ≥ %97 hedefi
 6. **4.6 PyPI release v0.4.0**
 
-**3.7 canlı doğrulama sonucu (2026-04-16):** kasamd vault'unda 6 gerçek
-session JSONL otomatik refine + mine edildi, subscription quota kullanıldı
-(0 API credit). Hook 5 ayrı bug içinden (marker format, cmd /c quoting,
-API key precedence, interactive cmd bypass, backslash mangling) turn-by-turn
-fix'lerle geçti. Plan'daki `## Pilot outcomes` bölümü tüm zinciri kaydediyor.
+**3.11-3.13 production hardening özeti (2026-04-17):**
+- 3.11: `MIN_USER_TURNS=3` noise filter + `last_ok/last_skip` truthful status
+- 3.12: PID marker active-session exclusion (multi-window safe)
+- 3.12b: mtime fallback (pre-marker sessions) + wrapper status guard
+- 3.12c: per-session statusline (`triggering_session_id`) + one-shot simplification
+  (Claude Code statusline'ı sürekli poll etmiyor — debug logla kanıtlandı)
+- 3.13: 53 backlog batch temizliği (5 paralel subagent triage + 34 `claude --print`
+  refine). Final: ledger 122 entry (52 OK / 70 SKIP), backlog 0.
 
-Aktif bug gözlemleri (3.7 canlı test'inden): bir JSONL refine'ı tek seferlik
-`exit=1` döndü (izole, flow etkilenmedi). Bir ledger satırında `\t` escape
-render bozukluğu var (kozmetik — `_read_ledger_paths` tolere ediyor).
-İkisi de v0.3.0 blocker değil, 3.9 pilotu benzerini üretirse incele.
+### Practical stats (author's vault, 2026-04-17)
 
-### Practical stats (author's vault)
-
-- 277 drawers across 9 wings, 2-language (TR+EN) regex mining
+- 277+ drawers across 9 wings, 2-language (TR+EN) regex mining
 - Cosine search scores healthy at 0.30–0.70 range
-- 222 Claude Code JSONL transcripts awaiting refinement (pilot: 2 OK / 3 SKIP out of 5 sampled)
+- 66 refined session notes in `Sessions/` (52 OK from 122 processed transcripts)
+- Backlog: **0** — all Claude Code JSONL transcripts processed
+- Auto-refine hook processes 3 closed transcripts per new session start
 
 ---
 

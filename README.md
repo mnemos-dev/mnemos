@@ -69,9 +69,11 @@ mnemos mine Sessions/                   # extract memories into the palace
 Or skip the manual flow above and let `mnemos init` walk you through everything. Add sources later with `mnemos import claude-code`, `mnemos import chatgpt <export.json>`, etc.
 
 After init, every new Claude Code session automatically refines + mines the
-most recent transcripts in the background (via a SessionStart hook installed
-by `mnemos init`). Check your statusline for live progress, or tail
-`<vault>/.mnemos-hook.log`.
+most recent closed transcripts in the background (via a SessionStart hook
+installed by `mnemos init`). The statusline shows a one-shot snapshot at
+session start; check `<vault>/.mnemos-hook.log` for detailed progress.
+Open sessions are protected — PID-based markers ensure no transcript is
+refined while its window is still active.
 
 Future Claude Code sessions automatically pull context via `mnemos_wake_up` + `mnemos_search`.
 

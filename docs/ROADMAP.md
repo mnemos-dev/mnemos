@@ -496,6 +496,23 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
   - `pick_recent_excludes_active_sessions` (mevcut exclude param ile çalışır)
   - `compute_backlog(active_paths=)` (active excluded, None=backward compat)
 
+- [x] **3.12c Per-session statusline + one-shot sadeleştirme** *(commit `a04a1dc` + `1f7e296`, 2026-04-17)*
+  Claude Code statusline komutunu session başında bir kez çağırıyor
+  (sürekli poll yok — debug logla kanıtlandı). Snippet buna göre
+  yeniden yazıldı: elapsed timer, running tally, stale-idle TTL
+  kaldırıldı. `triggering_session_id` eklendi — sadece refine'ı
+  tetikleyen session sonucu görür, diğer pencereler sessiz kalır.
+  Canlı testte gözlemlenen sorun: başka penceredeki "last refine
+  4m ago" yazısı kullanıcıda "kendini refine ediyor" izlenimi
+  yaratıyordu. Artık yaratmıyor.
+
+- [x] **3.13 Backlog batch temizliği** *(2026-04-17)*
+  Tüm 53 unprocessed transcript tek seferde işlendi. 5 paralel
+  subagent triage yaptı (OK/SKIP karar), ardından 34 OK dosya
+  `claude --print --dangerously-skip-permissions` ile paralel (3'er)
+  refine edildi. 19 SKIP ledger'a yazıldı. Final: 122 ledger entry
+  (52 OK, 70 SKIP), backlog **0**, Sessions/ altında 66 .md not.
+
 ### Başarı kriterleri
 
 - [x] External user, README'deki 5 adımı izleyerek clean vault'ta çalışır mnemos kurabiliyor *(3.9 pilot doğruladı)*
@@ -503,6 +520,7 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
 - [x] `.mnemos-pending.json` resume çalışıyor — oturum kesilirse baştan başlamak gerekmiyor *(3.3 + 3.4a)*
 - [x] `mnemos import` 5 formatın hepsini destekliyor *(3.5: claude-code/chatgpt/slack/markdown/memory)*
 - [x] Skill install (junction/symlink) dokümante + test edilmiş *(3.6 CONTRIBUTING + 3.1 SKILL.md)*
+- [x] Auto-refine hook production-hardened: noise filter, PID exclusion, mtime fallback, per-session statusline, backlog 0 *(3.11-3.13)*
 
 ---
 
