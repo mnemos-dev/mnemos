@@ -601,6 +601,73 @@ def cmd_search(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 
+def cmd_migrate(args: argparse.Namespace) -> None:
+    """Migrate the vault's vector backend (3.14b)."""
+    vault_path = _resolve_vault(args.vault)
+    _require_vault(vault_path, "migrate")
+
+    cfg = load_config(vault_path)
+
+    from mnemos.migrate import migrate as run_migrate
+
+    if args.dry_run:
+        result = run_migrate(cfg, new_backend=args.backend, dry_run=True)
+    else:
+        if cfg.search_backend != args.backend:
+            print(
+                f"Migrating {cfg.search_backend} → {args.backend}. "
+                f"Rebuild may take several minutes. Do not Ctrl+C."
+            )
+        result = run_migrate(
+            cfg,
+            new_backend=args.backend,
+            no_rebuild=args.no_rebuild,
+        )
+
+    _print_migration_result(result, cfg)
+
+
+def _print_migration_result(result, cfg: "MnemosConfig") -> None:  # type: ignore[name-defined]
+    """Render a MigrationResult in a human-readable block."""
+    if result.status == "noop":
+        print(f"Already on backend '{result.to_backend}'. Nothing to do.")
+        return
+
+    if result.status == "dry-run":
+        plan = result.plan
+        lo_min, hi_min = plan.estimate_minutes_range()
+        src_list = ", ".join(f"{d}/" for d in plan.source_dirs) or "(none found)"
+        print("Migration plan (dry-run, no files changed):")
+        print(f"  From:         {plan.from_backend}")
+        print(f"  To:           {plan.to_backend}")
+        print(f"  Drawers now:  {plan.current_drawers}")
+        print(f"  Source files: {plan.source_files} .md in {src_list}")
+        if plan.current_drawers == 0:
+            print("  Note:         current index is empty — rebuild will start from scratch.")
+        elif plan.source_files == 0:
+            print("  Warning:      no source .md files found under Sessions/, Topics/, memory/.")
+            print("                Rebuild would produce an empty index. Pass --no-rebuild to")
+            print("                update yaml only, or restore your source files before running.")
+        print(f"  Time est.:    ~{lo_min}–{hi_min} minutes (based on 0.46 s/drawer ±30%)")
+        return
+
+    # migrated
+    delta = result.drawers_after - result.drawers_before
+    sign = "+" if delta >= 0 else ""
+    print(f"Migrated {result.from_backend} → {result.to_backend}.")
+    print(f"  Drawers: {result.drawers_before} → {result.drawers_after}  ({sign}{delta})")
+    if result.backup_path:
+        print(f"  Backup:  {result.backup_path}")
+    if (
+        result.drawers_before > 0
+        and result.drawers_after < int(result.drawers_before * 0.8)
+    ):
+        print(
+            f"  Warning: rebuild produced fewer drawers than before. "
+            f"Missing source files? Backup preserved so you can restore."
+        )
+
+
 def _format_bytes(n: int) -> str:
     """Human-readable byte count: 1536 → '1.5 KB', 42_336_000 → '42.3 MB'."""
     if n < 1024:
@@ -862,6 +929,31 @@ def main() -> None:
     )
     parser_install_statusline.add_argument("--uninstall", action="store_true")
     parser_install_statusline.set_defaults(func=cmd_install_statusline)
+
+    # ------------------------------------------------------------------
+    # migrate
+    # ------------------------------------------------------------------
+    parser_migrate = subparsers.add_parser(
+        "migrate",
+        help="Switch vector backend (chromadb ↔ sqlite-vec) safely",
+    )
+    parser_migrate.add_argument(
+        "--backend",
+        required=True,
+        choices=["chromadb", "sqlite-vec"],
+        help="Target backend — the vault's mnemos.yaml will be updated and the index rebuilt.",
+    )
+    parser_migrate.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the migration plan (drawers, source files, time estimate) without changing anything.",
+    )
+    parser_migrate.add_argument(
+        "--no-rebuild",
+        action="store_true",
+        help="Update yaml + back up old storage but skip the rebuild (advanced; you re-mine manually later).",
+    )
+    parser_migrate.set_defaults(func=cmd_migrate)
 
     # ------------------------------------------------------------------
     # benchmark
