@@ -287,15 +287,21 @@ class MnemosApp:
     # ------------------------------------------------------------------
 
     def handle_status(self) -> dict:
-        """Return current status: drawer count, vault path, wings."""
+        """Return current status: drawer count, vault path, wings, backend."""
         stats = self.search_engine.get_stats()
         wings = self.palace.list_wings()
+        sp = self.search_engine.storage_path()
 
         return {
             "total_drawers": stats["total_drawers"],
             "vault_path": self.config.vault_path,
             "wings": wings,
             "wings_detail": stats.get("wings", {}),
+            "backend": {
+                "name": self.config.search_backend,
+                "path": str(sp) if sp is not None else None,
+                "storage_bytes": stats.get("storage_bytes", 0),
+            },
         }
 
     # ------------------------------------------------------------------

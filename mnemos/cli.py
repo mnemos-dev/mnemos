@@ -601,8 +601,21 @@ def cmd_search(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _format_bytes(n: int) -> str:
+    """Human-readable byte count: 1536 → '1.5 KB', 42_336_000 → '42.3 MB'."""
+    if n < 1024:
+        return f"{n} B"
+    units = ["KB", "MB", "GB", "TB"]
+    value = float(n)
+    for unit in units:
+        value /= 1024.0
+        if value < 1024.0 or unit == units[-1]:
+            return f"{value:.1f} {unit}"
+    return f"{value:.1f} TB"
+
+
 def cmd_status(args: argparse.Namespace) -> None:
-    """Print memory palace status as JSON."""
+    """Print memory palace status — human backend line + full JSON."""
     vault_path = _resolve_vault(args.vault)
     _require_vault(vault_path, "status")
 
@@ -612,6 +625,22 @@ def cmd_status(args: argparse.Namespace) -> None:
 
     app = MnemosApp(cfg)
     result = app.handle_status()
+
+    # Human-readable backend summary line (3.14e)
+    b = result.get("backend") or {}
+    name = b.get("name") or "?"
+    path_str: str
+    raw_path = b.get("path")
+    if raw_path:
+        p = Path(raw_path)
+        path_str = (p.name + "/") if p.is_dir() else p.name
+    else:
+        path_str = "in-memory"
+    bytes_ = int(b.get("storage_bytes") or 0)
+    size_str = _format_bytes(bytes_) if bytes_ else "empty"
+    total = int(result.get("total_drawers") or 0)
+    print(f"Backend: {name} ({path_str} · {total} drawers · {size_str})")
+    print()
     print(json.dumps(result, indent=2, ensure_ascii=False))
 
 

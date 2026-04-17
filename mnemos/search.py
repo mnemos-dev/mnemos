@@ -91,6 +91,18 @@ class SearchBackend(ABC):
     @abstractmethod
     def get_stats(self) -> dict: ...
 
+    def storage_path(self) -> Path | None:
+        """Return the on-disk path for this backend's index, or None in memory.
+
+        Used by ``mnemos status`` to show users which file/directory backs the
+        current vector index. File-based backends (sqlite-vec) return a
+        concrete file; directory-based backends (ChromaDB) return the root
+        dir. In-memory backends return ``None``.
+
+        Default returns ``None`` — subclasses override.
+        """
+        return None
+
     def close(self) -> None:  # noqa: D401
         """Optional hook for flushing/closing resources before exit."""
 
@@ -105,6 +117,29 @@ class SearchBackend(ABC):
 # ---------------------------------------------------------------------------
 # Shared helpers (metadata cleaning, RRF)
 # ---------------------------------------------------------------------------
+
+
+def _path_size_bytes(path: Path | None) -> int:
+    """Total bytes consumed by *path* — file size, or recursive dir size.
+
+    Returns 0 when the path is None, missing, or unreadable. Swallows per-file
+    errors so a half-written index still produces a best-effort total.
+    """
+    if path is None or not path.exists():
+        return 0
+    if path.is_file():
+        try:
+            return path.stat().st_size
+        except OSError:
+            return 0
+    total = 0
+    for child in path.rglob("*"):
+        if child.is_file():
+            try:
+                total += child.stat().st_size
+            except OSError:
+                continue
+    return total
 
 
 def _dedup_by_id(
@@ -186,6 +221,7 @@ class ChromaBackend(SearchBackend):
             mined_name = f"{self.MINED_COLLECTION_NAME}_{uid}"
             raw_name = f"{self.RAW_COLLECTION_NAME}_{uid}"
             self._write_lock = None
+            self._storage_path: Path | None = None
         else:
             chroma_path = config.chromadb_full_path
             self._client = chromadb.PersistentClient(path=str(chroma_path))
@@ -195,6 +231,7 @@ class ChromaBackend(SearchBackend):
             self._write_lock = FileLock(
                 str(lock_path), timeout=self.WRITE_LOCK_TIMEOUT
             )
+            self._storage_path = chroma_path
 
         self._collection = self._client.get_or_create_collection(
             name=mined_name, metadata={"hnsw:space": "cosine"},
@@ -292,7 +329,15 @@ class ChromaBackend(SearchBackend):
                     if wing_name:
                         wings[wing_name] = wings.get(wing_name, 0) + 1
                 offset += batch_size
-        return {"total_drawers": total, "wings": wings, "raw_documents": raw_total}
+        return {
+            "total_drawers": total,
+            "wings": wings,
+            "raw_documents": raw_total,
+            "storage_bytes": _path_size_bytes(self._storage_path),
+        }
+
+    def storage_path(self) -> Path | None:
+        return self._storage_path
 
     # ------------------------------------------------------------------
     # ChromaDB-specific helpers
@@ -721,7 +766,15 @@ class SqliteVecBackend(SearchBackend):
             "SELECT wing, COUNT(*) FROM mined WHERE wing IS NOT NULL AND wing != '' GROUP BY wing"
         ):
             wings[row[0]] = row[1]
-        return {"total_drawers": total, "wings": wings, "raw_documents": raw_total}
+        return {
+            "total_drawers": total,
+            "wings": wings,
+            "raw_documents": raw_total,
+            "storage_bytes": _path_size_bytes(self._db_path),
+        }
+
+    def storage_path(self) -> Path | None:
+        return self._db_path
 
 
 # ---------------------------------------------------------------------------
