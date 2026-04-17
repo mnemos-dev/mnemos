@@ -1034,3 +1034,55 @@ def test_read_status_phase(tmp_path):
     assert read_status_phase(tmp_path) == "refining"
     write_status(tmp_path, "idle", 3, 3, 10, False, "2026-04-17T00:00:00+00:00")
     assert read_status_phase(tmp_path) == "idle"
+
+
+# ---------------------------------------------------------------------------
+# v0.3 task 3.12c — per-session statusline (triggering_session_id)
+# ---------------------------------------------------------------------------
+
+
+def test_write_status_includes_triggering_session_id(tmp_path):
+    """Status JSON must carry the triggering session's ID so the snippet can
+    filter: only the session that fired the hook sees the progress."""
+    from mnemos.auto_refine import write_status
+
+    write_status(
+        tmp_path, "refining", 0, 3, 10, False, "2026-04-17T00:00:00+00:00",
+        triggering_session_id="abc-123",
+    )
+    data = json.loads((tmp_path / ".mnemos-hook-status.json").read_text(encoding="utf-8"))
+    assert data["triggering_session_id"] == "abc-123"
+
+
+def test_write_status_omits_triggering_session_id_when_unset(tmp_path):
+    """Backward compat: if not passed, field absent from JSON."""
+    from mnemos.auto_refine import write_status
+
+    write_status(tmp_path, "refining", 0, 3, 10, False, "2026-04-17T00:00:00+00:00")
+    data = json.loads((tmp_path / ".mnemos-hook-status.json").read_text(encoding="utf-8"))
+    assert "triggering_session_id" not in data
+
+
+def test_run_passes_triggering_session_id_through_to_status(tmp_path):
+    """_run_locked must propagate triggering_session_id to every write_status call
+    so the snippet can filter throughout the entire refine+mine cycle."""
+    from mnemos.auto_refine import run
+
+    projects = tmp_path / "projects"
+    a = _write_jsonl(projects, "a.jsonl", 1_000_000, user_turns=5)
+    ledger = tmp_path / "ledger.tsv"
+    ledger.touch()
+
+    run(
+        vault=tmp_path,
+        projects_dir=projects,
+        ledger_path=ledger,
+        picked=[a],
+        reminder_active=False,
+        started_at="2026-04-17T00:00:00+00:00",
+        runner=_ledger_writing_runner(ledger, {a: "OK"}),
+        triggering_session_id="my-session-xyz",
+    )
+
+    data = json.loads((tmp_path / ".mnemos-hook-status.json").read_text(encoding="utf-8"))
+    assert data.get("triggering_session_id") == "my-session-xyz"

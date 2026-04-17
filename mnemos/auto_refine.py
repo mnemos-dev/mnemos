@@ -335,6 +335,7 @@ def write_status(
     last_finished_at: str | None = None,
     last_ok: int | None = None,
     last_skip: int | None = None,
+    triggering_session_id: str | None = None,
 ) -> Path:
     """Atomically write the statusline state file (tmp + os.replace).
 
@@ -368,6 +369,8 @@ def write_status(
         payload["last_ok"] = last_ok
     if last_skip is not None:
         payload["last_skip"] = last_skip
+    if triggering_session_id:
+        payload["triggering_session_id"] = triggering_session_id
 
     fd, tmp_name = tempfile.mkstemp(prefix=".mnemos-hook-status.", suffix=".tmp", dir=str(path.parent))
     try:
@@ -445,6 +448,7 @@ def run(
     reminder_active: bool,
     started_at: str,
     runner: Runner | None = None,
+    triggering_session_id: str = "",
 ) -> None:
     """Background orchestrator: refine each picked JSONL, mine, update state.
 
@@ -468,6 +472,7 @@ def run(
                 reminder_active=reminder_active,
                 started_at=started_at,
                 runner=runner,
+                triggering_session_id=triggering_session_id,
             )
     except Timeout:
         return
@@ -482,6 +487,7 @@ def _run_locked(
     reminder_active: bool,
     started_at: str,
     runner: Runner,
+    triggering_session_id: str = "",
 ) -> None:
     total = len(picked)
     log_path = Path(vault) / HOOK_LOG_FILENAME
@@ -499,6 +505,7 @@ def _run_locked(
         write_status(
             vault, "refining", i, total, backlog, reminder_active, started_at,
             last_ok=ok_count, last_skip=skip_count,
+            triggering_session_id=triggering_session_id,
         )
         with log_path.open("a", encoding="utf-8") as fh:
             fh.write(f"[{datetime.now(timezone.utc).isoformat(timespec='seconds')}] refine {jsonl}\n")
@@ -525,6 +532,7 @@ def _run_locked(
         write_status(
             vault, "mining", total, total, backlog, reminder_active, started_at,
             last_ok=ok_count, last_skip=skip_count,
+            triggering_session_id=triggering_session_id,
         )
         sessions_dir = Path(vault) / "Sessions"
         rc = runner([sys.executable, "-m", "mnemos.cli", "--vault", str(vault), "mine", str(sessions_dir)])
@@ -550,4 +558,5 @@ def _run_locked(
         last_finished_at=finished_at,
         last_ok=ok_count if picked else None,
         last_skip=skip_count if picked else None,
+        triggering_session_id=triggering_session_id,
     )

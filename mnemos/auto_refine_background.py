@@ -14,6 +14,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ledger", required=True)
     parser.add_argument("--started-at", required=True)
     parser.add_argument("--reminder-active", required=True, choices=["0", "1"])
+    parser.add_argument("--triggering-session-id", default="")
     parser.add_argument("--picked", nargs="*", default=[])
     args = parser.parse_args(argv)
 
@@ -24,6 +25,7 @@ def main(argv: list[str] | None = None) -> int:
         picked=[Path(p) for p in args.picked],
         reminder_active=args.reminder_active == "1",
         started_at=args.started_at,
+        triggering_session_id=args.triggering_session_id,
     )
     return 0
 

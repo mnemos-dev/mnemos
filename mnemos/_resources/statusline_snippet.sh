@@ -12,6 +12,19 @@ _mnemos_statusline() {
     # Require jq; silently skip if missing
     command -v jq >/dev/null 2>&1 || return 0
 
+    # v0.3.12c: only render in the session that triggered the refine.
+    # The parent statusline script stores Claude Code's stdin JSON in $input.
+    # If we can extract session_id and it doesn't match, stay silent — the
+    # refine belongs to another window.
+    local trigger_id my_session_id
+    trigger_id=$(jq -r '.triggering_session_id // ""' "$status_file")
+    if [ -n "$trigger_id" ] && [ -n "$input" ]; then
+        my_session_id=$(echo "$input" | jq -r '.session_id // ""' 2>/dev/null)
+        if [ -n "$my_session_id" ] && [ "$trigger_id" != "$my_session_id" ]; then
+            return 0
+        fi
+    fi
+
     local phase current total backlog started_at updated_at last_outcome last_finished_at last_ok last_skip
     phase=$(jq -r '.phase // "idle"' "$status_file")
     current=$(jq -r '.current // 0' "$status_file")

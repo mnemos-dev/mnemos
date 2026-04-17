@@ -168,6 +168,7 @@ def main() -> int:
                 backlog=backlog,
                 reminder_active=reminder,
                 started_at=started_at,
+                triggering_session_id=session_id,
             )
 
     if reminder:
@@ -192,6 +193,7 @@ def main() -> int:
         "--ledger", str(ledger),
         "--started-at", started_at,
         "--reminder-active", "1" if reminder else "0",
+        "--triggering-session-id", session_id,
         "--picked", *picked_args,
     ]
 
