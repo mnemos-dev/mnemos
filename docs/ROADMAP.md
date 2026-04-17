@@ -460,6 +460,16 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
     anlar
 
 - [x] **3.12 PID-based active-session exclusion** *(commit `136f49b`, 2026-04-17)*
+  **3.12b hardening** *(commit TBD, 2026-04-17)*:
+  - mtime fallback (`RECENTLY_MODIFIED_SECONDS = 1800`): PID marker'ı olmayan
+    JSONL'lar (3.12 deploy'undan önce açılmış session'lar) için mtime < 30 dk
+    ise "muhtemelen açık" sayılır → picker + backlog'dan düşer. Canlı testte
+    kanıtlanan açık: bu konuşmanın JSONL'ı marker'sız olduğu için yeni
+    session tarafından refine edilmişti.
+  - Wrapper status guard: status dosyasında `phase=refining/mining` görülürse
+    wrapper yeni `refining 0/3` YAZMAZ → çalışan worker'ın status'ünü ezmez.
+    Canlı testte "0/3 dondu" olarak gözlemlenmişti.
+  - `read_status_phase(vault)` helper → hook wrapper kullanır.
 
   **Sorun:** 3.7d sadece kendi transcript'ini (self) exclude ediyor. 3-4
   eşzamanlı Claude Code penceresi açıksa picker diğer açık session'ların

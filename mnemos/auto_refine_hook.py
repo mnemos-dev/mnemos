@@ -116,6 +116,7 @@ def main() -> int:
             compute_backlog,
             get_active_transcript_paths,
             pick_recent_jsonls,
+            read_status_phase,
             register_active_session,
             resolve_ledger_path,
             should_show_reminder,
@@ -153,19 +154,21 @@ def main() -> int:
 
     started_at = today.isoformat(timespec="seconds")
     if picked:
-        # Skip the misleading 'starting' phase that briefly snapshot-renders
-        # 'starting 0m1s' before the bg worker writes 'refining'. Write
-        # 'refining current=0' synchronously so the user immediately sees
-        # progress framing.
-        write_status(
-            vault=vault,
-            phase="refining",
-            current=0,
-            total=len(picked),
-            backlog=backlog,
-            reminder_active=reminder,
-            started_at=started_at,
-        )
+        # Only write initial status if no other bg worker is actively running.
+        # Without this guard, a second session's wrapper overwrites the first
+        # worker's in-progress "refining 2/3" with a stale "refining 0/3" that
+        # never updates (the second bg worker exits on lock timeout). v0.3.12b.
+        current_phase = read_status_phase(vault)
+        if current_phase not in ("refining", "mining"):
+            write_status(
+                vault=vault,
+                phase="refining",
+                current=0,
+                total=len(picked),
+                backlog=backlog,
+                reminder_active=reminder,
+                started_at=started_at,
+            )
 
     if reminder:
         msg = (

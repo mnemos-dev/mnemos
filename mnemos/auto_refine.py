@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Sequence
@@ -23,6 +24,11 @@ HOOK_LOG_FILENAME = ".mnemos-hook.log"
 HOOK_LOCK_FILENAME = ".mnemos-hook.lock"
 ACTIVE_SESSIONS_DIR = ".mnemos-active-sessions"
 ACTIVE_SESSION_MAX_AGE_SECONDS = 86400
+# mtime fallback for sessions started before 3.12 (no PID marker).
+# If a JSONL was modified within this window AND has no marker, assume it's
+# still being written to. 30 min is generous: most sessions either get a
+# marker on their first hook fire or are closed within minutes.
+RECENTLY_MODIFIED_SECONDS = 1800
 
 # Sessions with fewer than this many real user-typed turns are treated as
 # noise and excluded from picker + backlog. The author's vault grew a 150+
@@ -117,6 +123,26 @@ def get_active_transcript_paths(sessions_dir: Path) -> set[str]:
         else:
             marker.unlink(missing_ok=True)
     return active
+
+
+def _is_recently_modified(path: Path, threshold: int = RECENTLY_MODIFIED_SECONDS) -> bool:
+    """True if `path` was modified within the last `threshold` seconds."""
+    try:
+        return (time.time() - path.stat().st_mtime) < threshold
+    except OSError:
+        return False
+
+
+def read_status_phase(vault: Path) -> str | None:
+    """Return the current `phase` from the statusline JSON, or None."""
+    path = Path(vault) / STATUS_FILENAME
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data.get("phase")
+    except (json.JSONDecodeError, OSError):
+        return None
 
 
 def resolve_ledger_path() -> Path:
@@ -234,6 +260,10 @@ def pick_recent_jsonls(
             continue
         if min_user_turns > 0 and _count_user_turns(candidate) < min_user_turns:
             continue
+        # mtime fallback (v0.3.12b): unmarked JSONL with recent mtime is
+        # likely an active session that predates PID markers. Skip it.
+        if _is_recently_modified(candidate):
+            continue
         picked.append(candidate)
         if len(picked) >= n:
             break
@@ -268,6 +298,8 @@ def compute_backlog(
         if key in ledger_paths or key in excluded:
             continue
         if min_user_turns > 0 and _count_user_turns(candidate) < min_user_turns:
+            continue
+        if _is_recently_modified(candidate):
             continue
         total += 1
     return total

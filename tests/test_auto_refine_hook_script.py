@@ -41,6 +41,8 @@ def _run_hook(
                     "message": {"role": "assistant", "content": [{"type": "text", "text": f"a{k}"}]},
                 }))
             path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        # Old mtime so the v0.3.12b mtime-fallback doesn't filter out test fixtures
+        os.utime(path, (1_000_000, 1_000_000))
 
     env = {k: v for k, v in os.environ.items() if k != "MNEMOS_VAULT"}
     env["USERPROFILE"] = str(home)  # Windows
@@ -184,6 +186,7 @@ def test_hook_script_excludes_self_transcript_from_picks(tmp_path):
     projects_dir = home / ".claude" / "projects" / "proj"
     projects_dir.mkdir(parents=True)
     paths = []
+    # Old mtimes so the v0.3.12b mtime-fallback doesn't interfere.
     for i, mtime in enumerate([1_000_000, 2_000_000, 3_000_000]):
         p = projects_dir / f"session-{i}.jsonl"
         lines = []

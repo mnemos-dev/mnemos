@@ -321,16 +321,23 @@ def test_compute_backlog_excludes_subagent_jsonls(tmp_path):
     """Subagent path filter must exclude under /subagents/ regardless of content.
 
     Uses min_user_turns=0 so the orthogonal v0.3.11 turn-filter doesn't mask the
-    behavior under test (subagent path exclusion).
+    behavior under test (subagent path exclusion). Old mtimes avoid v0.3.12b
+    mtime-fallback interference.
     """
     from mnemos.auto_refine import compute_backlog
 
     projects = tmp_path / "projects"
     (projects / "proj").mkdir(parents=True, exist_ok=True)
-    (projects / "proj" / "a.jsonl").write_text("{}\n", encoding="utf-8")
+    a = projects / "proj" / "a.jsonl"
+    a.write_text("{}\n", encoding="utf-8")
+    os.utime(a, (1_000_000, 1_000_000))
     (projects / "proj" / "subagents").mkdir()
-    (projects / "proj" / "subagents" / "x.jsonl").write_text("{}\n", encoding="utf-8")
-    (projects / "proj" / "subagents" / "y.jsonl").write_text("{}\n", encoding="utf-8")
+    sx = projects / "proj" / "subagents" / "x.jsonl"
+    sx.write_text("{}\n", encoding="utf-8")
+    os.utime(sx, (1_000_000, 1_000_000))
+    sy = projects / "proj" / "subagents" / "y.jsonl"
+    sy.write_text("{}\n", encoding="utf-8")
+    os.utime(sy, (1_000_000, 1_000_000))
 
     ledger = tmp_path / "ledger.tsv"
     assert compute_backlog(projects, ledger, min_user_turns=0) == 1
@@ -958,3 +965,72 @@ def test_compute_backlog_no_active_paths_backward_compat(tmp_path):
     ledger = tmp_path / "ledger.tsv"
 
     assert compute_backlog(projects, ledger) == 2
+
+
+# ---------------------------------------------------------------------------
+# v0.3 task 3.12b — mtime fallback for pre-existing sessions + wrapper guard
+# ---------------------------------------------------------------------------
+
+
+def test_pick_recent_skips_recently_modified_unmarked_jsonl(tmp_path):
+    """A JSONL modified within RECENTLY_MODIFIED_SECONDS and NOT in active_paths
+    must be skipped — it's likely an open session that predates 3.12 PID markers.
+
+    This is the fallback that prevents refining a session whose window was open
+    before 3.12 was deployed (no marker yet, but mtime proves it's being written).
+    """
+    import time
+    from mnemos.auto_refine import pick_recent_jsonls
+
+    projects = tmp_path / "projects"
+    # `old` has a stale mtime — safe to pick
+    old = _write_jsonl(projects, "old.jsonl", 1_000_000, user_turns=5)
+    # `hot` has mtime = NOW — looks like it's being actively written
+    hot = _write_jsonl(projects, "hot.jsonl", time.time(), user_turns=5)
+    ledger = tmp_path / "ledger.tsv"
+
+    # No active_paths marker for `hot`, but mtime fallback should catch it
+    picked = pick_recent_jsonls(projects, ledger, n=3, exclude=set())
+    assert hot not in picked, "recently-modified unmarked JSONL must be skipped as likely-active"
+    assert old in picked
+
+
+def test_pick_recent_mtime_fallback_does_not_apply_when_marker_exists(tmp_path):
+    """If a JSONL IS in active_paths (has a PID marker), mtime is irrelevant —
+    the PID check already handles it. The mtime fallback only matters for
+    UNmarked files whose mtime is recent.
+    """
+    import time
+    from mnemos.auto_refine import pick_recent_jsonls
+
+    projects = tmp_path / "projects"
+    # Old mtime but in active_paths → excluded by active_paths, not mtime
+    old_active = _write_jsonl(projects, "old_active.jsonl", 1_000_000, user_turns=5)
+    ledger = tmp_path / "ledger.tsv"
+
+    picked = pick_recent_jsonls(projects, ledger, n=3, exclude={str(old_active)})
+    assert old_active not in picked
+
+
+def test_compute_backlog_skips_recently_modified(tmp_path):
+    """Backlog must not count recently-modified unmarked JSONLs (same logic as picker)."""
+    import time
+    from mnemos.auto_refine import compute_backlog
+
+    projects = tmp_path / "projects"
+    _write_jsonl(projects, "old.jsonl", 1_000_000, user_turns=5)
+    _write_jsonl(projects, "hot.jsonl", time.time(), user_turns=5)
+    ledger = tmp_path / "ledger.tsv"
+
+    assert compute_backlog(projects, ledger, active_paths=set()) == 1
+
+
+def test_read_status_phase(tmp_path):
+    """read_status_phase returns the current phase from the status file."""
+    from mnemos.auto_refine import read_status_phase, write_status
+
+    assert read_status_phase(tmp_path) is None  # no file yet
+    write_status(tmp_path, "refining", 1, 3, 10, False, "2026-04-17T00:00:00+00:00")
+    assert read_status_phase(tmp_path) == "refining"
+    write_status(tmp_path, "idle", 3, 3, 10, False, "2026-04-17T00:00:00+00:00")
+    assert read_status_phase(tmp_path) == "idle"
