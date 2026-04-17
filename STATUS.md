@@ -70,7 +70,7 @@ gap.
 **Quality / validation**
 - ✅ 51 tests passing
 - ✅ LongMemEval benchmark harness (`mnemos benchmark longmemeval`)
-- 🟡 First measured recall: **~70% Recall@5** on a 10-question subset (Phase 1 will push this to ≥95%)
+- 🟢 Measured recall: **~90% Recall@5** on a 10-question LongMemEval subset — both backends (ChromaDB and sqlite-vec) verified identical at R@5=0.90 / R@10=0.90 / NDCG@10=0.74 on 2026-04-17. Phase 1 target ≥95%.
 
 ### Released — `v0.3.0` First-Run Experience (2026-04-16)
 

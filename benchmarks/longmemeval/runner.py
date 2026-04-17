@@ -41,6 +41,7 @@ def run_benchmark(
     split: str = "test",
     use_llm: bool = False,
     verbose: bool = True,
+    backend: str = "chromadb",
 ) -> dict[str, Any]:
     """Run the LongMemEval benchmark and return aggregated metrics.
 
@@ -54,6 +55,7 @@ def run_benchmark(
         use_llm: Pass ``True`` to enable LLM-assisted mining (requires the
                  ``llm`` optional dependency and ``ANTHROPIC_API_KEY``).
         verbose: Print progress to stdout.
+        backend: Vector backend — ``chromadb`` (default) or ``sqlite-vec``.
 
     Returns:
         Aggregated metrics dict with keys:
@@ -96,6 +98,7 @@ def run_benchmark(
             vault_path=str(vault_path),
             languages=["en"],
             use_llm=use_llm,
+            search_backend=backend,
         )
         app = MnemosApp(cfg, chromadb_in_memory=True)
         app.palace.ensure_structure()
@@ -178,6 +181,7 @@ def run_benchmark(
     agg.update(
         {
             "mode": mode,
+            "backend": backend,
             "subset": subset,
             "split": split,
             "elapsed_seconds": round(elapsed, 2),
@@ -278,9 +282,10 @@ def _save_results(agg: dict, per_question: list[dict]) -> None:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
     mode = agg.get("mode", "combined")
+    backend = agg.get("backend", "chromadb")
 
-    summary_path = RESULTS_DIR / f"{ts}_{mode}_summary.json"
-    detail_path = RESULTS_DIR / f"{ts}_{mode}_detail.json"
+    summary_path = RESULTS_DIR / f"{ts}_{backend}_{mode}_summary.json"
+    detail_path = RESULTS_DIR / f"{ts}_{backend}_{mode}_detail.json"
 
     summary_path.write_text(json.dumps(agg, indent=2, ensure_ascii=False), encoding="utf-8")
     detail_path.write_text(

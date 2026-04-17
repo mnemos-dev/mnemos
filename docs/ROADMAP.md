@@ -54,7 +54,12 @@ Amaç: API kullanmadan MemPalace seviyesinde recall (%96+) yakalamak.
 - [x] Case-insensitive wing resolution
 - [x] Bulk indexing API (10-25x hızlı mining)
 
-İlk benchmark: 10 soruda %70 Recall@5 (Phase 1 hedefi %95+).
+Benchmark: 10 soruda **%90 Recall@5** (Phase 1 hedefi %95+).
+İlk run (2026-04-13) optimizasyon öncesi %70 idi; chunk 3000→800 + RRF
+fetch ×3 + source_path metadata ile aynı gün %90'a çıktı. 2026-04-17'de
+sqlite-vec ve ChromaDB backend'leri ayrı ayrı koşuldu — dördüncü ondalığa
+kadar aynı sayılar (R@5=0.90, NDCG@10=0.7393, 8027 drawer). Backend seçimi
+recall'u etkilemiyor; Phase 1 mining pipeline'ını hedefleyecek.
 
 ---
 
@@ -526,8 +531,9 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
 
 ## v0.4.0 — AI Boost / Phase 1 ⏸
 
-**Hedef:** Recall@5 ≥ %95 (Phase 0 baseline'ı %70 → hedef %100).
-Claude API opsiyonel; `mnemos-dev[llm]` extra'ya bağlı.
+**Hedef:** Recall@5 ≥ %95 (Phase 0 baseline'ı **%90** — her iki backend'de
+verified 2026-04-17 — → hedef %100). Claude API opsiyonel;
+`mnemos-dev[llm]` extra'ya bağlı.
 
 ### Görevler
 
