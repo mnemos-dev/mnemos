@@ -460,7 +460,7 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
     anlar
 
 - [x] **3.12 PID-based active-session exclusion** *(commit `136f49b`, 2026-04-17)*
-  **3.12b hardening** *(commit TBD, 2026-04-17)*:
+  **3.12b hardening** *(commit `b7e9f40`, 2026-04-17)*:
   - mtime fallback (`RECENTLY_MODIFIED_SECONDS = 1800`): PID marker'ı olmayan
     JSONL'lar (3.12 deploy'undan önce açılmış session'lar) için mtime < 30 dk
     ise "muhtemelen açık" sayılır → picker + backlog'dan düşer. Canlı testte
