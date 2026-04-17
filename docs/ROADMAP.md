@@ -547,11 +547,11 @@ güvenle geçmesini ve hata sırasında yol bulmasını sağlamak.
 
 ### Görevler
 
-- [ ] **3.14c BackendInitError wrapper** *(~1h)*
+- [x] **3.14c BackendInitError wrapper** *(commit `9bb916d`, 2026-04-17)*
   `mnemos/errors.py` (yeni) + `mnemos/search.py`'de factory wrapper. ChromaDB
   HNSW load veya sqlite-vec DB open hatası yakalanır, kullanıcıya "migrate
-  --backend X" önerisi bastırır. `--verbose` olmadan traceback gizli.
-  `tests/test_backend_errors.py`.
+  --backend X" önerisi bastırır. CLI main() tek noktada catch + stderr + exit 2.
+  `tests/test_backend_errors.py` 7 test; full search+miner+pending suite 59 pass.
 
 - [ ] **3.14e `mnemos status` backend bilgisi** *(~30 min)*
   `SearchBackend` abstract'a `storage_path()` eklenir; iki implement eder.
