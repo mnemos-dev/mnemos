@@ -112,8 +112,11 @@ def main() -> int:
 
     try:
         from mnemos.auto_refine import (
+            ACTIVE_SESSIONS_DIR,
             compute_backlog,
+            get_active_transcript_paths,
             pick_recent_jsonls,
+            register_active_session,
             resolve_ledger_path,
             should_show_reminder,
             write_status,
@@ -124,12 +127,21 @@ def main() -> int:
 
     projects_dir = Path.home() / ".claude" / "projects"
     ledger = resolve_ledger_path()
-    # Exclude the current session's own transcript so we never refine an
-    # in-progress conversation — its later turns would be silently dropped.
+
+    # v0.3.12: register this session + discover all active sessions so the
+    # picker never touches a transcript that's still being written.
+    sessions_dir = projects_dir / ACTIVE_SESSIONS_DIR
     self_transcript = hook_input.get("transcript_path") or ""
-    exclude = {self_transcript} if self_transcript else None
-    picked = pick_recent_jsonls(projects_dir, ledger, n=3, exclude=exclude)
-    backlog = compute_backlog(projects_dir, ledger)
+    session_id = hook_input.get("session_id") or ""
+    if session_id and self_transcript:
+        register_active_session(sessions_dir, session_id, self_transcript, os.getppid())
+    active_paths = get_active_transcript_paths(sessions_dir)
+    # Merge self-transcript (may lack session_id in older Claude Code versions)
+    if self_transcript:
+        active_paths.add(self_transcript)
+
+    picked = pick_recent_jsonls(projects_dir, ledger, n=3, exclude=active_paths)
+    backlog = compute_backlog(projects_dir, ledger, active_paths=active_paths)
 
     today = datetime.now(timezone.utc)
     state = pending_load(vault)

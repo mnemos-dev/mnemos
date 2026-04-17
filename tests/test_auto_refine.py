@@ -827,3 +827,134 @@ def test_run_last_outcome_noop_when_picked_empty(tmp_path):
 
     data = json.loads((tmp_path / ".mnemos-hook-status.json").read_text(encoding="utf-8"))
     assert data["last_outcome"] == "noop"
+
+
+# ---------------------------------------------------------------------------
+# v0.3 task 3.12 — PID-based active-session exclusion
+# ---------------------------------------------------------------------------
+
+
+def test_is_pid_alive_for_current_process():
+    """Our own PID must always be reported alive."""
+    from mnemos.auto_refine import _is_pid_alive
+    assert _is_pid_alive(os.getpid()) is True
+
+
+def test_is_pid_alive_for_dead_pid():
+    """A PID that doesn't exist must report dead."""
+    from mnemos.auto_refine import _is_pid_alive
+    # PID 0 is special (kernel); use a very high PID that's almost certainly unused.
+    assert _is_pid_alive(4_000_000) is False
+
+
+def test_register_active_session_creates_marker(tmp_path):
+    """Registering a session writes a JSON marker under .mnemos-active-sessions/."""
+    from mnemos.auto_refine import ACTIVE_SESSIONS_DIR, register_active_session
+
+    register_active_session(
+        sessions_dir=tmp_path / ACTIVE_SESSIONS_DIR,
+        session_id="abc-123",
+        transcript_path="/some/path.jsonl",
+        pid=os.getpid(),
+    )
+    marker = tmp_path / ACTIVE_SESSIONS_DIR / "abc-123.json"
+    assert marker.exists()
+    data = json.loads(marker.read_text(encoding="utf-8"))
+    assert data["pid"] == os.getpid()
+    assert data["transcript_path"] == "/some/path.jsonl"
+    assert "started_at" in data
+
+
+def test_get_active_transcript_paths_returns_live_pids(tmp_path):
+    """Active sessions (PID alive) must appear in the returned set."""
+    from mnemos.auto_refine import (
+        ACTIVE_SESSIONS_DIR,
+        get_active_transcript_paths,
+        register_active_session,
+    )
+
+    sessions_dir = tmp_path / ACTIVE_SESSIONS_DIR
+    register_active_session(sessions_dir, "s1", "/a.jsonl", os.getpid())
+    result = get_active_transcript_paths(sessions_dir)
+    assert "/a.jsonl" in result
+
+
+def test_get_active_transcript_paths_removes_dead_pids(tmp_path):
+    """Dead PIDs must be cleaned up and excluded from the result."""
+    from mnemos.auto_refine import ACTIVE_SESSIONS_DIR, get_active_transcript_paths
+
+    sessions_dir = tmp_path / ACTIVE_SESSIONS_DIR
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    marker = sessions_dir / "dead-session.json"
+    marker.write_text(json.dumps({
+        "pid": 4_000_000,  # dead
+        "transcript_path": "/dead.jsonl",
+        "started_at": "2026-04-17T00:00:00+00:00",
+    }), encoding="utf-8")
+
+    result = get_active_transcript_paths(sessions_dir)
+    assert "/dead.jsonl" not in result
+    assert not marker.exists(), "dead PID marker must be cleaned up"
+
+
+def test_get_active_transcript_paths_removes_stale_markers(tmp_path):
+    """Markers older than 24h must be removed regardless of PID liveness (PID recycling guard)."""
+    from mnemos.auto_refine import ACTIVE_SESSIONS_DIR, get_active_transcript_paths
+
+    sessions_dir = tmp_path / ACTIVE_SESSIONS_DIR
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    marker = sessions_dir / "stale.json"
+    marker.write_text(json.dumps({
+        "pid": os.getpid(),  # alive — but marker is stale
+        "transcript_path": "/stale.jsonl",
+        "started_at": "2026-04-14T00:00:00+00:00",  # 3 days ago
+    }), encoding="utf-8")
+
+    result = get_active_transcript_paths(sessions_dir)
+    assert "/stale.jsonl" not in result
+    assert not marker.exists()
+
+
+def test_get_active_transcript_paths_empty_dir(tmp_path):
+    """Non-existent or empty sessions dir → empty set, no crash."""
+    from mnemos.auto_refine import get_active_transcript_paths
+    assert get_active_transcript_paths(tmp_path / "nope") == set()
+
+
+def test_pick_recent_excludes_active_sessions(tmp_path):
+    """Picker must not return JSONLs that belong to currently-active sessions."""
+    from mnemos.auto_refine import pick_recent_jsonls
+
+    projects = tmp_path / "projects"
+    closed = _write_jsonl(projects, "closed.jsonl", 1_000_000, user_turns=5)
+    active = _write_jsonl(projects, "active.jsonl", 2_000_000, user_turns=5)
+    ledger = tmp_path / "ledger.tsv"
+
+    active_paths = {str(active)}
+    picked = pick_recent_jsonls(projects, ledger, n=3, exclude=active_paths)
+    assert active not in picked
+    assert closed in picked
+
+
+def test_compute_backlog_excludes_active_sessions(tmp_path):
+    """Active sessions must NOT inflate the backlog count (they're not 'available to process')."""
+    from mnemos.auto_refine import compute_backlog
+
+    projects = tmp_path / "projects"
+    _write_jsonl(projects, "closed.jsonl", 1_000_000, user_turns=5)
+    active = _write_jsonl(projects, "active.jsonl", 2_000_000, user_turns=5)
+    ledger = tmp_path / "ledger.tsv"
+
+    assert compute_backlog(projects, ledger, active_paths={str(active)}) == 1
+
+
+def test_compute_backlog_no_active_paths_backward_compat(tmp_path):
+    """active_paths=None means no exclusion (backward compat)."""
+    from mnemos.auto_refine import compute_backlog
+
+    projects = tmp_path / "projects"
+    _write_jsonl(projects, "a.jsonl", 1_000_000, user_turns=5)
+    _write_jsonl(projects, "b.jsonl", 2_000_000, user_turns=5)
+    ledger = tmp_path / "ledger.tsv"
+
+    assert compute_backlog(projects, ledger) == 2

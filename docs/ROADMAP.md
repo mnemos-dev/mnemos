@@ -459,6 +459,33 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
     kullanıcı sistem çalıştığını görüp picker'ın yanlış pick yaptığını
     anlar
 
+- [~] **3.12 PID-based active-session exclusion**
+
+  **Sorun:** 3.7d sadece kendi transcript'ini (self) exclude ediyor. 3-4
+  eşzamanlı Claude Code penceresi açıksa picker diğer açık session'ların
+  canlı JSONL'larını pick edip refine edebiliyor — transcript hâlâ yazılırken
+  ledger'a OK olarak işaretleniyor, sonraki turn'ler sessizce kayboluyor.
+  mtime heuristic (5 dk idle → kapalı sayılır) güvenilmez: kullanıcı
+  pencereler arası geçiş yapıyor, düşünürken idle kalabiliyor.
+
+  **Çözüm — PID marker dosyaları:**
+  - `~/.claude/projects/.mnemos-active-sessions/<session-id>.json` marker:
+    `{pid, transcript_path, started_at}`
+  - Hook wrapper `os.getppid()` ile Claude Code'un PID'ini alır → marker yazar
+  - Picker çalışmadan önce tüm marker'ları tarar:
+    - PID canlı (`kernel32.OpenProcess` / `os.kill(0)`) → transcript exclude
+    - PID ölü → marker silinir, transcript artık pick edilebilir
+    - Marker > 24h → PID recycling guard, sil
+  - `get_active_transcript_paths()` → picker `exclude=` + `compute_backlog(active_paths=)`
+  - Geriye dönük uyum: `active_paths=None` = eski davranış (mevcut testler bozulmaz)
+
+  **Test (TDD):**
+  - `_is_pid_alive` (own PID=True, dead PID=False)
+  - `register_active_session` (marker dosyası oluşur)
+  - `get_active_transcript_paths` (live=included, dead=cleaned, stale=cleaned, empty=no crash)
+  - `pick_recent_excludes_active_sessions` (mevcut exclude param ile çalışır)
+  - `compute_backlog(active_paths=)` (active excluded, None=backward compat)
+
 ### Başarı kriterleri
 
 - [x] External user, README'deki 5 adımı izleyerek clean vault'ta çalışır mnemos kurabiliyor *(3.9 pilot doğruladı)*

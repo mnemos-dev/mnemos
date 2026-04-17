@@ -169,6 +169,16 @@ gap.
   that surfaced when every pick was a `/clear → mnemos` resume
   session. Fixes the report where backlog grew 150 → 152 across two
   fresh sessions because every fire wasted picks on noise.
+- ✅ PID-based active-session exclusion (3.12): each SessionStart
+  hook registers its Claude Code parent PID in a marker file under
+  `~/.claude/projects/.mnemos-active-sessions/`. Before picking, all
+  markers are scanned — live PIDs' transcripts are excluded from
+  both picker and backlog. Dead PID markers are cleaned up (session
+  closed → transcript becomes available for next hook fire). 24 h
+  max-age safety net guards against PID recycling. Solves the
+  multi-window scenario (3-4 concurrent Claude Code sessions) where
+  the picker could refine an in-progress transcript and silently
+  lose later turns.
 
 ### Next session starts here
 

@@ -21,6 +21,8 @@ REMINDER_INTERVAL_DAYS = 7
 STATUS_FILENAME = ".mnemos-hook-status.json"
 HOOK_LOG_FILENAME = ".mnemos-hook.log"
 HOOK_LOCK_FILENAME = ".mnemos-hook.lock"
+ACTIVE_SESSIONS_DIR = ".mnemos-active-sessions"
+ACTIVE_SESSION_MAX_AGE_SECONDS = 86400
 
 # Sessions with fewer than this many real user-typed turns are treated as
 # noise and excluded from picker + backlog. The author's vault grew a 150+
@@ -33,6 +35,88 @@ MIN_USER_TURNS = 3
 _USER_TURN_SCAN_LIMIT = 500  # Scan at most N lines — 3 turns fit in well under 100 in practice.
 
 Runner = Callable[[Sequence[str]], int]
+
+
+# ---------------------------------------------------------------------------
+# Active-session tracking (v0.3 task 3.12)
+# ---------------------------------------------------------------------------
+
+
+def _is_pid_alive(pid: int) -> bool:
+    """Return True if a process with `pid` is currently running."""
+    if os.name == "nt":
+        import ctypes
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        handle = ctypes.windll.kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION, False, pid,
+        )
+        if handle:
+            ctypes.windll.kernel32.CloseHandle(handle)
+            return True
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def register_active_session(
+    sessions_dir: Path,
+    session_id: str,
+    transcript_path: str,
+    pid: int,
+) -> Path:
+    """Write a marker file so other hooks know this session is alive."""
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    marker = sessions_dir / f"{session_id}.json"
+    marker.write_text(
+        json.dumps({
+            "pid": pid,
+            "transcript_path": transcript_path,
+            "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }),
+        encoding="utf-8",
+    )
+    return marker
+
+
+def get_active_transcript_paths(sessions_dir: Path) -> set[str]:
+    """Return transcript paths of currently-running sessions.
+
+    Scans marker files under `sessions_dir`, checks each PID for liveness,
+    and cleans up stale/dead markers. Markers older than 24 h are removed
+    regardless of PID (guards against PID recycling on long-lived machines).
+    """
+    if not sessions_dir.exists():
+        return set()
+
+    now = datetime.now(timezone.utc)
+    active: set[str] = set()
+    for marker in list(sessions_dir.glob("*.json")):
+        try:
+            data = json.loads(marker.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            marker.unlink(missing_ok=True)
+            continue
+        pid = data.get("pid", 0)
+        transcript = data.get("transcript_path", "")
+        started_at = data.get("started_at", "")
+        if started_at:
+            try:
+                ts = datetime.fromisoformat(started_at)
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                if (now - ts).total_seconds() > ACTIVE_SESSION_MAX_AGE_SECONDS:
+                    marker.unlink(missing_ok=True)
+                    continue
+            except (ValueError, TypeError):
+                pass
+        if pid and _is_pid_alive(pid) and transcript:
+            active.add(transcript)
+        else:
+            marker.unlink(missing_ok=True)
+    return active
 
 
 def resolve_ledger_path() -> Path:
@@ -160,25 +244,28 @@ def compute_backlog(
     projects_dir: Path,
     ledger_path: Path,
     min_user_turns: int = MIN_USER_TURNS,
+    active_paths: set[str] | None = None,
 ) -> int:
     """Count JSONLs under `projects_dir` that are not listed in the ledger.
 
     Uses the same path normalisation as `pick_recent_jsonls` so counts stay
     consistent between the picker and the backlog reminder. Same v0.3.11
     `min_user_turns` filter applies — backlog reflects *processable* work, not
-    every JSONL sitting on disk. Without this, a 150-backlog of resume-noise
-    sessions would never shrink because the picker keeps draining noise that
-    new sessions instantly replace.
+    every JSONL sitting on disk. `active_paths` (v0.3.12) further excludes
+    transcripts that belong to currently-running sessions — they aren't
+    available to process yet so counting them would be misleading.
     """
     if not projects_dir.exists():
         return 0
 
     ledger_paths = _read_ledger_paths(ledger_path)
+    excluded = {str(Path(p)) for p in (active_paths or set())}
     total = 0
     for candidate in projects_dir.rglob("*.jsonl"):
         if _is_subagent_jsonl(candidate):
             continue
-        if str(candidate) in ledger_paths:
+        key = str(candidate)
+        if key in ledger_paths or key in excluded:
             continue
         if min_user_turns > 0 and _count_user_turns(candidate) < min_user_turns:
             continue
