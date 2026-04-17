@@ -15,8 +15,8 @@ archive; burada çelişki olursa bu dosya geçerlidir.
 | v0.1.0 | First Breath | ✅ | ✅ |
 | v0.2.0 | Full Memory (= Phase 0 Foundation) | ✅ | ✅ |
 | v0.3.0 | First-Run Experience | ✅ | ✅ |
-| **v0.3.1** | **Backend UX (keşif + migrate + recovery)** | **🔄 next** | — |
-| v0.4.0 | AI Boost (= Phase 1) | ⏸ | — |
+| v0.3.1 | Backend UX (keşif + migrate + recovery) | ✅ | ⏸ *(twine upload pending)* |
+| **v0.4.0** | **AI Boost (= Phase 1)** | **🔄 next** | — |
 | v0.5.0 | Automation (= Phase 2) | ⏸ | — |
 | v0.6.0 | Community & Ecosystem | ⏸ | — |
 
@@ -585,14 +585,13 @@ güvenle geçmesini ve hata sırasında yol bulmasını sağlamak.
   yeni architectural-line: "backend count stays at two" + 3. backend PR'ı
   için yüksek bar kriteri.
 
-- [~] **3.14f Pilot + PyPI release v0.3.1** *(pilot + build done 2026-04-17)*
-  Clean vault pilot (`docs/pilots/2026-04-17-v0.3.1-backend-pilot.md`) init →
-  sqlite-vec → mine → dry-run migrate → real migrate → migrate back → search
-  → same-backend noop — hepsi yeşil. Version bump `0.3.0 → 0.3.1`, wheel +
-  sdist build başarılı (`dist/mnemos_dev-0.3.1-*`), kritik dosyalar (migrate,
-  errors, auto_refine_hook, _resources) wheel'de mevcut — 3.10a package-data
-  bug'ı tekrar etmedi. **Kalan:** `twine upload` (kullanıcı tarafından) +
-  `git tag v0.3.1` + GitHub release.
+- [x] **3.14f Pilot + release v0.3.1** *(commit `d914e84`, 2026-04-17)*
+  Clean vault pilot ([`docs/pilots/2026-04-17-v0.3.1-backend-pilot.md`](pilots/2026-04-17-v0.3.1-backend-pilot.md))
+  tam akış yeşil. Version bump `0.3.0 → 0.3.1`, wheel + sdist build başarılı
+  — kritik dosyalar (migrate, errors, auto_refine_hook, _resources) wheel'de
+  (3.10a package-data bug'ı tekrar etmedi). Annotated tag `v0.3.1` pushed,
+  GitHub release at <https://github.com/mnemos-dev/mnemos/releases/tag/v0.3.1>
+  (wheel + sdist asset'li). PyPI upload kullanıcıya devredildi.
 
 ### Başarı kriterleri
 
