@@ -744,8 +744,21 @@ def SearchEngine(config: MnemosConfig, in_memory: bool = False) -> SearchBackend
 
     Kept as a capitalized callable so existing ``SearchEngine(cfg)`` call sites
     continue to work without modification.
+
+    Runtime init failures (HNSW load errors, sqlite DatabaseError, permission
+    issues) are wrapped in :class:`~mnemos.errors.BackendInitError` so callers
+    can surface a single actionable message — typically a ``mnemos migrate
+    --backend <other>`` suggestion. A bad *backend name* in config is not
+    wrapped; it remains a ``ValueError`` from :func:`_select_backend`.
     """
+    from mnemos.errors import BackendInitError
+
     backend = _select_backend(config)
-    if backend == "sqlite-vec":
-        return SqliteVecBackend(config, in_memory=in_memory)
-    return ChromaBackend(config, in_memory=in_memory)
+    try:
+        if backend == "sqlite-vec":
+            return SqliteVecBackend(config, in_memory=in_memory)
+        return ChromaBackend(config, in_memory=in_memory)
+    except BackendInitError:
+        raise
+    except Exception as exc:
+        raise BackendInitError(backend=backend, cause=exc) from exc

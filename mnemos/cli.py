@@ -886,7 +886,13 @@ def main() -> None:
         parser.print_help()
         sys.exit(0)
 
-    args.func(args)
+    from mnemos.errors import BackendInitError
+
+    try:
+        args.func(args)
+    except BackendInitError as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(2)
 
 
 if __name__ == "__main__":
