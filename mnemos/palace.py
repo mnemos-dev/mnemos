@@ -11,6 +11,31 @@ from mnemos.config import MnemosConfig
 from mnemos.obsidian import write_drawer_file, parse_drawer_file
 
 
+# TR character -> ASCII equivalent for fuzzy matching. Preserves
+# semantic identity across spelling variants ("Satın Alma" vs "satin-alma").
+_TR_NORMALIZE = str.maketrans({
+    'ı': 'i', 'İ': 'i', 'I': 'i',
+    'ş': 's', 'Ş': 's',
+    'ü': 'u', 'Ü': 'u',
+    'ğ': 'g', 'Ğ': 'g',
+    'ç': 'c', 'Ç': 'c',
+    'ö': 'o', 'Ö': 'o',
+})
+
+
+def _normalize_for_match(name: str) -> str:
+    """Normalize a name for case-insensitive, diacritic-insensitive, delimiter-insensitive match.
+
+    Used by Palace.canonical_wing to unify "Satın Alma", "satin-alma",
+    "SATIN_ALMA" as the same wing identity. Distinct names like
+    "Satın Alma Otomasyonu" still normalize differently.
+    """
+    if not name:
+        return ""
+    collapsed = name.translate(_TR_NORMALIZE).lower()
+    return re.sub(r"[-_ ]+", "", collapsed)
+
+
 def _sanitize_name(name: str) -> str:
     """Sanitize a wing/room name for use as a directory name.
 
@@ -45,16 +70,16 @@ class Palace:
     def canonical_wing(self, name: str) -> str:
         """Resolve *name* to an existing wing's canonical casing if one exists.
 
-        Wing names are treated case-insensitively to avoid splitting drawers
-        across sibling directories when a source file uses inconsistent casing
-        (e.g. frontmatter ``project: mnemos`` vs ``project: Mnemos``). The
-        first-created wing wins the canonical casing.
+        Matching is diacritic- and delimiter-insensitive via
+        :func:`_normalize_for_match`, so "Satın Alma" / "satin-alma" /
+        "SATIN_ALMA" all resolve to the first-created directory.
+        Distinct names (different token sequences) remain distinct wings.
         """
         sanitized = _sanitize_name(name)
         if self.config.wings_dir.exists():
-            lower = sanitized.lower()
+            target_norm = _normalize_for_match(sanitized)
             for p in self.config.wings_dir.iterdir():
-                if p.is_dir() and p.name.lower() == lower:
+                if p.is_dir() and _normalize_for_match(p.name) == target_norm:
                     return p.name
         return sanitized
 
