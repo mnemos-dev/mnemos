@@ -86,11 +86,16 @@ def test_app_mine(config: MnemosConfig, sample_session_tr: Path) -> None:
 
 
 def test_app_recall(config: MnemosConfig) -> None:
-    """create wing, recall L1, verify wing name in content."""
+    """create wing, add first drawer (triggers lazy _wing.md), recall L1."""
     app = MnemosApp(config, chromadb_in_memory=True)
     app.palace.ensure_structure()
 
     app.palace.create_wing("ProcureTrack")
+    app.palace.add_drawer(
+        wing="ProcureTrack", room="intake", hall="facts",
+        text="sample drawer body", source="test.md",
+        importance=50, entities=[], language="en",
+    )
 
     result = app.handle_recall(level="L1")
 
@@ -176,8 +181,13 @@ def test_app_wake_up(config: MnemosConfig) -> None:
         body="I am Mnemos. I remember everything.",
     )
 
-    # Create a wing
+    # Create a wing + first drawer (triggers lazy _wing.md)
     app.palace.create_wing("ProcureTrack")
+    app.palace.add_drawer(
+        wing="ProcureTrack", room="intake", hall="facts",
+        text="sample drawer body", source="test.md",
+        importance=50, entities=[], language="en",
+    )
 
     result = app.handle_wake_up()
 
