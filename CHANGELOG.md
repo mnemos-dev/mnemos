@@ -2,7 +2,38 @@
 
 All notable changes to Mnemos are documented here.
 
-## [0.3.1] — 2026-04-17 — Backend UX
+## [0.3.2] — 2026-04-18 — Palace Hygiene
+
+**Goal:** Clean up nine pipeline bugs that bled into author-vault drawers (wing-name splits, phantom rooms, date-stacked filenames, graph-view ghost nodes, entity/tag pollution) and make `mnemos mine --rebuild` a genuinely atomic, roll-backable operation. The old `--rebuild` was just `mine_log clear + re-mine` — no backup, no index wipe, no rollback. The new one moves `wings/` to `_recycled/wings-<ts>/`, drops + rebuilds both backends' indexes, resets the knowledge graph, verifies the rebuild produced drawers, and restores from backup on any failure.
+
+### Fixed
+
+- **Wing canonicalization** normalizes Turkish diacritics (`ç→c`, `ğ→g`, `ı→i`, `ö→o`, `ş→s`, `ü→u`) and flattens hyphens/underscores before matching so `Satin`, `Satın`, and `Satin-Alma-Otomasyonu` all land in the same wing. Prevents the "same topic, three wings" split that came from inconsistent source-file casing. *(A1, commit `94b624d`)*
+- **Lazy hall / wing / room summaries.** `create_wing` and `create_room` no longer pre-create five empty `hall_*/` subdirectories or write `_wing.md` / `_room.md` eagerly. The one hall needed and the two summaries land on first drawer insertion via `add_drawer`. Kills "phantom" rooms (empty halls) and "dead" wings (no summary, no drawer) that polluted the Obsidian graph view. *(A2, commit `590f302`)*
+- **`tags[0]` no longer promoted to room name.** Miner previously took the first frontmatter tag and used it as the room, which bloated room names to the full drawer title (`mnemos-—-obsidian-native-ai-memory-palace`). Room now comes from folder/keyword detection only; wing≠room invariant enforced in the pipeline. *(A3, commit `0e72389`)*
+- **Drawer filenames use source date, not mining date.** Old code prefixed `YYYY-MM-DD-` using today's date, then the slugged body kept its own date → `2026-04-18-2026-04-13-mnemos-mine-rebuild.md`. Now the slug drops any date token at a word boundary so the prefix is applied once. *(A4, commit `6707010`)*
+- **Drawer body template** gains `# <smart-title>` H1 + `> Source: [[<wikilink>]]` blockquote. Obsidian graph view now surfaces real node titles instead of ID prefixes; preview mode shows a readable header instead of a bare chunk. Handles synthetic / manual sources (`synthetic:`, `manual:`) by skipping the wikilink — no more dead `[[unknown]]` links. *(A5 + review fix, commits `13fc74c`, `9532caf`)*
+- **Entity hygiene.** Entity list no longer polluted with frontmatter `tags` (previously every mined drawer got `"tags": ["ai", "memory"]` as faux entities). Case-preserve deduplication — `OpenAI` and `openai` collapse to one, keeping the first-seen casing instead of lowercasing everything. *(A6, commit `bbfa1b8`)*
+
+### Changed
+
+- **`mnemos mine --rebuild` is now atomic.** Nine-phase orchestrator in `mnemos/rebuild.py`: resolve sources → build pre-flight plan → dry-run gate → confirm prompt → acquire `.rebuild.lock.flock` → backup wings/index/graph → `SearchBackend.drop_and_reinit()` + `KnowledgeGraph.reset()` → re-mine all sources → verify (drawers > 0 else rollback) → print result. `backend.close()` runs in `finally` so the rollback path can `shutil.rmtree` the storage on Windows without hitting `WinError 32`. Rollback restores all three from `.bak-<ts>` copies. *(B1–B7)*
+- **`--rebuild` auto-discovers sources.** Without an explicit path, reads `cfg.mining_sources` from `mnemos.yaml`, falls back to `<vault>/Sessions` + `<vault>/Topics`, raises `RebuildError` with actionable guidance if nothing is configured. `path` argument is now optional when `--rebuild` is used. *(B4, B7)*
+- **`--rebuild` UX flags.** `--dry-run` prints the plan (source counts + backup path + existing drawer count) and exits without touching anything. `--yes` skips the `Proceed? [y/N]` prompt. `--no-backup` skips the wings/index/graph backup for users who know what they're doing. *(B5, B7)*
+- **Auto-refine hook respects rebuild lock.** If `<vault>/Mnemos/.rebuild.lock.flock` is held, `mnemos/auto_refine_hook.py` silently early-exits (no status write, no bg worker spawn) so concurrent session starts don't fight the orchestrator over wings/ or the search index. Lock probe is non-blocking (50ms timeout) so stale lock files don't block the hook. *(B8, commit `7f30777`)*
+
+### Added
+
+- **`SearchBackend.drop_and_reinit()`** on the abstract base — ChromaDB deletes + recreates both `mnemos_mined` / `mnemos_raw` collections, sqlite-vec drops + recreates `mined` / `raw` / `vec_mined` / `vec_raw` tables via `_init_schema()`. Both backends remain usable for fresh indexing in the same process after the call. *(B1, commit `2059783`)*
+- **`Palace.backup_wings(timestamp)`** — atomic `shutil.move` of `wings/` into `_recycled/wings-<ts>/` with `.N` collision suffix so same-second rebuilds never overwrite each other. *(B2, commit `6a9570d`)*
+- **`KnowledgeGraph.reset()`** — truncates `triples` + `entities` tables for the rebuild path. *(B3, commit `1c4da1f`)*
+- **`mnemos/rebuild.py`** module — `RebuildError`, `_resolve_sources`, `build_plan` + `format_plan`, `rebuild_vault` orchestrator. 17 tests in `tests/test_rebuild.py`: parametrized across both backends for happy-path + drop+reinit, plus dedicated coverage for dry-run no-op, zero-drawer rollback (verified both wings and index restored), lock contention, stale lock recovery, source resolution precedence, error messages. *(B1–B6)*
+
+### Fixed (tests)
+
+- **`tests/test_server.py::test_app_recall`, `tests/test_app_wake_up`, and three `tests/test_stack.py` tests** assumed the old eager summary behavior and checked wing names in recall/wake_up content without any drawer present. Seeded a minimal drawer in each wing (and per room for the L2 case) to trigger A2's lazy summary write. No production code changes. *(commit `509582f`)*
+
+
 
 **Goal:** First-class discovery, migration, and corruption recovery for the two vector backends mnemos has been shipping since v0.2. A 2026-04-17 parity benchmark showed ChromaDB and sqlite-vec produce identical recall (R@5=0.90 on LongMemEval 10q, down to the fourth decimal), so the user-facing question is now reliability / environment fit, not quality.
 
