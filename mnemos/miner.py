@@ -21,6 +21,36 @@ from mnemos.room_detector import detect_room
 _PATTERNS_DIR = Path(__file__).parent / "patterns"
 
 # ---------------------------------------------------------------------------
+# Drawer body template helpers
+# ---------------------------------------------------------------------------
+
+_SENTENCE_END_RE = re.compile(r"[.!?]\s")
+
+
+def _first_sentence(text: str, max_len: int = 80) -> str:
+    """Return the first meaningful sentence (≤ max_len chars) as a drawer title.
+
+    Splits on sentence-ending punctuation followed by whitespace. If no
+    sentence boundary is found within max_len, returns a word-boundary
+    truncation of the leading text. Never returns an empty string for
+    non-empty input.
+    """
+    text = text.strip()
+    if not text:
+        return ""
+    m = _SENTENCE_END_RE.search(text[: max_len + 1])
+    if m:
+        end = m.end() - 1  # include the punctuation, not the whitespace
+        return text[:end].strip()
+    if len(text) <= max_len:
+        return text
+    truncated = text[:max_len]
+    last_space = truncated.rfind(" ")
+    if last_space > max_len // 2:
+        truncated = truncated[:last_space]
+    return truncated.strip()
+
+# ---------------------------------------------------------------------------
 # Turkish marker sets (for language detection)
 # ---------------------------------------------------------------------------
 

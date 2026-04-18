@@ -63,3 +63,50 @@ def test_unique_filename_uses_source_date(tmp_path: Path):
     assert filename.startswith("2026-04-13-")
     assert "2026-04-13-2026-04-13" not in filename
     assert filename.endswith(".md")
+
+
+from mnemos.miner import _first_sentence
+
+
+def test_first_sentence_full_sentence():
+    text = "We decided to use sqlite-vec. It scores identical to chromadb."
+    assert _first_sentence(text) == "We decided to use sqlite-vec."
+
+
+def test_first_sentence_long_truncated_at_80():
+    text = "This is an extremely long opening statement that definitely goes beyond the eighty character limit for drawer titles."
+    result = _first_sentence(text, max_len=80)
+    assert len(result) <= 80
+    assert not result.endswith(" ")
+
+
+def test_first_sentence_no_punctuation_returns_first_chunk():
+    text = "no punctuation here just flowing prose that keeps going and going"
+    result = _first_sentence(text, max_len=80)
+    assert len(result) <= 80
+
+
+def test_add_drawer_body_has_h1_and_source_wikilink(tmp_path: Path):
+    from mnemos.config import MnemosConfig
+    from mnemos.palace import Palace
+
+    cfg = MnemosConfig(vault_path=str(tmp_path))
+    palace = Palace(cfg)
+    palace.ensure_structure()
+
+    src_path = tmp_path / "Sessions" / "2026-04-13-demo-session.md"
+    src_path.parent.mkdir(parents=True, exist_ok=True)
+    src_path.write_text("# Demo Session\n\nExample body.", encoding="utf-8")
+
+    drawer_path = palace.add_drawer(
+        wing="Demo", room="session-log", hall="decisions",
+        text="We picked sqlite-vec for its parity. The benchmark confirmed R@5.",
+        source=str(src_path), importance=0.5, entities=["Demo"], language="en",
+    )
+
+    content = drawer_path.read_text(encoding="utf-8")
+    assert "# We picked sqlite-vec for its parity." in content
+    assert "> From [[2026-04-13-demo-session]]" in content
+    assert "· decisions" in content
+    assert "· 2026-04-13" in content
+    assert "We picked sqlite-vec for its parity. The benchmark confirmed R@5." in content

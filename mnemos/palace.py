@@ -9,6 +9,7 @@ from typing import List, Optional
 
 from mnemos.config import MnemosConfig
 from mnemos.obsidian import write_drawer_file, parse_drawer_file
+from mnemos.miner import _first_sentence
 
 
 # TR character -> ASCII equivalent for fuzzy matching. Preserves
@@ -191,6 +192,16 @@ class Palace:
 
         filepath = hall_dir / filename
 
+        # Build drawer body: H1 from first sentence + source wikilink + content
+        title = _first_sentence(text) or _slugify(text).replace("-", " ").title() or "Drawer"
+        source_stem = source_path.stem if source_path.exists() else "unknown"
+
+        body_with_header = (
+            f"# {title}\n\n"
+            f"> From [[{source_stem}]] · {hall} · {source_date}\n\n"
+            f"{text}"
+        )
+
         write_drawer_file(
             filepath,
             metadata={
@@ -202,7 +213,7 @@ class Palace:
                 "entities": entities,
                 "language": language,
             },
-            body=text,
+            body=body_with_header,
         )
 
         return filepath
