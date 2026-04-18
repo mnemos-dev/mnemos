@@ -85,3 +85,45 @@ def test_graph_reset_clears_triples_and_entities(tmp_path: Path):
     assert count == 0
     count_e = graph._conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
     assert count_e == 0
+
+
+def test_resolve_sources_uses_config_mining_sources(tmp_path: Path):
+    from mnemos.rebuild import _resolve_sources
+    (tmp_path / "MyData").mkdir()
+    cfg = MnemosConfig(vault_path=str(tmp_path))
+    from mnemos.config import MiningSource
+    cfg.mining_sources = [MiningSource(path="MyData", mode="session")]
+
+    paths = _resolve_sources(cfg, explicit_path=None)
+    assert len(paths) == 1
+    assert paths[0].name == "MyData"
+
+
+def test_resolve_sources_auto_discovers_sessions_topics(tmp_path: Path):
+    from mnemos.rebuild import _resolve_sources
+    (tmp_path / "Sessions").mkdir()
+    (tmp_path / "Topics").mkdir()
+    cfg = MnemosConfig(vault_path=str(tmp_path))
+
+    paths = _resolve_sources(cfg, explicit_path=None)
+    names = sorted(p.name for p in paths)
+    assert names == ["Sessions", "Topics"]
+
+
+def test_resolve_sources_explicit_path_wins(tmp_path: Path):
+    from mnemos.rebuild import _resolve_sources
+    (tmp_path / "Sessions").mkdir()
+    (tmp_path / "Other").mkdir()
+    cfg = MnemosConfig(vault_path=str(tmp_path))
+
+    paths = _resolve_sources(cfg, explicit_path=str(tmp_path / "Other"))
+    assert len(paths) == 1
+    assert paths[0].name == "Other"
+
+
+def test_resolve_sources_error_when_nothing(tmp_path: Path):
+    from mnemos.rebuild import _resolve_sources, RebuildError
+    cfg = MnemosConfig(vault_path=str(tmp_path))
+    with pytest.raises(RebuildError) as exc:
+        _resolve_sources(cfg, explicit_path=None)
+    assert "mining_sources" in str(exc.value).lower() or "sessions" in str(exc.value).lower()
