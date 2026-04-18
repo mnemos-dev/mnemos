@@ -183,10 +183,11 @@ class Palace:
                 body=f"# {room}\n\nRoom summary for {room} inside wing {wing}.",
             )
 
-        # Build a unique filename: <date>-<slug>-<counter>.md
-        today = date.today().isoformat()
-        slug = _slugify(text)
-        filename = _unique_filename(hall_dir, today, slug)
+        # Build a unique filename: <source_date>-<slug>.md
+        source_path = Path(source)
+        source_date = _extract_source_date(source_path) if source_path.exists() \
+            else date.today().isoformat()
+        filename = _unique_filename(hall_dir, source_date=source_date, slug_text=text)
 
         filepath = hall_dir / filename
 
@@ -287,28 +288,86 @@ class Palace:
 # Private helpers
 # ---------------------------------------------------------------------------
 
+_DATE_PREFIX_RE = re.compile(r"^\s*(\d{4}-\d{2}-\d{2})\s*[-—:–]?\s*")
+
+
+def _extract_source_date(filepath: Path) -> str:
+    """Return an ISO-8601 date string derived from a source file.
+
+    Resolution order:
+      1. Leading YYYY-MM-DD in the filename stem.
+      2. Frontmatter ``date`` or ``created`` field.
+      3. File mtime (local date).
+    """
+    stem = filepath.stem
+    m = _DATE_PREFIX_RE.match(stem)
+    if m:
+        return m.group(1)
+
+    # Try frontmatter — cheap parse of leading --- block
+    try:
+        with filepath.open("r", encoding="utf-8") as fh:
+            first = fh.readline().strip()
+            if first == "---":
+                buf = []
+                for line in fh:
+                    if line.strip() == "---":
+                        break
+                    buf.append(line)
+                fm_yaml = "".join(buf)
+                import yaml as _yaml
+                fm = _yaml.safe_load(fm_yaml) or {}
+                for key in ("date", "created"):
+                    value = fm.get(key)
+                    if value:
+                        text = str(value)[:10]
+                        if _DATE_PREFIX_RE.match(text + "-"):
+                            return text
+    except Exception:
+        pass
+
+    # mtime fallback
+    try:
+        ts = filepath.stat().st_mtime
+        return date.fromtimestamp(ts).isoformat()
+    except OSError:
+        return date.today().isoformat()
+
 
 def _slugify(text: str, max_len: int = 40) -> str:
-    """Convert text to a safe filename slug."""
+    """Convert text to a safe filename slug.
+
+    Strips leading YYYY-MM-DD prefix (common in refined session titles
+    like "2026-04-13 — Phase 0 Foundation") so drawer filenames do not
+    end up with two dates. Truncates at word boundaries.
+    """
+    text = _DATE_PREFIX_RE.sub("", text)
     slug = text.lower()
-    # Keep only alphanumerics, spaces, hyphens
     slug = "".join(c if c.isalnum() or c in (" ", "-") else "" for c in slug)
     slug = slug.strip().replace(" ", "-")
-    # Collapse repeated hyphens
     while "--" in slug:
         slug = slug.replace("--", "-")
-    return slug[:max_len].strip("-") or "drawer"
+    slug = slug.strip("-")
+    if not slug:
+        return "drawer"
+    if len(slug) <= max_len:
+        return slug
+    truncated = slug[:max_len]
+    last_hyphen = truncated.rfind("-")
+    if last_hyphen > max_len // 2:
+        truncated = truncated[:last_hyphen]
+    return truncated.rstrip("-")
 
 
-def _unique_filename(directory: Path, date_prefix: str, slug: str) -> str:
-    """Return a unique filename in *directory* with the given date prefix and slug."""
-    candidate = f"{date_prefix}-{slug}.md"
+def _unique_filename(directory: Path, source_date: str, slug_text: str) -> str:
+    """Return a unique ``<source_date>-<slug>.md`` filename inside *directory*."""
+    slug = _slugify(slug_text)
+    candidate = f"{source_date}-{slug}.md"
     if not (directory / candidate).exists():
         return candidate
-
     counter = 1
     while True:
-        candidate = f"{date_prefix}-{slug}-{counter}.md"
+        candidate = f"{source_date}-{slug}-{counter}.md"
         if not (directory / candidate).exists():
             return candidate
         counter += 1
