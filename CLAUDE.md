@@ -20,7 +20,7 @@ otomatik yüklenir. Sadece bu projeye özel kurallar burada; global kurallar
 3. `git log --oneline -10` + `git status --short` çalıştır — son commit'ler ve kirli dosyalar
 4. **<100 kelime özet ver:**
    - Proje amacı (1 cümle, STATUS §1'den)
-   - Şu anki sürüm + faz (örn. "v0.3 First-Run Experience in-progress")
+   - Şu anki sürüm + faz (örn. "v0.4 AI Boost in-progress")
    - Son tamamlanan görev + commit hash
    - Sırada bekleyen ilk görev (ilk `[ ]` veya `[~]`)
    - Kirli / uncommitted durum varsa işaret et
@@ -41,7 +41,7 @@ yine hızlıca yap ama 5. sormadan o göreve geç.
   junction'lı, bu repo canonical
 - **Canonical refinement prompt:** `docs/prompts/refine-transcripts.md`
 - **Yazarın vault'u (test/pilot için):** `C:\Users\tugrademirors\OneDrive\Masaüstü\kasamd`
-- **PyPI:** `mnemos-dev` — stable v0.2.0, v0.3.0 hazırlıkta
+- **PyPI:** `mnemos-dev` — stable v0.3.2, v0.4.0 (AI Boost / Phase 1) hazırlıkta
 - **GitHub:** `github.com/mnemos-dev/mnemos`
 
 ---

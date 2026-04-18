@@ -206,8 +206,8 @@ gap.
 - ✅ **Clean-vault pilot** (`docs/pilots/2026-04-17-v0.3.1-backend-pilot.md`):
   init → sqlite-vec → mine → dry-run migrate → real migrate → migrate back
   → search → same-backend noop hepsi yeşil. Tag `v0.3.1` + GitHub release at
-  <https://github.com/mnemos-dev/mnemos/releases/tag/v0.3.1> (wheel + sdist
-  asset'li). **PyPI upload pending** (kullanıcı tarafından).
+  <https://github.com/mnemos-dev/mnemos/releases/tag/v0.3.1> + PyPI
+  <https://pypi.org/project/mnemos-dev/0.3.1/> (wheel + sdist asset'li).
 
 ### Released — v0.3.2 Palace Hygiene (2026-04-18)
 

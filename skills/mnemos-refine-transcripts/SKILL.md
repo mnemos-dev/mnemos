@@ -10,19 +10,20 @@ description: >
 ---
 
 <!--
-INSTALL NOTE (v0.3 pre-release):
-Bu skill şu an makineye-özel path'ler kullanıyor. Kurulum:
+INSTALL NOTE (mnemos-dev ≥ v0.3):
+Bu skill makineye-özel path'ler kullanıyor. Kurulum:
 
 1. Bu klasörü ~/.claude/skills/mnemos-refine-transcripts/ altına kopyala
-   (veya symlink et).
+   (veya symlink/junction et — repo canonical, junction drift olmamalı).
 2. Aşağıdaki "Sabitler" bölümündeki path'leri kendi sistemine göre düzenle:
    - mnemos kurulum yolu (canonical prompt + extractor buradan okunur)
    - Claude Code transcripts kök klasörü (~/.claude/projects/)
    - Obsidian vault Sessions/ yolu
    - Ledger yolu (skill state)
 
-v0.3 roadmap: `mnemos init` wizard'ı bu path'leri environment / config
-dosyasından resolve edecek — manual edit gerekmeyecek.
+v0.3'te `mnemos init` wizard'ı bu path'leri çoğunlukla resolve ediyor;
+manuel edit hâlâ bazı non-standart kurulumlar için gerekli olabilir.
+Otomatik hook kurulumu için `mnemos install-hook` kullan.
 -->
 
 # Mnemos — Refine Transcripts

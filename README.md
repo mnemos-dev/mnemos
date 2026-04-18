@@ -12,7 +12,7 @@
     <img src="https://img.shields.io/badge/inspired%20by-MemPalace-purple.svg" alt="Inspired by MemPalace">
   </a>
   <a href="https://github.com/mnemos-dev/mnemos/releases">
-    <img src="https://img.shields.io/badge/version-0.3.1-orange.svg" alt="v0.3.1">
+    <img src="https://img.shields.io/badge/version-0.3.2-orange.svg" alt="v0.3.2">
   </a>
 </p>
 
@@ -327,6 +327,19 @@ mnemos benchmark longmemeval --mode raw-only
   no-flicker / no-mid-conversation-refire fixes,
   legacy session-memory deprecation guide,
   new-user simulation pilot.
+- **v0.3.1** — **Backend UX** ✅ released:
+  `mnemos init` backend picker (ChromaDB / sqlite-vec),
+  `mnemos migrate --backend <name>` with dry-run + dated backups,
+  `BackendInitError` with migrate recipe,
+  `mnemos status` backend summary line,
+  README Troubleshooting recipes.
+- **v0.3.2** — **Palace Hygiene** ✅ released:
+  TR-aware wing canonicalization,
+  lazy hall / `_wing.md` / `_room.md` creation,
+  source-date filenames + H1+wikilink drawer bodies,
+  entity hygiene (no tags, case-preserve dedup),
+  atomic `mnemos mine --rebuild` (backup → drop+reinit → re-mine → verify → rollback),
+  distribution-ready memory-source handling (additive `_resolve_sources`, yaml persistence on import).
 - **v0.4** — AI engine: Claude API mining quality pass, reranking, contradiction detection
 - **v0.5** — Automation: session hooks, memory lifecycle, knowledge graph deepening
 - **v0.6** — Ecosystem: specialist agents, multi-source connectors, Obsidian plugin
