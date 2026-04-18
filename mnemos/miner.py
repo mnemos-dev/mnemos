@@ -372,13 +372,18 @@ class Miner:
                 path_entities = extract_entities_from_path(filepath)
                 wing = path_entities[0] if path_entities else "General"
 
-        # 5. Room detection (room_detector instead of old logic)
-        # Override with frontmatter tags if available
+        # 5. Room detection via detect_room() only. Frontmatter tags are
+        #    NOT promoted to room names — tags describe the note, rooms are
+        #    a fixed taxonomy from rooms.yaml (13 categories + "general"
+        #    fallback). See v0.3.2 spec problems 4 and 5.
         tags = meta.get("tags") or []
-        if isinstance(tags, list) and tags:
-            room = str(tags[0])
-        else:
-            room = detect_room(filepath, body)
+        room = detect_room(filepath, body)
+
+        # Invariant: room must never equal the wing (redundant nesting).
+        # If detect_room picked "mnemos" for a file in wing=Mnemos, flatten.
+        from mnemos.palace import _normalize_for_match
+        if _normalize_for_match(room) == _normalize_for_match(wing):
+            room = "general"
 
         # 6. Entity detection (EntityDetector + merge)
         path_entities = extract_entities_from_path(filepath)
