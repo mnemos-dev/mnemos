@@ -31,7 +31,7 @@ def test_ensure_structure(config: MnemosConfig) -> None:
 
 
 def test_create_wing(config: MnemosConfig) -> None:
-    """create_wing() creates wing dir and a _wing.md summary file."""
+    """create_wing() creates wing dir (summary written lazily on first drawer)."""
     palace = Palace(config)
     palace.ensure_structure()
 
@@ -39,7 +39,7 @@ def test_create_wing(config: MnemosConfig) -> None:
 
     assert wing_path.is_dir()
     assert wing_path.name == "ProcureTrack"
-    assert (wing_path / "_wing.md").exists()
+    assert not (wing_path / "_wing.md").exists(), "_wing.md written lazily on first drawer"
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +48,7 @@ def test_create_wing(config: MnemosConfig) -> None:
 
 
 def test_create_room(config: MnemosConfig) -> None:
-    """create_room() creates room dir, _room.md, and hall subdirs."""
+    """create_room() creates room dir (summaries and halls created lazily on first drawer)."""
     palace = Palace(config)
     palace.ensure_structure()
     palace.create_wing("ProcureTrack")
@@ -57,11 +57,11 @@ def test_create_room(config: MnemosConfig) -> None:
 
     assert room_path.is_dir()
     assert room_path.name == "Supabase"
-    assert (room_path / "_room.md").exists()
+    assert not (room_path / "_room.md").exists(), "_room.md written lazily on first drawer"
 
-    # Each configured hall must exist as a subdir
+    # Hall subdirs are NOT pre-created; they are created on first drawer
     for hall in config.halls:
-        assert (room_path / hall).is_dir(), f"Hall subdir missing: {hall}"
+        assert not (room_path / hall).is_dir(), f"Hall subdir {hall} should NOT be pre-created"
 
 
 # ---------------------------------------------------------------------------

@@ -84,45 +84,23 @@ class Palace:
         return sanitized
 
     def create_wing(self, name: str) -> Path:
-        """Create a wing directory and its _wing.md summary file.
+        """Create a wing directory (no summary file yet — summary is lazy).
 
-        Args:
-            name: Wing name (used as directory name).
-
-        Returns:
-            Path to the wing directory.
+        The _wing.md summary is written on first drawer via :meth:`add_drawer`
+        so that empty wings don't persist after a failed mine.
         """
         name = self.canonical_wing(name)
         wing_dir = self.config.wings_dir / name
         wing_dir.mkdir(parents=True, exist_ok=True)
-
-        summary_file = wing_dir / "_wing.md"
-        if not summary_file.exists():
-            write_drawer_file(
-                summary_file,
-                metadata={
-                    "wing": name,
-                    "created": date.today().isoformat(),
-                    "type": "wing-summary",
-                },
-                body=f"# {name}\n\nWing summary for {name}.",
-            )
-
         return wing_dir
 
     def create_room(self, wing: str, room: str) -> Path:
-        """Create a room directory, _room.md, and one subdir per configured hall.
+        """Create a room directory (no summary, no hall subdirs — all lazy).
 
-        Auto-creates the parent wing if it does not exist.
-
-        Args:
-            wing: Wing name.
-            room: Room name (used as directory name).
-
-        Returns:
-            Path to the room directory.
+        Auto-creates the parent wing if it does not exist. Hall directories
+        and the _room.md summary are created on first drawer via
+        :meth:`add_drawer`.
         """
-        # Ensure wing exists
         wing = self.canonical_wing(wing)
         room = _sanitize_name(room)
         wing_dir = self.config.wings_dir / wing
@@ -131,25 +109,6 @@ class Palace:
 
         room_dir = wing_dir / room
         room_dir.mkdir(parents=True, exist_ok=True)
-
-        # Write _room.md summary
-        summary_file = room_dir / "_room.md"
-        if not summary_file.exists():
-            write_drawer_file(
-                summary_file,
-                metadata={
-                    "wing": wing,
-                    "room": room,
-                    "created": date.today().isoformat(),
-                    "type": "room-summary",
-                },
-                body=f"# {room}\n\nRoom summary for {room} inside wing {wing}.",
-            )
-
-        # Create one subdir per configured hall
-        for hall in self.config.halls:
-            (room_dir / hall).mkdir(exist_ok=True)
-
         return room_dir
 
     # ------------------------------------------------------------------
@@ -197,6 +156,32 @@ class Palace:
 
         hall_dir = room_dir / hall
         hall_dir.mkdir(parents=True, exist_ok=True)
+
+        # Lazy summaries: write _wing.md / _room.md on first drawer
+        wing_summary = self.config.wings_dir / wing / "_wing.md"
+        if not wing_summary.exists():
+            write_drawer_file(
+                wing_summary,
+                metadata={
+                    "wing": wing,
+                    "created": date.today().isoformat(),
+                    "type": "wing-summary",
+                },
+                body=f"# {wing}\n\nWing summary for {wing}.",
+            )
+
+        room_summary = room_dir / "_room.md"
+        if not room_summary.exists():
+            write_drawer_file(
+                room_summary,
+                metadata={
+                    "wing": wing,
+                    "room": room,
+                    "created": date.today().isoformat(),
+                    "type": "room-summary",
+                },
+                body=f"# {room}\n\nRoom summary for {room} inside wing {wing}.",
+            )
 
         # Build a unique filename: <date>-<slug>-<counter>.md
         today = date.today().isoformat()

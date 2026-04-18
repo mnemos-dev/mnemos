@@ -54,3 +54,53 @@ def test_canonical_wing_distinct_projects_not_merged(tmp_path: Path):
     result = palace.canonical_wing("Satın Alma Otomasyonu")
     assert result != "Satın-Alma"
     assert result == "Satın-Alma-Otomasyonu"
+
+
+def test_create_room_does_not_pre_create_hall_dirs(tmp_path: Path):
+    cfg = MnemosConfig(vault_path=str(tmp_path))
+    palace = Palace(cfg)
+    palace.ensure_structure()
+
+    room_dir = palace.create_room("TestWing", "testroom")
+    assert room_dir.exists()
+
+    for hall in cfg.halls:
+        assert not (room_dir / hall).exists(), \
+            f"hall {hall} should NOT be pre-created"
+
+
+def test_add_drawer_creates_hall_lazily(tmp_path: Path):
+    cfg = MnemosConfig(vault_path=str(tmp_path))
+    palace = Palace(cfg)
+    palace.ensure_structure()
+
+    palace.add_drawer(
+        wing="TestWing", room="testroom", hall="decisions",
+        text="A decision", source="src.md", importance=0.5,
+        entities=[], language="en",
+    )
+
+    room_dir = cfg.wings_dir / "TestWing" / "testroom"
+    assert (room_dir / "decisions").exists()
+    for hall in cfg.halls:
+        if hall != "decisions":
+            assert not (room_dir / hall).exists(), \
+                f"unused hall {hall} should not exist"
+
+
+def test_wing_summary_written_on_first_drawer_not_upfront(tmp_path: Path):
+    cfg = MnemosConfig(vault_path=str(tmp_path))
+    palace = Palace(cfg)
+    palace.ensure_structure()
+
+    palace.create_wing("LazyWing")
+    assert not (cfg.wings_dir / "LazyWing" / "_wing.md").exists(), \
+        "_wing.md should not exist until first drawer"
+
+    palace.add_drawer(
+        wing="LazyWing", room="general", hall="facts",
+        text="Hello", source="src.md", importance=0.5,
+        entities=[], language="en",
+    )
+    assert (cfg.wings_dir / "LazyWing" / "_wing.md").exists()
+    assert (cfg.wings_dir / "LazyWing" / "general" / "_room.md").exists()
