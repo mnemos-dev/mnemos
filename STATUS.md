@@ -1,7 +1,7 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-18 (v0.3.2 Palace Hygiene — PyPI upload pending)
-**Stable PyPI version:** `v0.3.1` · **Shipped on GitHub:** `v0.3.2` · **Next:** `v0.4.0` (AI Boost / Phase 1)
+**Last updated:** 2026-04-18 (v0.3.2 Palace Hygiene released to PyPI + GitHub)
+**Stable PyPI version:** `v0.3.2` · **Next:** `v0.4.0` (AI Boost / Phase 1)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
 This file is the single-glance answer to: *why does Mnemos exist, what can it
@@ -267,15 +267,19 @@ gap.
   session-log entity pollution 0 (was 457), phantom hall dirs 0 (was
   138), double-date filenames 4 (was 69). Source file sha256 hashes
   unchanged — rebuild never modifies Sessions/Topics.
-- 🟡 **PyPI upload pending** — version bumped to `0.3.2` in `pyproject.toml`
-  and `CHANGELOG.md`; tag + wheel + GitHub release follow in task C5.
+- ✅ **PyPI release v0.3.2** — wheel + sdist published to
+  <https://pypi.org/project/mnemos-dev/0.3.2/>, GitHub release at
+  <https://github.com/mnemos-dev/mnemos/releases/tag/v0.3.2>
+  (wheel + sdist asset'li). Tag `v0.3.2` pushed.
 
 ### Next session starts here
 
-v0.3.1 GitHub'da canlı, PyPI upload bekliyor. v0.3 tamamlandı + production
-hardening yapıldı (3.11-3.14). Tüm Claude Code geçmişi (122 transcript →
-52 OK + 70 SKIP) refine + mine edildi. Kod iki backend'i ship'liyor ve
-parity ile destekliyor; migrate/error UX kullanıcı-hazır.
+v0.3.2 PyPI + GitHub'da canlı. Pipeline hygiene (wing canonicalization,
+lazy summaries, source-date filenames, H1+wikilink body, entity
+dedup) + atomic `mnemos mine --rebuild` (backup → drop+reinit →
+re-mine → verify → rollback) shipped. kasamd real-vault rebuild
+doğruladı: 683 drawer, 16 wing, `sha256` unchanged. Tüm Claude Code
+geçmişi (122 transcript → 52 OK + 70 SKIP) refine + mine edildi.
 
 **v0.4 (AI Boost / Phase 1) sırada** — ROADMAP §v0.4.0:
 
