@@ -4,6 +4,7 @@ See docs/specs/2026-04-18-v0.3.2-palace-hygiene-design.md §4.
 """
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 from mnemos.config import MnemosConfig
@@ -56,3 +57,47 @@ def _resolve_sources(
         "  - pass an explicit path to `mnemos mine --rebuild <path>`, or\n"
         "  - create `Sessions/` or `Topics/` under the vault"
     )
+
+
+def build_plan(cfg: MnemosConfig, explicit_path: str | None) -> dict:
+    """Gather rebuild metadata without performing any action."""
+    sources = _resolve_sources(cfg, explicit_path)
+    per_source: list[dict] = []
+    total_files = 0
+    for src in sources:
+        if src.is_file():
+            files = [src]
+        elif src.is_dir():
+            files = list(src.rglob("*.md"))
+        else:
+            files = []
+        per_source.append({"path": str(src), "file_count": len(files)})
+        total_files += len(files)
+
+    existing_drawers = 0
+    if cfg.wings_dir.exists():
+        existing_drawers = sum(
+            1 for p in cfg.wings_dir.rglob("*.md")
+            if not p.name.startswith("_")
+        )
+
+    ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    return {
+        "sources": per_source,
+        "source_count": total_files,
+        "existing_drawer_count": existing_drawers,
+        "backup_path": str(cfg.recycled_full_path / f"wings-{ts}"),
+        "timestamp": ts,
+    }
+
+
+def format_plan(plan: dict) -> str:
+    lines = ["Rebuild plan:"]
+    src_parts = [
+        f"{Path(s['path']).name} ({s['file_count']} files)"
+        for s in plan["sources"]
+    ]
+    lines.append(f"  Sources: {', '.join(src_parts)} = {plan['source_count']} files")
+    lines.append(f"  Current drawers: {plan['existing_drawer_count']}")
+    lines.append(f"  Backup: {plan['backup_path']}")
+    return "\n".join(lines)

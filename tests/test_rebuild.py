@@ -127,3 +127,35 @@ def test_resolve_sources_error_when_nothing(tmp_path: Path):
     with pytest.raises(RebuildError) as exc:
         _resolve_sources(cfg, explicit_path=None)
     assert "mining_sources" in str(exc.value).lower() or "sessions" in str(exc.value).lower()
+
+
+def test_build_plan_counts_source_files(tmp_path: Path):
+    from mnemos.rebuild import build_plan
+    sessions = tmp_path / "Sessions"
+    sessions.mkdir()
+    (sessions / "a.md").write_text("x", encoding="utf-8")
+    (sessions / "b.md").write_text("y", encoding="utf-8")
+    topics = tmp_path / "Topics"
+    topics.mkdir()
+    (topics / "c.md").write_text("z", encoding="utf-8")
+
+    cfg = MnemosConfig(vault_path=str(tmp_path))
+
+    plan = build_plan(cfg, explicit_path=None)
+    assert plan["source_count"] == 3
+    assert len(plan["sources"]) == 2
+    assert "backup_path" in plan
+    assert "existing_drawer_count" in plan
+
+
+def test_format_plan_human_readable(tmp_path: Path):
+    from mnemos.rebuild import build_plan, format_plan
+    cfg = MnemosConfig(vault_path=str(tmp_path))
+    (tmp_path / "Sessions").mkdir()
+    (tmp_path / "Sessions" / "a.md").write_text("x", encoding="utf-8")
+
+    plan = build_plan(cfg, explicit_path=None)
+    text = format_plan(plan)
+    assert "Sources:" in text
+    assert "Backup:" in text
+    assert "1 files" in text or "1 file" in text
