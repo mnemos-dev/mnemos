@@ -88,6 +88,29 @@ def _is_fresh_session_source(hook_input: dict) -> bool:
     return source in _FRESH_SESSION_SOURCES
 
 
+def _rebuild_in_progress(vault: Path) -> bool:
+    """Return True if an atomic `mnemos mine --rebuild` is holding the lock.
+
+    The orchestrator acquires a FileLock at
+    ``<vault>/Mnemos/.rebuild.lock.flock``. We probe the lock with a tiny
+    timeout — if we can't acquire, something else is holding it.
+    """
+    lock_path = vault / "Mnemos" / ".rebuild.lock.flock"
+    if not lock_path.exists():
+        return False
+    try:
+        from filelock import FileLock, Timeout
+    except ModuleNotFoundError:
+        return False
+    probe = FileLock(str(lock_path), timeout=0.05)
+    try:
+        probe.acquire()
+        probe.release()
+        return False
+    except Timeout:
+        return True
+
+
 def main() -> int:
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -96,6 +119,11 @@ def main() -> int:
 
     vault = _find_vault(sys.argv[1:])
     if vault is None or not vault.exists():
+        return 0
+
+    if _rebuild_in_progress(vault):
+        # Atomic rebuild is running — don't spawn a worker that would fight
+        # over wings/ or the search index. Silent exit (no status write).
         return 0
 
     hook_input = _read_hook_input()
