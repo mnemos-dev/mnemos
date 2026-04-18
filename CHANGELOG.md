@@ -33,6 +33,18 @@ All notable changes to Mnemos are documented here.
 
 - **`tests/test_server.py::test_app_recall`, `tests/test_app_wake_up`, and three `tests/test_stack.py` tests** assumed the old eager summary behavior and checked wing names in recall/wake_up content without any drawer present. Seeded a minimal drawer in each wing (and per room for the L2 case) to trigger A2's lazy summary write. No production code changes. *(commit `509582f`)*
 
+### Distribution-ready memory-source handling (post-pilot fixes)
+
+The real-vault pilot on the author's kasamd vault caught three issues that would bite every distribution user with a Claude Code auto-memory footprint. All three are resolved.
+
+- **`MEMORY.md` index files silently inflated drawer counts.** Claude Code auto-memory folders (`~/.claude/projects/<proj>/memory/`) contain one `MEMORY.md` per folder — pure wikilink index pointing at sibling `user_*.md`, `feedback_*.md`, `reference_*.md` files. Previously the miner treated it as content and produced duplicate-signal drawers. `handle_mine` now filters `MEMORY.md` and any leading-underscore `.md` (summaries mnemos produces itself). *(Part 1, commit `998a529`)*
+- **`mnemos import` didn't persist to `mnemos.yaml`.** Every `mnemos import markdown|memory <path>` only wrote `.mnemos-pending.json`, so the very next `mnemos mine --rebuild` silently dropped every imported source. Real-vault pilot lost 102 drawers from five external memory folders this way. `_import_dir` now appends the path (with `mode=curated, external=true`) to `mining_sources` via the new `_append_mining_source` helper — idempotent, preserves every other yaml key, normalizes paths so Windows mixed-slash imports don't duplicate. *(Part 2, commit `e9f3d6d`)*
+- **`_resolve_sources` was replacement, not additive.** With Part 2 landed, `mining_sources` would hold the external paths — and the old resolver treated a non-empty `mining_sources` as "use only these", skipping the vault's own `Sessions/` + `Topics/`. Round-trip rebuild on kasamd dropped from 683 drawers to 100 (only the 5 memory folders, Sessions + Topics vanished). The resolver now always auto-discovers the vault's internal source dirs and UNIONs with `mining_sources`, deduped by `os.path.normpath`. Explicit `--path <dir>` still wins as a one-off override. *(post-pilot fix, commit `bb53892`)*
+
+Author-vault final state after the three fixes: 683 drawers (was 670 pre-v0.3.2), 16 wings, 5 mining_sources entries auto-included on every rebuild. Sources `sha256` unchanged — rebuild never modifies source files.
+
+
+
 
 
 **Goal:** First-class discovery, migration, and corruption recovery for the two vector backends mnemos has been shipping since v0.2. A 2026-04-17 parity benchmark showed ChromaDB and sqlite-vec produce identical recall (R@5=0.90 on LongMemEval 10q, down to the fourth decimal), so the user-facing question is now reliability / environment fit, not quality.

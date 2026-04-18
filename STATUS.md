@@ -247,6 +247,26 @@ gap.
   / `test_stack.py` assumed A2's old eager `_wing.md` behavior; seeded
   a minimal drawer per wing/room to trigger the lazy summary write. No
   production code changes (`509582f`).
+- ✅ **Distribution-ready memory-source handling** — three post-pilot fixes
+  so every Claude Code user (not just the author) gets rebuild-safe
+  memory imports:
+  - `MEMORY.md` index files + leading-underscore `.md` files are skipped
+    by the miner (duplicate-signal noise) — `998a529`.
+  - `mnemos import markdown|memory <path>` now appends the source to
+    `mnemos.yaml`'s `mining_sources` (idempotent, yaml-preserving,
+    Windows-normalized) so rebuilds pick it up automatically — `e9f3d6d`.
+  - `_resolve_sources` is now additive: always auto-discovers the
+    vault's internal `Sessions/` + `Topics/` and UNIONs with configured
+    `mining_sources` entries (dedup by `os.path.normpath`). Caught by
+    the round-trip rebuild pilot, which initially dropped from 683 to
+    100 drawers because `mining_sources` was replacing auto-discover —
+    `bb53892`.
+- ✅ **Real-vault pilot complete** — kasamd rebuild + 5 external memory
+  folder re-import + round-trip validation. Final: 683 drawers (up
+  from 670 pre-v0.3.2 despite skipping MEMORY.md indexes), 16 wings,
+  session-log entity pollution 0 (was 457), phantom hall dirs 0 (was
+  138), double-date filenames 4 (was 69). Source file sha256 hashes
+  unchanged — rebuild never modifies Sessions/Topics.
 - 🟡 **PyPI upload pending** — version bumped to `0.3.2` in `pyproject.toml`
   and `CHANGELOG.md`; tag + wheel + GitHub release follow in task C5.
 

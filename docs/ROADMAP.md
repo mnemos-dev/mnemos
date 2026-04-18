@@ -666,10 +666,18 @@ rollback yok. Büyük vault'ta kısmi hata data kaybına açık.
       (dir backup vs sqlite-vec'in file backup'ı — ilk kez). Yeni
       stale-lock recovery testi eklendi. 17 test, hepsi yeşil.
 - [x] **C3 Version bump + CHANGELOG** *(commit `37244d7`)*
-- [x] **C4 STATUS + ROADMAP güncel** *(bu commit)*
-- [ ] **C1 Light pilot** — unit test green + dry-run + optional smoke
-- [ ] **C2 Real vault rebuild** — `C:\Users\tugrademirors\OneDrive\
-      Masaüstü\kasamd` üzerinde gerçek rebuild, acceptance checklist
+- [x] **C4 STATUS + ROADMAP güncel** *(commit `09c4451`)*
+- [x] **C1 Light pilot** *(commits `bf60a6a` + `6c80e8d` + `1097ccb`)*
+      — Unit tests green, dry-run against kasamd matched plan (81 sources,
+      670 drawers), single-file smoke caught two A4/A5 regressions
+      (double-date filename + `# # Title` H1) which were fixed.
+- [x] **C2 Real vault rebuild + memory re-import + round-trip** *(commits
+      `998a529` + `e9f3d6d` + `0abfd7e` + `bb53892`)*
+      — kasamd rebuilt end-to-end. Caught and fixed three
+      distribution-ready bugs (MEMORY.md noise, import-not-persisted,
+      `_resolve_sources` replacement vs additive). Final: 683 drawers
+      (NET +13 over pre-v0.3.2), 16 wings, 5 `mining_sources` entries
+      auto-included in every rebuild forward.
 - [ ] **C5 Build, tag, PyPI, GitHub release**
 
 ### Başarı kriterleri
