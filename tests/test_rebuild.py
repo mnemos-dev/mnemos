@@ -129,6 +129,35 @@ def test_resolve_sources_error_when_nothing(tmp_path: Path):
     assert "mining_sources" in str(exc.value).lower() or "sessions" in str(exc.value).lower()
 
 
+def test_resolve_sources_combines_autodiscover_and_mining_sources(tmp_path: Path):
+    """mining_sources additions must NOT replace Sessions/Topics auto-discover."""
+    from mnemos.rebuild import _resolve_sources
+    (tmp_path / "Sessions").mkdir()
+    (tmp_path / "Topics").mkdir()
+    external = tmp_path / "external-memory"
+    external.mkdir()
+    cfg = MnemosConfig(vault_path=str(tmp_path))
+    from mnemos.config import MiningSource
+    cfg.mining_sources = [MiningSource(path=str(external), mode="curated")]
+
+    paths = _resolve_sources(cfg, explicit_path=None)
+    names = sorted(p.name for p in paths)
+    assert names == ["Sessions", "Topics", "external-memory"], names
+
+
+def test_resolve_sources_dedups_when_mining_source_is_vault_dir(tmp_path: Path):
+    """If user lists Sessions in mining_sources, it must not be mined twice."""
+    from mnemos.rebuild import _resolve_sources
+    (tmp_path / "Sessions").mkdir()
+    cfg = MnemosConfig(vault_path=str(tmp_path))
+    from mnemos.config import MiningSource
+    cfg.mining_sources = [MiningSource(path="Sessions")]
+
+    paths = _resolve_sources(cfg, explicit_path=None)
+    assert len(paths) == 1
+    assert paths[0].name == "Sessions"
+
+
 def test_build_plan_counts_source_files(tmp_path: Path):
     from mnemos.rebuild import build_plan
     sessions = tmp_path / "Sessions"

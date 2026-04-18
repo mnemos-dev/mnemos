@@ -20,13 +20,21 @@ def _resolve_sources(
 ) -> list[Path]:
     """Resolve the list of source directories to mine during rebuild.
 
-    Order:
-      1. *explicit_path* wins if given.
-      2. ``cfg.mining_sources`` yaml entries if non-empty.
-      3. Auto-discover ``<vault>/Sessions`` and ``<vault>/Topics`` if either
-         exists.
-      4. Raise :class:`RebuildError`.
+    Rules:
+      1. *explicit_path* wins if given (one-off override, single source).
+      2. Otherwise: union of (a) auto-discovered vault dirs — ``Sessions``
+         and ``Topics`` if present — and (b) ``cfg.mining_sources`` yaml
+         entries (external imports like Claude Code ``memory/`` folders).
+         Deduped by normalized path so a user who explicitly lists
+         Sessions in ``mining_sources`` doesn't get it mined twice.
+      3. If both sets are empty, raise :class:`RebuildError`.
+
+    The additive semantics are critical for rebuild-safety: imports
+    accumulate in ``mining_sources`` over time but must never silently
+    replace the vault's own Sessions/Topics during a rebuild.
     """
+    import os
+
     vault_path = Path(cfg.vault_path)
 
     if explicit_path:
@@ -35,29 +43,35 @@ def _resolve_sources(
             p = vault_path / p
         return [p]
 
-    if cfg.mining_sources:
-        out: list[Path] = []
-        for src in cfg.mining_sources:
-            p = Path(src.path)
-            if not p.is_absolute():
-                p = vault_path / p
-            out.append(p)
-        return out
+    out: list[Path] = []
+    seen: set[str] = set()
 
-    auto_paths: list[Path] = []
+    def _add(candidate: Path) -> None:
+        key = os.path.normcase(os.path.normpath(str(candidate)))
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(candidate)
+
     for name in ("Sessions", "Topics"):
         candidate = vault_path / name
         if candidate.exists() and candidate.is_dir():
-            auto_paths.append(candidate)
-    if auto_paths:
-        return auto_paths
+            _add(candidate)
 
-    raise RebuildError(
-        "No mining sources configured. Either:\n"
-        "  - add `mining_sources` to mnemos.yaml, or\n"
-        "  - pass an explicit path to `mnemos mine --rebuild <path>`, or\n"
-        "  - create `Sessions/` or `Topics/` under the vault"
-    )
+    for src in cfg.mining_sources:
+        p = Path(src.path)
+        if not p.is_absolute():
+            p = vault_path / p
+        _add(p)
+
+    if not out:
+        raise RebuildError(
+            "No mining sources configured. Either:\n"
+            "  - add `mining_sources` to mnemos.yaml, or\n"
+            "  - pass an explicit path to `mnemos mine --rebuild <path>`, or\n"
+            "  - create `Sessions/` or `Topics/` under the vault"
+        )
+    return out
 
 
 def build_plan(cfg: MnemosConfig, explicit_path: str | None) -> dict:
