@@ -217,6 +217,59 @@ def test_handle_mine_indexes_raw(config: MnemosConfig, sample_session_tr: Path) 
 
 
 # ---------------------------------------------------------------------------
+# test_handle_mine_skips_memory_md_index
+# ---------------------------------------------------------------------------
+
+
+def test_handle_mine_skips_memory_md_index(tmp_path: Path) -> None:
+    """MEMORY.md files (Claude Code auto-memory index) must not be mined.
+
+    They are pure wikilink indexes into their sibling files (user_profile.md,
+    feedback_*.md, etc.); mining them as content produces duplicate-signal
+    drawers pointing at already-indexed targets.
+    """
+    from mnemos.config import MnemosConfig
+
+    cfg = MnemosConfig(vault_path=str(tmp_path))
+    cfg.palace_dir.mkdir(parents=True, exist_ok=True)
+
+    src = tmp_path / "memory-src"
+    src.mkdir()
+    # Claude-Code-shaped MEMORY.md (all wikilinks, almost no prose)
+    (src / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [User profile](user_profile.md) — who I am\n"
+        "- [Feedback](feedback_x.md) — preferences\n",
+        encoding="utf-8",
+    )
+    # Real content file alongside
+    (src / "user_profile.md").write_text(
+        "---\nname: User Profile\ntype: user\n---\n\n"
+        "Tugra Demirors works at GYP Energy. Prefers Turkish communication.",
+        encoding="utf-8",
+    )
+
+    app = MnemosApp(cfg, chromadb_in_memory=True)
+    app.palace.ensure_structure()
+    result = app.handle_mine(path=str(src))
+
+    # Exactly one file scanned (MEMORY.md skipped); user_profile.md processed.
+    assert result["files_scanned"] == 1, result
+    assert result["drawers_created"] >= 1, result
+
+    # No drawer should carry MEMORY.md as its source.
+    wings_dir = cfg.wings_dir
+    sources = []
+    for p in wings_dir.rglob("*.md"):
+        if p.name.startswith("_"):
+            continue
+        for line in p.read_text(encoding="utf-8").splitlines()[:15]:
+            if line.startswith("source:"):
+                sources.append(line)
+                break
+    assert not any("MEMORY.md" in s for s in sources), sources
+
+
+# ---------------------------------------------------------------------------
 # test_handle_search_collection_param
 # ---------------------------------------------------------------------------
 
