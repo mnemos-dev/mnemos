@@ -21,6 +21,36 @@ from mnemos.room_detector import detect_room
 _PATTERNS_DIR = Path(__file__).parent / "patterns"
 
 # ---------------------------------------------------------------------------
+# Drawer body template helpers
+# ---------------------------------------------------------------------------
+
+_SENTENCE_END_RE = re.compile(r"[.!?]\s")
+
+
+def _first_sentence(text: str, max_len: int = 80) -> str:
+    """Return the first meaningful sentence (≤ max_len chars) as a drawer title.
+
+    Splits on sentence-ending punctuation followed by whitespace. If no
+    sentence boundary is found within max_len, returns a word-boundary
+    truncation of the leading text. Never returns an empty string for
+    non-empty input.
+    """
+    text = text.strip()
+    if not text:
+        return ""
+    m = _SENTENCE_END_RE.search(text[: max_len + 1])
+    if m:
+        end = m.end() - 1  # include the punctuation, not the whitespace
+        return text[:end].strip()
+    if len(text) <= max_len:
+        return text
+    truncated = text[:max_len]
+    last_space = truncated.rfind(" ")
+    if last_space > max_len // 2:
+        truncated = truncated[:last_space]
+    return truncated.strip()
+
+# ---------------------------------------------------------------------------
 # Turkish marker sets (for language detection)
 # ---------------------------------------------------------------------------
 
@@ -372,31 +402,43 @@ class Miner:
                 path_entities = extract_entities_from_path(filepath)
                 wing = path_entities[0] if path_entities else "General"
 
-        # 5. Room detection (room_detector instead of old logic)
-        # Override with frontmatter tags if available
+        # 5. Room detection via detect_room() only. Frontmatter tags are
+        #    NOT promoted to room names — tags describe the note, rooms are
+        #    a fixed taxonomy from rooms.yaml (13 categories + "general"
+        #    fallback). See v0.3.2 spec problems 4 and 5.
         tags = meta.get("tags") or []
-        if isinstance(tags, list) and tags:
-            room = str(tags[0])
-        else:
-            room = detect_room(filepath, body)
+        room = detect_room(filepath, body)
+
+        # Invariant: room must never equal the wing (redundant nesting).
+        # If detect_room picked "mnemos" for a file in wing=Mnemos, flatten.
+        from mnemos.palace import _normalize_for_match
+        if _normalize_for_match(room) == _normalize_for_match(wing):
+            room = "general"
 
         # 6. Entity detection (EntityDetector + merge)
         path_entities = extract_entities_from_path(filepath)
         detected = self._entity_detector.detect(body)
         wikilinks = _extract_wikilinks(body)
 
-        entities: list[str] = list(path_entities)
-        entities.extend(detected.get("persons", []))
-        entities.extend(detected.get("projects", []))
-        # Add wikilinks
-        entities.extend(wikilinks)
-        # Add frontmatter values
+        # Entity merge: path CamelCase + detector output + wikilinks + project.
+        # Tags are NOT entities (they describe the note, not identities).
+        # Dedup is case-insensitive but preserves the first seen casing
+        # ("Mnemos" stays "Mnemos" even if "mnemos" appears later).
+        raw_entities: list[str] = list(path_entities)
+        raw_entities.extend(detected.get("persons", []))
+        raw_entities.extend(detected.get("projects", []))
+        raw_entities.extend(wikilinks)
         if meta.get("project"):
-            entities.append(str(meta["project"]))
-        for tag in tags:
-            entities.append(str(tag))
-        # Deduplicate, preserve order
-        entities = list(dict.fromkeys(entities))
+            raw_entities.append(str(meta["project"]))
+
+        seen: dict[str, str] = {}
+        for ent in raw_entities:
+            if not ent:
+                continue
+            key = ent.lower()
+            if key not in seen:
+                seen[key] = ent
+        entities = list(seen.values())
 
         source = str(filepath)
 

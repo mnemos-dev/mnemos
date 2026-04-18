@@ -48,6 +48,13 @@ def test_l1_wing_summaries(config: MnemosConfig) -> None:
 
     palace.create_wing("ProcureTrack")
     palace.create_wing("Mnemos")
+    # Trigger lazy _wing.md writes (A2: summaries land on first drawer)
+    for wing in ("ProcureTrack", "Mnemos"):
+        palace.add_drawer(
+            wing=wing, room="intake", hall="facts",
+            text="seed", source="test.md",
+            importance=50, entities=[], language="en",
+        )
 
     stack = MemoryStack(config)
     result = stack.recall(level="L1")
@@ -71,6 +78,13 @@ def test_l2_wing_detail(config: MnemosConfig) -> None:
     palace.create_wing("ProcureTrack")
     palace.create_room("ProcureTrack", "Supabase")
     palace.create_room("ProcureTrack", "Frontend")
+    # Trigger lazy _room.md writes (A2: summaries land on first drawer)
+    for room in ("Supabase", "Frontend"):
+        palace.add_drawer(
+            wing="ProcureTrack", room=room, hall="facts",
+            text="seed", source="test.md",
+            importance=50, entities=[], language="en",
+        )
 
     stack = MemoryStack(config)
     result = stack.recall(level="L2", wing="ProcureTrack")
@@ -99,6 +113,11 @@ def test_wake_up(config: MnemosConfig) -> None:
     )
 
     palace.create_wing("ProcureTrack")
+    palace.add_drawer(
+        wing="ProcureTrack", room="intake", hall="facts",
+        text="seed", source="test.md",
+        importance=50, entities=[], language="en",
+    )
 
     stack = MemoryStack(config)
     result = stack.wake_up()

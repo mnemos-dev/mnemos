@@ -540,6 +540,52 @@ def _import_slack(cfg, args: argparse.Namespace) -> None:  # type: ignore[no-unt
     _import_single_file_export(cfg, args, source_id="slack-export", kind="raw-json")
 
 
+def _append_mining_source(vault_path: Path, source_path: str,
+                          mode: str = "curated",
+                          external: bool = True) -> bool:
+    """Append *source_path* to mnemos.yaml's mining_sources list.
+
+    Idempotent — if a normalized-path match already exists in the list,
+    does nothing. Preserves every other yaml key (search_backend, use_llm,
+    etc.). Creates mnemos.yaml if missing.
+
+    Returns True if a new entry was added, False otherwise.
+
+    Called from `mnemos import` so re-runs of `mnemos mine --rebuild`
+    pick up the imported source automatically — pre-v0.3.2 the import
+    only landed in .mnemos-pending.json and was silently dropped on
+    rebuild.
+    """
+    import os
+
+    import yaml
+
+    yaml_path = Path(vault_path) / "mnemos.yaml"
+    if yaml_path.exists():
+        with yaml_path.open("r", encoding="utf-8") as fh:
+            data = yaml.safe_load(fh) or {}
+    else:
+        data = {}
+
+    normalized = os.path.normpath(source_path)
+    existing = data.get("mining_sources") or []
+    for entry in existing:
+        if not isinstance(entry, dict):
+            continue
+        if os.path.normpath(entry.get("path", "")) == normalized:
+            return False
+
+    new_entry: dict = {"path": source_path, "mode": mode}
+    if external:
+        new_entry["external"] = True
+    existing.append(new_entry)
+    data["mining_sources"] = existing
+
+    with yaml_path.open("w", encoding="utf-8") as fh:
+        yaml.safe_dump(data, fh, allow_unicode=True, sort_keys=False)
+    return True
+
+
 def _import_dir(cfg, args: argparse.Namespace,
                 source_id: str, kind: str) -> None:  # type: ignore[no-untyped-def]
     """Shared logic for markdown / memory directory imports."""
@@ -551,6 +597,16 @@ def _import_dir(cfg, args: argparse.Namespace,
         sys.exit(f"[mnemos import] No .md files in {path}")
     _mine_and_record(cfg, source_id, kind, str(path), len(md_files),
                      f"imported-via-{source_id}")
+    # Persist to mnemos.yaml so future `mnemos mine --rebuild` includes
+    # this source — without this, the imported drawers would vanish on
+    # rebuild (pre-v0.3.2 bug).
+    added = _append_mining_source(
+        Path(cfg.vault_path), source_path=str(path), mode="curated",
+    )
+    if added:
+        print(f"  Added to mnemos.yaml mining_sources: {path}")
+    else:
+        print(f"  Already tracked in mnemos.yaml: {path}")
 
 
 def _import_markdown(cfg, args: argparse.Namespace) -> None:  # type: ignore[no-untyped-def]
@@ -602,20 +658,31 @@ def _install_statusline_prompt(lang: str = "en", vault: Path = Path(".")) -> Non
 
 
 def cmd_mine(args: argparse.Namespace) -> None:
-    """Mine a file or directory and print results as JSON."""
+    """Mine a file or directory, or do a full atomic rebuild."""
     vault_path = _resolve_vault(args.vault)
     _require_vault(vault_path, "mine")
 
     cfg = load_config(vault_path)
 
+    if args.rebuild:
+        from mnemos.rebuild import rebuild_vault, RebuildError
+        try:
+            result = rebuild_vault(
+                cfg,
+                explicit_path=args.path if args.path else None,
+                dry_run=args.dry_run,
+                yes=args.yes,
+                backup=not args.no_backup,
+            )
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        except RebuildError as e:
+            print(f"Rebuild error: {e}", file=sys.stderr)
+            sys.exit(2)
+        return
+
     from mnemos.server import MnemosApp
 
     with MnemosApp(cfg) as app:
-        if args.rebuild:
-            app._mine_log = {}
-            app._save_mine_log()
-            print("Rebuild: mine_log cleared, re-mining all sources...")
-
         result = app.handle_mine(
             path=args.path,
             use_llm=args.llm,
@@ -883,7 +950,9 @@ def main() -> None:
     )
     parser_mine.add_argument(
         "path",
-        help="File or directory to mine",
+        nargs="?",
+        default=None,
+        help="File or directory to mine (optional when --rebuild is used)",
     )
     parser_mine.add_argument(
         "--llm",
@@ -895,7 +964,25 @@ def main() -> None:
         "--rebuild",
         action="store_true",
         default=False,
-        help="Clear mine_log and re-mine all sources from scratch",
+        help="Drop and rebuild the entire palace atomically (backs up first)",
+    )
+    parser_mine.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="With --rebuild: print the plan and exit without touching anything",
+    )
+    parser_mine.add_argument(
+        "--yes",
+        action="store_true",
+        default=False,
+        help="With --rebuild: skip the 'Proceed? [y/N]' confirmation",
+    )
+    parser_mine.add_argument(
+        "--no-backup",
+        action="store_true",
+        default=False,
+        help="With --rebuild: skip wings/index/graph backup (dangerous)",
     )
     parser_mine.set_defaults(func=cmd_mine)
 

@@ -1,7 +1,7 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-17 (v0.3.1 Backend UX released to PyPI + GitHub)
-**Stable PyPI version:** `v0.3.1` · **Next:** `v0.4.0` (AI Boost / Phase 1)
+**Last updated:** 2026-04-18 (v0.3.2 Palace Hygiene — PyPI upload pending)
+**Stable PyPI version:** `v0.3.1` · **Shipped on GitHub:** `v0.3.2` · **Next:** `v0.4.0` (AI Boost / Phase 1)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
 This file is the single-glance answer to: *why does Mnemos exist, what can it
@@ -208,6 +208,67 @@ gap.
   → search → same-backend noop hepsi yeşil. Tag `v0.3.1` + GitHub release at
   <https://github.com/mnemos-dev/mnemos/releases/tag/v0.3.1> (wheel + sdist
   asset'li). **PyPI upload pending** (kullanıcı tarafından).
+
+### Released — v0.3.2 Palace Hygiene (2026-04-18)
+
+- ✅ **Six pipeline hygiene fixes (Group A)** — TR-aware wing canonicalization
+  (`94b624d`); lazy hall/`_wing.md`/`_room.md` creation so empty wings and
+  phantom rooms don't pollute the graph view (`590f302`); `tags[0]` no longer
+  promoted to room (`0e72389`); drawer filenames use source date with
+  word-boundary slug so `YYYY-MM-DD-YYYY-MM-DD-…` double prefix is gone
+  (`6707010`); drawer body gains `# <smart-title>` H1 + `> Source: [[…]]`
+  wikilink, synthetic/manual sources skip the wikilink to avoid dead
+  `[[unknown]]` links (`13fc74c` + review fix `9532caf`); entity hygiene —
+  no tags as entities, case-preserve dedup (`bbfa1b8`).
+- ✅ **Atomic `mnemos mine --rebuild` (Group B)** — `mnemos/rebuild.py`
+  orchestrator: resolve sources → pre-flight plan → dry-run gate → confirm
+  → `.rebuild.lock.flock` → backup wings/index/graph → `drop_and_reinit()`
+  + `KnowledgeGraph.reset()` → re-mine → verify → rollback on failure.
+  `--dry-run` / `--yes` / `--no-backup` flags; `path` argument optional
+  (falls back to `cfg.mining_sources` or auto-discovers `Sessions/` +
+  `Topics/`). `SearchBackend.drop_and_reinit()` on both backends, `Palace
+  .backup_wings()` with `.N` collision suffix, `KnowledgeGraph.reset()`
+  (commits `2059783` / `6a9570d` / `1c4da1f` / `729eea4` / `b70a935` /
+  `86a915b` / `85e301c`).
+- ✅ **Auto-refine hook respects rebuild lock** — `mnemos/auto_refine_hook.py`
+  silently exits if the rebuild orchestrator holds `.rebuild.lock.flock`;
+  uses a 50 ms non-blocking probe so stale lock files (crashed prior
+  rebuild) don't wedge the hook (`7f30777`).
+- ✅ **Review fixes (post-Group-B)** — backend + graph handles now close in
+  `finally` so the rollback path's `shutil.rmtree` won't hit Windows
+  `WinError 32`; `_resolve_sources` called once through `plan
+  ["sources_resolved"]` (no TOCTOU window between plan display and
+  confirmation); `test_rebuild_happy_path` now parametrized across both
+  backends (first end-to-end ChromaDB exercise of `rebuild_vault` — dir
+  backup vs sqlite-vec's file backup); new `test_rebuild_succeeds_past_
+  stale_lock_file` covers filelock's OS-level advisory semantics. 17
+  tests in `test_rebuild.py`, all green (`d290de8`).
+- ✅ **Test-suite repairs** — five pre-existing tests in `test_server.py`
+  / `test_stack.py` assumed A2's old eager `_wing.md` behavior; seeded
+  a minimal drawer per wing/room to trigger the lazy summary write. No
+  production code changes (`509582f`).
+- ✅ **Distribution-ready memory-source handling** — three post-pilot fixes
+  so every Claude Code user (not just the author) gets rebuild-safe
+  memory imports:
+  - `MEMORY.md` index files + leading-underscore `.md` files are skipped
+    by the miner (duplicate-signal noise) — `998a529`.
+  - `mnemos import markdown|memory <path>` now appends the source to
+    `mnemos.yaml`'s `mining_sources` (idempotent, yaml-preserving,
+    Windows-normalized) so rebuilds pick it up automatically — `e9f3d6d`.
+  - `_resolve_sources` is now additive: always auto-discovers the
+    vault's internal `Sessions/` + `Topics/` and UNIONs with configured
+    `mining_sources` entries (dedup by `os.path.normpath`). Caught by
+    the round-trip rebuild pilot, which initially dropped from 683 to
+    100 drawers because `mining_sources` was replacing auto-discover —
+    `bb53892`.
+- ✅ **Real-vault pilot complete** — kasamd rebuild + 5 external memory
+  folder re-import + round-trip validation. Final: 683 drawers (up
+  from 670 pre-v0.3.2 despite skipping MEMORY.md indexes), 16 wings,
+  session-log entity pollution 0 (was 457), phantom hall dirs 0 (was
+  138), double-date filenames 4 (was 69). Source file sha256 hashes
+  unchanged — rebuild never modifies Sessions/Topics.
+- 🟡 **PyPI upload pending** — version bumped to `0.3.2` in `pyproject.toml`
+  and `CHANGELOG.md`; tag + wheel + GitHub release follow in task C5.
 
 ### Next session starts here
 

@@ -4,7 +4,7 @@
 Eski `docs/specs/2026-04-*` ve `docs/plans/2026-04-*` dosyaları historical
 archive; burada çelişki olursa bu dosya geçerlidir.
 
-**Son güncelleme:** 2026-04-16
+**Son güncelleme:** 2026-04-18
 
 ---
 
@@ -16,6 +16,7 @@ archive; burada çelişki olursa bu dosya geçerlidir.
 | v0.2.0 | Full Memory (= Phase 0 Foundation) | ✅ | ✅ |
 | v0.3.0 | First-Run Experience | ✅ | ✅ |
 | v0.3.1 | Backend UX (keşif + migrate + recovery) | ✅ | ✅ |
+| v0.3.2 | Palace Hygiene (pipeline fixes + atomic rebuild) | ✅ | 🟡 pending |
 | **v0.4.0** | **AI Boost (= Phase 1)** | **🔄 next** | — |
 | v0.5.0 | Automation (= Phase 2) | ⏸ | — |
 | v0.6.0 | Community & Ecosystem | ⏸ | — |
@@ -530,7 +531,7 @@ hiçbir LLM API'sı çağırmaz. Maliyet sıfır, bağımlılık sıfır.
 
 ---
 
-## v0.3.1 — Backend UX 🔄 *(başladı 2026-04-17)*
+## v0.3.1 — Backend UX ✅ *(2026-04-17)*
 
 **Sorun:** Kod iki vector backend'i destekliyor (ChromaDB + sqlite-vec).
 2026-04-17 parity benchmark'ında dördüncü ondalığa kadar aynı sayılar
@@ -603,6 +604,94 @@ güvenle geçmesini ve hata sırasında yol bulmasını sağlamak.
       kullanıcı hangi backend'de olduğunu görebiliyor
 - [ ] İki yönlü migrate çalışıyor (chromadb ↔ sqlite-vec), backup'lar güvende
 - [ ] README Troubleshooting tek paragrafta problemi + çözümü veriyor
+
+---
+
+## v0.3.2 — Palace Hygiene ✅ *(2026-04-18)*
+
+**Sorun:** Author vault'unda dokuz pipeline hatası birikti — aynı konu üç
+ayrı wing'e bölünüyor (diacritic + tire), boş hall klasörleri graph
+view'ı kirletiyor, `tags[0]` oda ismine terfi ediyor (başlık-uzunluğunda
+odalar), drawer dosya adlarında çift tarih prefiksi, graph node'ları
+sadece ID gösteriyor (başlıksız), entity listesi frontmatter tag'leriyle
+kirli. Ve `mnemos mine --rebuild` adı "atomic" iken aslında sadece
+`mine_log clear + re-mine` yapıyordu — backup yok, index wipe yok,
+rollback yok. Büyük vault'ta kısmi hata data kaybına açık.
+
+**Canonical spec:**
+[`docs/specs/2026-04-18-v0.3.2-palace-hygiene-design.md`](specs/2026-04-18-v0.3.2-palace-hygiene-design.md)
+
+### Görevler
+
+- [x] **A1 Wing canonicalization (TR diacritic + delimiter normalize)** *(commit `94b624d`, 2026-04-18)*
+- [x] **A2 Lazy hall / `_wing.md` / `_room.md` create** *(commit `590f302`)*
+      — Empty wings ve phantom room klasörleri artık oluşmuyor.
+- [x] **A3 `tags[0]` → room promotion'ı kaldır, wing≠room flatten** *(commit `0e72389`)*
+- [x] **A4 Source-date filename + word-boundary slug** *(commit `6707010`)*
+- [x] **A5 Drawer body H1 title + source wikilink** *(commit `13fc74c`,
+      review fix `9532caf` — synthetic/manual source'ların `[[unknown]]`
+      linki atılıyor)*
+- [x] **A6 Entity hygiene — no tags, case-preserve dedup** *(commit `bbfa1b8`)*
+- [x] **A2 follow-up test fix** *(commit `509582f`)* — `test_app_recall`,
+      `test_app_wake_up`, üç `test_stack.py` testi A2'nin eski eager
+      `_wing.md` davranışını varsayıyordu; her wing'e minimal drawer
+      seed ederek lazy summary'yi tetiklettim.
+- [x] **B1 `SearchBackend.drop_and_reinit()`** *(commit `2059783`)*
+      — Abstract metod + ChromaDB + sqlite-vec implementasyonları.
+      Rebuild sonrası backend aynı süreçte yeniden kullanılabilir.
+- [x] **B2 `Palace.backup_wings(timestamp)`** *(commit `6a9570d`)*
+      — Atomic `shutil.move`. `.N` collision suffix aynı saniyede iki
+      rebuild çakışmasını engelliyor.
+- [x] **B3 `KnowledgeGraph.reset()`** *(commit `1c4da1f`)*
+- [x] **B4 `mnemos/rebuild.py` — `_resolve_sources` + `RebuildError`** *(commit `729eea4`)*
+      — Explicit path > `cfg.mining_sources` > auto-discover `Sessions/`
+      + `Topics/` > `RebuildError`.
+- [x] **B5 `build_plan` + `format_plan`** *(commit `b70a935`)*
+      — Dry-run için source sayısı + backup path + mevcut drawer count.
+- [x] **B6 `rebuild_vault` orchestrator** *(commit `86a915b`)*
+      — Dokuz faz: resolve → plan → dry-run gate → confirm → lock →
+      backup (wings + index + graph) → `drop_and_reinit` + `graph.reset`
+      → re-mine → verify → rollback on failure.
+- [x] **B7 CLI wire — `mnemos mine --rebuild` + `--dry-run`/`--yes`/`--no-backup`** *(commit `85e301c`)*
+      — `path` artık optional (`--rebuild` ile auto-discover çalışıyor).
+- [x] **B8 Auto-refine hook `.rebuild.lock.flock` early-exit** *(commit `7f30777`)*
+      — Orchestrator lock'u tuttuğunda hook sessizce çıkıyor. 50 ms
+      non-blocking probe stale lock file'larını blokluyor değil.
+- [x] **Code review fix-up** *(commit `d290de8`)* — `backend.close()` ve
+      `graph._conn.close()` artık `try/finally`'de → Windows'ta rollback
+      path'i `shutil.rmtree(storage_path)` çalıştırabilsin (açık handle
+      `WinError 32` veriyordu). `_resolve_sources` iki kez çağrılmıyor
+      artık (`plan["sources_resolved"]` taşınıyor). `test_rebuild_happy_
+      path` parametrize edilip ChromaDB end-to-end rebuild test edildi
+      (dir backup vs sqlite-vec'in file backup'ı — ilk kez). Yeni
+      stale-lock recovery testi eklendi. 17 test, hepsi yeşil.
+- [x] **C3 Version bump + CHANGELOG** *(commit `37244d7`)*
+- [x] **C4 STATUS + ROADMAP güncel** *(commit `09c4451`)*
+- [x] **C1 Light pilot** *(commits `bf60a6a` + `6c80e8d` + `1097ccb`)*
+      — Unit tests green, dry-run against kasamd matched plan (81 sources,
+      670 drawers), single-file smoke caught two A4/A5 regressions
+      (double-date filename + `# # Title` H1) which were fixed.
+- [x] **C2 Real vault rebuild + memory re-import + round-trip** *(commits
+      `998a529` + `e9f3d6d` + `0abfd7e` + `bb53892`)*
+      — kasamd rebuilt end-to-end. Caught and fixed three
+      distribution-ready bugs (MEMORY.md noise, import-not-persisted,
+      `_resolve_sources` replacement vs additive). Final: 683 drawers
+      (NET +13 over pre-v0.3.2), 16 wings, 5 `mining_sources` entries
+      auto-included in every rebuild forward.
+- [ ] **C5 Build, tag, PyPI, GitHub release**
+
+### Başarı kriterleri
+
+- [x] `mnemos mine --rebuild` atomic — wings backup, index drop + reinit,
+      graph reset, verify, rollback on failure
+- [x] Auto-refine hook ve rebuild orchestrator concurrent çalışmıyor
+      (FileLock-based mutual exclusion)
+- [x] Pipeline hygiene — TR diacritic normalize, lazy summaries, no
+      tags→room promotion, source-date filename, H1+wikilink body,
+      case-preserve entity dedup
+- [x] İki backend de `rebuild_vault` end-to-end test edildi (ChromaDB
+      dir backup + sqlite-vec file backup)
+- [x] Gerçek vault rebuild başarılı (C2 — kasamd pilot 683 drawer)
 
 ---
 

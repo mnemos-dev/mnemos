@@ -173,11 +173,24 @@ class MnemosApp:
         if not target.is_absolute():
             target = Path(self.config.vault_path) / target
 
-        # Collect candidate .md files
+        # Collect candidate .md files. Skip filenames that are metadata-only
+        # and would produce duplicate-signal drawers:
+        #   - MEMORY.md: Claude Code auto-memory index (pure wikilinks into
+        #     sibling files that are themselves mined).
+        #   - _wing.md / _room.md (any leading-underscore): mnemos's own
+        #     summary files — mining them re-indexes our own metadata.
+        _SKIP_NAMES = {"MEMORY.md"}
+        def _is_mineable(p: Path) -> bool:
+            if p.name in _SKIP_NAMES:
+                return False
+            if p.name.startswith("_"):
+                return False
+            return True
+
         if target.is_file():
-            candidates = [target]
+            candidates = [target] if _is_mineable(target) else []
         elif target.is_dir():
-            candidates = list(target.rglob("*.md"))
+            candidates = [p for p in target.rglob("*.md") if _is_mineable(p)]
         else:
             return {
                 "files_scanned": 0,

@@ -9,6 +9,32 @@ from typing import List, Optional
 
 from mnemos.config import MnemosConfig
 from mnemos.obsidian import write_drawer_file, parse_drawer_file
+from mnemos.miner import _first_sentence
+
+
+# TR character -> ASCII equivalent for fuzzy matching. Preserves
+# semantic identity across spelling variants ("Satın Alma" vs "satin-alma").
+_TR_NORMALIZE = str.maketrans({
+    'ı': 'i', 'İ': 'i', 'I': 'i',
+    'ş': 's', 'Ş': 's',
+    'ü': 'u', 'Ü': 'u',
+    'ğ': 'g', 'Ğ': 'g',
+    'ç': 'c', 'Ç': 'c',
+    'ö': 'o', 'Ö': 'o',
+})
+
+
+def _normalize_for_match(name: str) -> str:
+    """Normalize a name for case-insensitive, diacritic-insensitive, delimiter-insensitive match.
+
+    Used by Palace.canonical_wing to unify "Satın Alma", "satin-alma",
+    "SATIN_ALMA" as the same wing identity. Distinct names like
+    "Satın Alma Otomasyonu" still normalize differently.
+    """
+    if not name:
+        return ""
+    collapsed = name.translate(_TR_NORMALIZE).lower()
+    return re.sub(r"[-_ ]+", "", collapsed)
 
 
 def _sanitize_name(name: str) -> str:
@@ -45,59 +71,37 @@ class Palace:
     def canonical_wing(self, name: str) -> str:
         """Resolve *name* to an existing wing's canonical casing if one exists.
 
-        Wing names are treated case-insensitively to avoid splitting drawers
-        across sibling directories when a source file uses inconsistent casing
-        (e.g. frontmatter ``project: mnemos`` vs ``project: Mnemos``). The
-        first-created wing wins the canonical casing.
+        Matching is diacritic- and delimiter-insensitive via
+        :func:`_normalize_for_match`, so "Satın Alma" / "satin-alma" /
+        "SATIN_ALMA" all resolve to the first-created directory.
+        Distinct names (different token sequences) remain distinct wings.
         """
         sanitized = _sanitize_name(name)
         if self.config.wings_dir.exists():
-            lower = sanitized.lower()
+            target_norm = _normalize_for_match(sanitized)
             for p in self.config.wings_dir.iterdir():
-                if p.is_dir() and p.name.lower() == lower:
+                if p.is_dir() and _normalize_for_match(p.name) == target_norm:
                     return p.name
         return sanitized
 
     def create_wing(self, name: str) -> Path:
-        """Create a wing directory and its _wing.md summary file.
+        """Create a wing directory (no summary file yet — summary is lazy).
 
-        Args:
-            name: Wing name (used as directory name).
-
-        Returns:
-            Path to the wing directory.
+        The _wing.md summary is written on first drawer via :meth:`add_drawer`
+        so that empty wings don't persist after a failed mine.
         """
         name = self.canonical_wing(name)
         wing_dir = self.config.wings_dir / name
         wing_dir.mkdir(parents=True, exist_ok=True)
-
-        summary_file = wing_dir / "_wing.md"
-        if not summary_file.exists():
-            write_drawer_file(
-                summary_file,
-                metadata={
-                    "wing": name,
-                    "created": date.today().isoformat(),
-                    "type": "wing-summary",
-                },
-                body=f"# {name}\n\nWing summary for {name}.",
-            )
-
         return wing_dir
 
     def create_room(self, wing: str, room: str) -> Path:
-        """Create a room directory, _room.md, and one subdir per configured hall.
+        """Create a room directory (no summary, no hall subdirs — all lazy).
 
-        Auto-creates the parent wing if it does not exist.
-
-        Args:
-            wing: Wing name.
-            room: Room name (used as directory name).
-
-        Returns:
-            Path to the room directory.
+        Auto-creates the parent wing if it does not exist. Hall directories
+        and the _room.md summary are created on first drawer via
+        :meth:`add_drawer`.
         """
-        # Ensure wing exists
         wing = self.canonical_wing(wing)
         room = _sanitize_name(room)
         wing_dir = self.config.wings_dir / wing
@@ -106,25 +110,6 @@ class Palace:
 
         room_dir = wing_dir / room
         room_dir.mkdir(parents=True, exist_ok=True)
-
-        # Write _room.md summary
-        summary_file = room_dir / "_room.md"
-        if not summary_file.exists():
-            write_drawer_file(
-                summary_file,
-                metadata={
-                    "wing": wing,
-                    "room": room,
-                    "created": date.today().isoformat(),
-                    "type": "room-summary",
-                },
-                body=f"# {room}\n\nRoom summary for {room} inside wing {wing}.",
-            )
-
-        # Create one subdir per configured hall
-        for hall in self.config.halls:
-            (room_dir / hall).mkdir(exist_ok=True)
-
         return room_dir
 
     # ------------------------------------------------------------------
@@ -173,12 +158,67 @@ class Palace:
         hall_dir = room_dir / hall
         hall_dir.mkdir(parents=True, exist_ok=True)
 
-        # Build a unique filename: <date>-<slug>-<counter>.md
-        today = date.today().isoformat()
-        slug = _slugify(text)
-        filename = _unique_filename(hall_dir, today, slug)
+        # Lazy summaries: write _wing.md / _room.md on first drawer
+        wing_summary = self.config.wings_dir / wing / "_wing.md"
+        if not wing_summary.exists():
+            write_drawer_file(
+                wing_summary,
+                metadata={
+                    "wing": wing,
+                    "created": date.today().isoformat(),
+                    "type": "wing-summary",
+                },
+                body=f"# {wing}\n\nWing summary for {wing}.",
+            )
+
+        room_summary = room_dir / "_room.md"
+        if not room_summary.exists():
+            write_drawer_file(
+                room_summary,
+                metadata={
+                    "wing": wing,
+                    "room": room,
+                    "created": date.today().isoformat(),
+                    "type": "room-summary",
+                },
+                body=f"# {room}\n\nRoom summary for {room} inside wing {wing}.",
+            )
+
+        # Build a unique filename: <source_date>-<slug>.md
+        source_path = Path(source)
+        if source_path.exists():
+            source_date = _extract_source_date(source_path)
+        else:
+            # Even for non-existent source paths, try the filename prefix —
+            # callers often pass synthetic paths with embedded dates.
+            m = _DATE_PREFIX_RE.match(source_path.stem)
+            source_date = m.group(1) if m else date.today().isoformat()
+        filename = _unique_filename(hall_dir, source_date=source_date, slug_text=text)
 
         filepath = hall_dir / filename
+
+        # Build drawer body: H1 from first sentence + source wikilink + content
+        title = _first_sentence(text) or _slugify(text).replace("-", " ").title()
+        # When the chunk starts with a markdown heading ("# Foo"), the first
+        # sentence carries the heading markers — strip them so the drawer H1
+        # doesn't end up as "# # Foo".
+        title = re.sub(r"^\s*#+\s*", "", title).strip()
+        # Source wikilink: use filename stem if we have one; for synthetic
+        # sources like source="manual" (mnemos_add MCP tool), omit the
+        # blockquote rather than emit a dead [[manual]] link.
+        has_real_source = source_path.exists() or "/" in source or "\\" in source
+        if has_real_source and source_path.stem:
+            body_with_header = (
+                f"# {title}\n\n"
+                f"> From [[{source_path.stem}]] · {hall} · {source_date}\n\n"
+                f"{text}"
+            )
+        else:
+            body_with_header = (
+                f"# {title}\n\n"
+                f"> {hall} · {source_date}\n\n"
+                f"{text}"
+            )
 
         write_drawer_file(
             filepath,
@@ -191,7 +231,7 @@ class Palace:
                 "entities": entities,
                 "language": language,
             },
-            body=text,
+            body=body_with_header,
         )
 
         return filepath
@@ -272,33 +312,114 @@ class Palace:
         shutil.move(str(drawer_path), str(dest))
         return dest
 
+    def backup_wings(self, timestamp: str | None = None) -> Path:
+        """Atomically move the current wings/ directory into _recycled/.
+
+        Returns the path to the moved backup directory. Appends a ``.N`` suffix
+        on collision so repeated rebuilds in the same second never overwrite
+        each other.
+        """
+        if timestamp is None:
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+
+        self.config.recycled_full_path.mkdir(parents=True, exist_ok=True)
+
+        base_name = f"wings-{timestamp}"
+        dest = self.config.recycled_full_path / base_name
+        counter = 1
+        while dest.exists():
+            dest = self.config.recycled_full_path / f"{base_name}.{counter}"
+            counter += 1
+
+        shutil.move(str(self.config.wings_dir), str(dest))
+        return dest
+
 
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
 
+_DATE_PREFIX_RE = re.compile(r"^\s*(?:#+\s*)?(\d{4}-\d{2}-\d{2})\s*[-—:–]?\s*")
+
+
+def _extract_source_date(filepath: Path) -> str:
+    """Return an ISO-8601 date string derived from a source file.
+
+    Resolution order:
+      1. Leading YYYY-MM-DD in the filename stem.
+      2. Frontmatter ``date`` or ``created`` field.
+      3. File mtime (local date).
+    """
+    stem = filepath.stem
+    m = _DATE_PREFIX_RE.match(stem)
+    if m:
+        return m.group(1)
+
+    # Try frontmatter — cheap parse of leading --- block
+    try:
+        with filepath.open("r", encoding="utf-8") as fh:
+            first = fh.readline().strip()
+            if first == "---":
+                buf = []
+                for line in fh:
+                    if line.strip() == "---":
+                        break
+                    buf.append(line)
+                fm_yaml = "".join(buf)
+                import yaml as _yaml
+                fm = _yaml.safe_load(fm_yaml) or {}
+                for key in ("date", "created"):
+                    value = fm.get(key)
+                    if value:
+                        text = str(value)[:10]
+                        if _DATE_PREFIX_RE.match(text + "-"):
+                            return text
+    except Exception:
+        pass
+
+    # mtime fallback
+    try:
+        ts = filepath.stat().st_mtime
+        return date.fromtimestamp(ts).isoformat()
+    except OSError:
+        return date.today().isoformat()
+
 
 def _slugify(text: str, max_len: int = 40) -> str:
-    """Convert text to a safe filename slug."""
+    """Convert text to a safe filename slug.
+
+    Strips leading YYYY-MM-DD prefix (common in refined session titles
+    like "2026-04-13 — Phase 0 Foundation") so drawer filenames do not
+    end up with two dates. Truncates at word boundaries.
+    """
+    text = _DATE_PREFIX_RE.sub("", text)
     slug = text.lower()
-    # Keep only alphanumerics, spaces, hyphens
     slug = "".join(c if c.isalnum() or c in (" ", "-") else "" for c in slug)
     slug = slug.strip().replace(" ", "-")
-    # Collapse repeated hyphens
     while "--" in slug:
         slug = slug.replace("--", "-")
-    return slug[:max_len].strip("-") or "drawer"
+    slug = slug.strip("-")
+    if not slug:
+        return "drawer"
+    if len(slug) <= max_len:
+        return slug
+    truncated = slug[:max_len]
+    last_hyphen = truncated.rfind("-")
+    if last_hyphen > max_len // 2:
+        truncated = truncated[:last_hyphen]
+    return truncated.rstrip("-")
 
 
-def _unique_filename(directory: Path, date_prefix: str, slug: str) -> str:
-    """Return a unique filename in *directory* with the given date prefix and slug."""
-    candidate = f"{date_prefix}-{slug}.md"
+def _unique_filename(directory: Path, source_date: str, slug_text: str) -> str:
+    """Return a unique ``<source_date>-<slug>.md`` filename inside *directory*."""
+    slug = _slugify(slug_text)
+    candidate = f"{source_date}-{slug}.md"
     if not (directory / candidate).exists():
         return candidate
-
     counter = 1
     while True:
-        candidate = f"{date_prefix}-{slug}-{counter}.md"
+        candidate = f"{source_date}-{slug}-{counter}.md"
         if not (directory / candidate).exists():
             return candidate
         counter += 1

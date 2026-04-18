@@ -103,6 +103,15 @@ class SearchBackend(ABC):
         """
         return None
 
+    @abstractmethod
+    def drop_and_reinit(self) -> None:
+        """Drop and recreate both *mined* and *raw* collections.
+
+        After this call the backend must be usable again — further
+        :meth:`index_drawer` / :meth:`index_raw` calls must succeed.
+        Used by :mod:`mnemos.rebuild` during atomic rebuild.
+        """
+
     def close(self) -> None:  # noqa: D401
         """Optional hook for flushing/closing resources before exit."""
 
@@ -338,6 +347,25 @@ class ChromaBackend(SearchBackend):
 
     def storage_path(self) -> Path | None:
         return self._storage_path
+
+    def drop_and_reinit(self) -> None:
+        mined_name = self._collection.name
+        raw_name = self._raw_collection.name
+        with self._writing():
+            try:
+                self._client.delete_collection(mined_name)
+            except Exception:
+                pass
+            try:
+                self._client.delete_collection(raw_name)
+            except Exception:
+                pass
+            self._collection = self._client.get_or_create_collection(
+                name=mined_name, metadata={"hnsw:space": "cosine"},
+            )
+            self._raw_collection = self._client.get_or_create_collection(
+                name=raw_name, metadata={"hnsw:space": "cosine"},
+            )
 
     # ------------------------------------------------------------------
     # ChromaDB-specific helpers
@@ -775,6 +803,12 @@ class SqliteVecBackend(SearchBackend):
 
     def storage_path(self) -> Path | None:
         return self._db_path
+
+    def drop_and_reinit(self) -> None:
+        with self._writing(), self._conn:
+            for table in ("vec_mined", "mined", "vec_raw", "raw"):
+                self._conn.execute(f"DROP TABLE IF EXISTS {table}")
+        self._init_schema()
 
 
 # ---------------------------------------------------------------------------

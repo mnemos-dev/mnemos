@@ -219,3 +219,20 @@ def test_hook_script_excludes_self_transcript_from_picks(tmp_path):
     # total == 2 means the picker dropped the self-transcript and only picked the other two.
     assert data["total"] == 2, \
         f"self-transcript must be excluded from picks; got total={data['total']!r}"
+
+
+def test_hook_early_exit_when_rebuild_lock_held(tmp_path):
+    from mnemos.auto_refine_hook import _rebuild_in_progress
+    palace = tmp_path / "Mnemos"
+    palace.mkdir(parents=True)
+    lock_path = palace / ".rebuild.lock.flock"
+
+    from filelock import FileLock
+    lock = FileLock(str(lock_path), timeout=0)
+    lock.acquire()
+    try:
+        assert _rebuild_in_progress(tmp_path) is True
+    finally:
+        lock.release()
+
+    assert _rebuild_in_progress(tmp_path) is False
