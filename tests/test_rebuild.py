@@ -171,9 +171,10 @@ def _seed_session(tmp_path: Path, name: str, body: str) -> Path:
     return src
 
 
-def test_rebuild_happy_path(tmp_path: Path):
+@pytest.mark.parametrize("backend_name", ["chromadb", "sqlite-vec"])
+def test_rebuild_happy_path(tmp_path: Path, backend_name: str):
     from mnemos.rebuild import rebuild_vault
-    cfg = MnemosConfig(vault_path=str(tmp_path), search_backend="sqlite-vec")
+    cfg = MnemosConfig(vault_path=str(tmp_path), search_backend=backend_name)
     cfg.palace_dir.mkdir(parents=True, exist_ok=True)
     cfg.wings_dir.mkdir(parents=True, exist_ok=True)
 
@@ -224,6 +225,15 @@ def test_rebuild_rollback_on_zero_drawers(tmp_path: Path):
 
     assert (cfg.wings_dir / "OldWing" / "marker.md").exists()
 
+    # Index must also be restored (empty here; no drawers ever indexed), and
+    # the backend must be re-openable after rollback.
+    backend = SearchEngine(cfg)
+    try:
+        stats = backend.get_stats()
+        assert stats["total_drawers"] == 0
+    finally:
+        backend.close()
+
 
 def test_rebuild_lock_prevents_concurrent(tmp_path: Path):
     from mnemos.rebuild import rebuild_vault, RebuildError
@@ -244,3 +254,19 @@ def test_rebuild_lock_prevents_concurrent(tmp_path: Path):
         assert "lock" in str(exc.value).lower() or "already in progress" in str(exc.value).lower()
     finally:
         lock.release()
+
+
+def test_rebuild_succeeds_past_stale_lock_file(tmp_path: Path):
+    """A lock file on disk that no one holds must not block a new rebuild."""
+    from mnemos.rebuild import rebuild_vault
+    cfg = MnemosConfig(vault_path=str(tmp_path), search_backend="sqlite-vec")
+    cfg.palace_dir.mkdir(parents=True, exist_ok=True)
+    cfg.wings_dir.mkdir(parents=True, exist_ok=True)
+    _seed_session(tmp_path, "2026-04-13-demo.md", "We picked sqlite-vec.")
+
+    # Simulate a crashed prior rebuild: lock file exists but no process holds it.
+    stale_lock = cfg.palace_dir / ".rebuild.lock.flock"
+    stale_lock.touch()
+
+    result = rebuild_vault(cfg, explicit_path=None, yes=True, backup=True)
+    assert result["rebuilt"] is True

@@ -85,6 +85,7 @@ def build_plan(cfg: MnemosConfig, explicit_path: str | None) -> dict:
     ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
     return {
         "sources": per_source,
+        "sources_resolved": sources,
         "source_count": total_files,
         "existing_drawer_count": existing_drawers,
         "backup_path": str(cfg.recycled_full_path / f"wings-{ts}"),
@@ -156,36 +157,43 @@ def rebuild_vault(
         if backup and cfg.wings_dir.exists() and any(cfg.wings_dir.iterdir()):
             backup_path = palace.backup_wings(timestamp=plan["timestamp"])
 
+        # Backend: back up storage + drop_and_reinit, always close handle.
+        # Releasing the handle before the except block's shutil.rmtree is
+        # critical on Windows where open sqlite3/ChromaDB files block removal.
         backend = SearchEngine(cfg)
-        storage_path = backend.storage_path()
-        ts = plan["timestamp"]
-        if backup and storage_path and storage_path.exists():
-            if storage_path.is_file():
-                index_backup = storage_path.with_name(
-                    storage_path.name + f".bak-{ts}"
-                )
-                shutil.copy2(storage_path, index_backup)
-            else:
-                index_backup = storage_path.with_name(
-                    storage_path.name + f".bak-{ts}"
-                )
-                shutil.copytree(storage_path, index_backup)
+        try:
+            storage_path = backend.storage_path()
+            ts = plan["timestamp"]
+            if backup and storage_path and storage_path.exists():
+                if storage_path.is_file():
+                    index_backup = storage_path.with_name(
+                        storage_path.name + f".bak-{ts}"
+                    )
+                    shutil.copy2(storage_path, index_backup)
+                else:
+                    index_backup = storage_path.with_name(
+                        storage_path.name + f".bak-{ts}"
+                    )
+                    shutil.copytree(storage_path, index_backup)
 
-        if backup and cfg.graph_full_path.exists():
-            graph_backup = cfg.graph_full_path.with_name(
-                cfg.graph_full_path.name + f".bak-{ts}"
-            )
-            shutil.copy2(cfg.graph_full_path, graph_backup)
+            if backup and cfg.graph_full_path.exists():
+                graph_backup = cfg.graph_full_path.with_name(
+                    cfg.graph_full_path.name + f".bak-{ts}"
+                )
+                shutil.copy2(cfg.graph_full_path, graph_backup)
 
-        backend.drop_and_reinit()
-        backend.close()
+            backend.drop_and_reinit()
+        finally:
+            backend.close()
 
         graph = KnowledgeGraph(cfg.graph_full_path)
-        graph.reset()
         try:
-            graph._conn.close()
-        except Exception:
-            pass
+            graph.reset()
+        finally:
+            try:
+                graph._conn.close()
+            except Exception:
+                pass
 
         from mnemos.server import MnemosApp
         cfg.wings_dir.mkdir(parents=True, exist_ok=True)
@@ -193,8 +201,7 @@ def rebuild_vault(
         with MnemosApp(cfg) as app:
             app._mine_log = {}
             app._save_mine_log()
-            sources = _resolve_sources(cfg, explicit_path)
-            for src in sources:
+            for src in plan["sources_resolved"]:
                 if not src.exists():
                     print(f"Source not found, skipping: {src}")
                     continue
