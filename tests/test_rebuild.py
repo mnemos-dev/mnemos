@@ -159,3 +159,88 @@ def test_format_plan_human_readable(tmp_path: Path):
     assert "Sources:" in text
     assert "Backup:" in text
     assert "1 files" in text or "1 file" in text
+
+
+def _seed_session(tmp_path: Path, name: str, body: str) -> Path:
+    sessions = tmp_path / "Sessions"
+    sessions.mkdir(exist_ok=True)
+    src = sessions / name
+    src.write_text(
+        "---\nproject: Demo\n---\n" + body, encoding="utf-8",
+    )
+    return src
+
+
+def test_rebuild_happy_path(tmp_path: Path):
+    from mnemos.rebuild import rebuild_vault
+    cfg = MnemosConfig(vault_path=str(tmp_path), search_backend="sqlite-vec")
+    cfg.palace_dir.mkdir(parents=True, exist_ok=True)
+    cfg.wings_dir.mkdir(parents=True, exist_ok=True)
+
+    _seed_session(tmp_path, "2026-04-13-demo.md",
+                  "We decided to use sqlite-vec. This is a discussion about the decision.")
+    _seed_session(tmp_path, "2026-04-14-other.md",
+                  "Another session about the testing strategy we chose.")
+
+    result = rebuild_vault(cfg, explicit_path=None, yes=True, backup=True)
+
+    assert result["rebuilt"] is True
+    assert result["new_drawer_count"] > 0
+    assert result["backup_path"]
+    assert Path(result["backup_path"]).exists() is False  # no old wings to back up
+    assert cfg.wings_dir.exists()
+
+
+def test_rebuild_dry_run_does_nothing(tmp_path: Path):
+    from mnemos.rebuild import rebuild_vault
+    cfg = MnemosConfig(vault_path=str(tmp_path), search_backend="sqlite-vec")
+    cfg.palace_dir.mkdir(parents=True, exist_ok=True)
+    cfg.wings_dir.mkdir(parents=True, exist_ok=True)
+    (cfg.wings_dir / "Existing").mkdir()
+
+    _seed_session(tmp_path, "2026-04-13-demo.md", "Content")
+
+    result = rebuild_vault(cfg, explicit_path=None, yes=True, backup=True, dry_run=True)
+
+    assert result["dry_run"] is True
+    assert (cfg.wings_dir / "Existing").exists()  # not touched
+
+
+def test_rebuild_rollback_on_zero_drawers(tmp_path: Path):
+    """If re-mine produces zero drawers, backup must be restored."""
+    from mnemos.rebuild import rebuild_vault, RebuildError
+    cfg = MnemosConfig(vault_path=str(tmp_path), search_backend="sqlite-vec")
+    cfg.palace_dir.mkdir(parents=True, exist_ok=True)
+    cfg.wings_dir.mkdir(parents=True, exist_ok=True)
+    (cfg.wings_dir / "OldWing").mkdir()
+    (cfg.wings_dir / "OldWing" / "marker.md").write_text("old", encoding="utf-8")
+
+    # Sessions exists but has no .md files -> miner produces 0 drawers
+    (tmp_path / "Sessions").mkdir()
+
+    with pytest.raises(RebuildError) as exc:
+        rebuild_vault(cfg, explicit_path=None, yes=True, backup=True)
+    assert "no drawers" in str(exc.value).lower() or "rollback" in str(exc.value).lower()
+
+    assert (cfg.wings_dir / "OldWing" / "marker.md").exists()
+
+
+def test_rebuild_lock_prevents_concurrent(tmp_path: Path):
+    from mnemos.rebuild import rebuild_vault, RebuildError
+    cfg = MnemosConfig(vault_path=str(tmp_path), search_backend="sqlite-vec")
+    cfg.palace_dir.mkdir(parents=True, exist_ok=True)
+    cfg.wings_dir.mkdir(parents=True, exist_ok=True)
+    _seed_session(tmp_path, "2026-04-13-x.md", "content")
+
+    lock_file = cfg.palace_dir / ".rebuild.lock"
+    lock_file.touch()
+
+    from filelock import FileLock
+    lock = FileLock(str(lock_file) + ".flock", timeout=0.1)
+    lock.acquire()
+    try:
+        with pytest.raises(RebuildError) as exc:
+            rebuild_vault(cfg, explicit_path=None, yes=True, backup=True)
+        assert "lock" in str(exc.value).lower() or "already in progress" in str(exc.value).lower()
+    finally:
+        lock.release()
