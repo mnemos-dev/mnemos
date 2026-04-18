@@ -691,7 +691,7 @@ rollback yok. Büyük vault'ta kısmi hata data kaybına açık.
       case-preserve entity dedup
 - [x] İki backend de `rebuild_vault` end-to-end test edildi (ChromaDB
       dir backup + sqlite-vec file backup)
-- [ ] Gerçek vault rebuild başarılı (C2 — kullanıcı tarafından)
+- [x] Gerçek vault rebuild başarılı (C2 — kasamd pilot 683 drawer)
 
 ---
 

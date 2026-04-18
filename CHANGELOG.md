@@ -44,7 +44,7 @@ The real-vault pilot on the author's kasamd vault caught three issues that would
 Author-vault final state after the three fixes: 683 drawers (was 670 pre-v0.3.2), 16 wings, 5 mining_sources entries auto-included on every rebuild. Sources `sha256` unchanged — rebuild never modifies source files.
 
 
-
+## [0.3.1] — 2026-04-17 — Backend UX
 
 
 **Goal:** First-class discovery, migration, and corruption recovery for the two vector backends mnemos has been shipping since v0.2. A 2026-04-17 parity benchmark showed ChromaDB and sqlite-vec produce identical recall (R@5=0.90 on LongMemEval 10q, down to the fourth decimal), so the user-facing question is now reliability / environment fit, not quality.
