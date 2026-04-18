@@ -135,3 +135,39 @@ def test_add_drawer_manual_source_omits_wikilink(tmp_path: Path):
     assert "# A quick note added by hand via the MCP tool." in content
     # Blockquote still carries hall + date for context, just no dead wikilink
     assert "> facts" in content
+
+
+def test_slugify_strips_date_after_markdown_heading():
+    """Chunks starting with '# YYYY-MM-DD — Title' should slug without the date."""
+    from mnemos.palace import _slugify
+    slug = _slugify("# 2026-04-13 — Phase 0 Foundation")
+    assert "2026-04-13" not in slug
+    assert slug.startswith("phase-0-foundation") or "phase-0-foundation" in slug
+
+
+def test_add_drawer_strips_heading_from_h1_title(tmp_path: Path):
+    """A5 H1 must not become '# # Foo' when the chunk starts with '# Foo'."""
+    from mnemos.config import MnemosConfig
+    from mnemos.palace import Palace
+    cfg = MnemosConfig(vault_path=str(tmp_path))
+    palace = Palace(cfg)
+    palace.ensure_structure()
+    src = tmp_path / "Sessions"
+    src.mkdir()
+    source_file = src / "2026-04-13-demo.md"
+    source_file.write_text(
+        "# 2026-04-13 — Phase 0 Foundation\n\nbody", encoding="utf-8",
+    )
+    drawer = palace.add_drawer(
+        wing="W", room="r", hall="facts",
+        text="# 2026-04-13 — Phase 0 Foundation\n\nbody",
+        source=str(source_file),
+        importance=50, entities=[], language="en",
+    )
+    # Filename must carry a single date, not two
+    stem = drawer.stem
+    assert stem.count("2026-04-13") == 1, f"expected single date, got: {stem}"
+
+    body = drawer.read_text(encoding="utf-8")
+    # H1 emitted by A5 must not be "# # …"
+    assert "# # " not in body, f"double-hash H1 leaked: {body[:200]}"

@@ -199,6 +199,10 @@ class Palace:
 
         # Build drawer body: H1 from first sentence + source wikilink + content
         title = _first_sentence(text) or _slugify(text).replace("-", " ").title()
+        # When the chunk starts with a markdown heading ("# Foo"), the first
+        # sentence carries the heading markers — strip them so the drawer H1
+        # doesn't end up as "# # Foo".
+        title = re.sub(r"^\s*#+\s*", "", title).strip()
         # Source wikilink: use filename stem if we have one; for synthetic
         # sources like source="manual" (mnemos_add MCP tool), omit the
         # blockquote rather than emit a dead [[manual]] link.
@@ -336,7 +340,7 @@ class Palace:
 # Private helpers
 # ---------------------------------------------------------------------------
 
-_DATE_PREFIX_RE = re.compile(r"^\s*(\d{4}-\d{2}-\d{2})\s*[-—:–]?\s*")
+_DATE_PREFIX_RE = re.compile(r"^\s*(?:#+\s*)?(\d{4}-\d{2}-\d{2})\s*[-—:–]?\s*")
 
 
 def _extract_source_date(filepath: Path) -> str:
