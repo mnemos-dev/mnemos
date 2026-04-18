@@ -420,18 +420,25 @@ class Miner:
         detected = self._entity_detector.detect(body)
         wikilinks = _extract_wikilinks(body)
 
-        entities: list[str] = list(path_entities)
-        entities.extend(detected.get("persons", []))
-        entities.extend(detected.get("projects", []))
-        # Add wikilinks
-        entities.extend(wikilinks)
-        # Add frontmatter values
+        # Entity merge: path CamelCase + detector output + wikilinks + project.
+        # Tags are NOT entities (they describe the note, not identities).
+        # Dedup is case-insensitive but preserves the first seen casing
+        # ("Mnemos" stays "Mnemos" even if "mnemos" appears later).
+        raw_entities: list[str] = list(path_entities)
+        raw_entities.extend(detected.get("persons", []))
+        raw_entities.extend(detected.get("projects", []))
+        raw_entities.extend(wikilinks)
         if meta.get("project"):
-            entities.append(str(meta["project"]))
-        for tag in tags:
-            entities.append(str(tag))
-        # Deduplicate, preserve order
-        entities = list(dict.fromkeys(entities))
+            raw_entities.append(str(meta["project"]))
+
+        seen: dict[str, str] = {}
+        for ent in raw_entities:
+            if not ent:
+                continue
+            key = ent.lower()
+            if key not in seen:
+                seen[key] = ent
+        entities = list(seen.values())
 
         source = str(filepath)
 
