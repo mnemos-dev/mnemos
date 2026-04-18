@@ -116,6 +116,13 @@ class KnowledgeGraph:
     # Triples
     # ------------------------------------------------------------------
 
+    def reset(self) -> None:
+        """Truncate triples and entities — used by atomic rebuild."""
+        cur = self._conn.cursor()
+        cur.execute("DELETE FROM triples")
+        cur.execute("DELETE FROM entities")
+        self._conn.commit()
+
     def add_triple(
         self,
         subject: str,

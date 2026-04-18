@@ -69,3 +69,19 @@ def test_backup_wings_collision_suffix(tmp_path: Path):
 
     assert dest.name.startswith(f"wings-{ts}")
     assert dest.name != f"wings-{ts}"  # suffix appended
+
+
+def test_graph_reset_clears_triples_and_entities(tmp_path: Path):
+    from mnemos.graph import KnowledgeGraph
+    graph = KnowledgeGraph(tmp_path / "g.sqlite")
+    graph.add_triple(
+        subject="Mnemos", predicate="uses", obj="sqlite-vec",
+        source_file="x.md",
+    )
+
+    graph.reset()
+
+    count = graph._conn.execute("SELECT COUNT(*) FROM triples").fetchone()[0]
+    assert count == 0
+    count_e = graph._conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
+    assert count_e == 0
