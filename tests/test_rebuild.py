@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from mnemos.config import MnemosConfig
+from mnemos.palace import Palace
 from mnemos.search import SearchEngine
 
 
@@ -38,3 +39,33 @@ def test_drop_and_reinit_empties_collections(tmp_path: Path, backend_name: str):
         assert stats_reuse.get("total_drawers", 0) == 1
     finally:
         backend.close()
+
+
+def test_backup_wings_atomic_move(tmp_path: Path):
+    cfg = MnemosConfig(vault_path=str(tmp_path))
+    cfg.palace_dir.mkdir(parents=True, exist_ok=True)
+    (cfg.wings_dir / "W" / "R" / "facts").mkdir(parents=True)
+    (cfg.wings_dir / "W" / "R" / "facts" / "sample.md").write_text("x", encoding="utf-8")
+
+    palace = Palace(cfg)
+    dest = palace.backup_wings(timestamp="2026-04-18T12-00-00")
+
+    assert dest.exists()
+    assert (dest / "W" / "R" / "facts" / "sample.md").exists()
+    assert not cfg.wings_dir.exists()
+
+
+def test_backup_wings_collision_suffix(tmp_path: Path):
+    cfg = MnemosConfig(vault_path=str(tmp_path))
+    cfg.palace_dir.mkdir(parents=True, exist_ok=True)
+    ts = "2026-04-18T12-00-00"
+    (cfg.recycled_full_path / f"wings-{ts}").mkdir(parents=True)
+
+    cfg.wings_dir.mkdir(parents=True, exist_ok=True)
+    (cfg.wings_dir / "placeholder.txt").write_text("a", encoding="utf-8")
+
+    palace = Palace(cfg)
+    dest = palace.backup_wings(timestamp=ts)
+
+    assert dest.name.startswith(f"wings-{ts}")
+    assert dest.name != f"wings-{ts}"  # suffix appended

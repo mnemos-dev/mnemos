@@ -308,6 +308,29 @@ class Palace:
         shutil.move(str(drawer_path), str(dest))
         return dest
 
+    def backup_wings(self, timestamp: str | None = None) -> Path:
+        """Atomically move the current wings/ directory into _recycled/.
+
+        Returns the path to the moved backup directory. Appends a ``.N`` suffix
+        on collision so repeated rebuilds in the same second never overwrite
+        each other.
+        """
+        if timestamp is None:
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+
+        self.config.recycled_full_path.mkdir(parents=True, exist_ok=True)
+
+        base_name = f"wings-{timestamp}"
+        dest = self.config.recycled_full_path / base_name
+        counter = 1
+        while dest.exists():
+            dest = self.config.recycled_full_path / f"{base_name}.{counter}"
+            counter += 1
+
+        shutil.move(str(self.config.wings_dir), str(dest))
+        return dest
+
 
 # ---------------------------------------------------------------------------
 # Private helpers
