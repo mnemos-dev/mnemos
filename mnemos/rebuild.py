@@ -85,7 +85,7 @@ def build_plan(cfg: MnemosConfig, explicit_path: str | None) -> dict:
     ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
     return {
         "sources": per_source,
-        "sources_resolved": sources,
+        "sources_resolved": [str(s) for s in sources],
         "source_count": total_files,
         "existing_drawer_count": existing_drawers,
         "backup_path": str(cfg.recycled_full_path / f"wings-{ts}"),
@@ -201,7 +201,8 @@ def rebuild_vault(
         with MnemosApp(cfg) as app:
             app._mine_log = {}
             app._save_mine_log()
-            for src in plan["sources_resolved"]:
+            for src_str in plan["sources_resolved"]:
+                src = Path(src_str)
                 if not src.exists():
                     print(f"Source not found, skipping: {src}")
                     continue

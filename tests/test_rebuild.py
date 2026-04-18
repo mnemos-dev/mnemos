@@ -270,3 +270,17 @@ def test_rebuild_succeeds_past_stale_lock_file(tmp_path: Path):
 
     result = rebuild_vault(cfg, explicit_path=None, yes=True, backup=True)
     assert result["rebuilt"] is True
+
+
+def test_build_plan_result_is_json_serializable(tmp_path: Path):
+    """CLI prints the plan via json.dumps; all values must be JSON-safe."""
+    import json
+    from mnemos.rebuild import build_plan
+    (tmp_path / "Sessions").mkdir()
+    (tmp_path / "Sessions" / "a.md").write_text("x", encoding="utf-8")
+    cfg = MnemosConfig(vault_path=str(tmp_path))
+
+    plan = build_plan(cfg, explicit_path=None)
+    # Must not raise TypeError on Path objects etc.
+    payload = json.dumps({"dry_run": True, "plan": plan}, ensure_ascii=False)
+    assert "Sessions" in payload
