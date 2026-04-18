@@ -91,9 +91,9 @@ def test_add_drawer(config: MnemosConfig) -> None:
     expected_dir = config.wings_dir / "ProcureTrack" / "Supabase" / "decisions"
     assert drawer_path.parent == expected_dir
 
-    # Filename must start with today's date
-    today = date.today().isoformat()
-    assert drawer_path.name.startswith(today)
+    # Filename must start with the source's date (2026-04-10 from the
+    # source filename prefix) — source-date filenames, v0.3.2 problem 7.
+    assert drawer_path.name.startswith("2026-04-10")
 
     # Wing and room auto-created if they didn't exist
     assert (config.wings_dir / "ProcureTrack").is_dir()

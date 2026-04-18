@@ -186,21 +186,35 @@ class Palace:
 
         # Build a unique filename: <source_date>-<slug>.md
         source_path = Path(source)
-        source_date = _extract_source_date(source_path) if source_path.exists() \
-            else date.today().isoformat()
+        if source_path.exists():
+            source_date = _extract_source_date(source_path)
+        else:
+            # Even for non-existent source paths, try the filename prefix —
+            # callers often pass synthetic paths with embedded dates.
+            m = _DATE_PREFIX_RE.match(source_path.stem)
+            source_date = m.group(1) if m else date.today().isoformat()
         filename = _unique_filename(hall_dir, source_date=source_date, slug_text=text)
 
         filepath = hall_dir / filename
 
         # Build drawer body: H1 from first sentence + source wikilink + content
-        title = _first_sentence(text) or _slugify(text).replace("-", " ").title() or "Drawer"
-        source_stem = source_path.stem if source_path.exists() else "unknown"
-
-        body_with_header = (
-            f"# {title}\n\n"
-            f"> From [[{source_stem}]] · {hall} · {source_date}\n\n"
-            f"{text}"
-        )
+        title = _first_sentence(text) or _slugify(text).replace("-", " ").title()
+        # Source wikilink: use filename stem if we have one; for synthetic
+        # sources like source="manual" (mnemos_add MCP tool), omit the
+        # blockquote rather than emit a dead [[manual]] link.
+        has_real_source = source_path.exists() or "/" in source or "\\" in source
+        if has_real_source and source_path.stem:
+            body_with_header = (
+                f"# {title}\n\n"
+                f"> From [[{source_path.stem}]] · {hall} · {source_date}\n\n"
+                f"{text}"
+            )
+        else:
+            body_with_header = (
+                f"# {title}\n\n"
+                f"> {hall} · {source_date}\n\n"
+                f"{text}"
+            )
 
         write_drawer_file(
             filepath,

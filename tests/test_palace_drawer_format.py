@@ -110,3 +110,28 @@ def test_add_drawer_body_has_h1_and_source_wikilink(tmp_path: Path):
     assert "· decisions" in content
     assert "· 2026-04-13" in content
     assert "We picked sqlite-vec for its parity. The benchmark confirmed R@5." in content
+
+
+def test_add_drawer_manual_source_omits_wikilink(tmp_path: Path):
+    """When source is a synthetic string like 'manual' (mnemos_add MCP),
+    the body must not carry a dead [[manual]] wikilink."""
+    from mnemos.config import MnemosConfig
+    from mnemos.palace import Palace
+
+    cfg = MnemosConfig(vault_path=str(tmp_path))
+    palace = Palace(cfg)
+    palace.ensure_structure()
+
+    drawer_path = palace.add_drawer(
+        wing="Demo", room="general", hall="facts",
+        text="A quick note added by hand via the MCP tool.",
+        source="manual", importance=0.5, entities=[], language="en",
+    )
+
+    content = drawer_path.read_text(encoding="utf-8")
+    assert "[[manual]]" not in content
+    assert "[[unknown]]" not in content
+    assert "From [[" not in content  # No wikilink line at all for synthetic sources
+    assert "# A quick note added by hand via the MCP tool." in content
+    # Blockquote still carries hall + date for context, just no dead wikilink
+    assert "> facts" in content
