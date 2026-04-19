@@ -748,7 +748,7 @@ Rerank skill-recall'ın içinde eridi; contradiction v0.5 hygiene'a ertelendi.
   `docs/specs/2026-04-19-phase1-ai-boost-design.md` — skill-first reframe,
   4-kombo mimarisi, pilot orchestrator, settings TUI, v0.5'e ertelenen
   işler.
-- [ ] **4.2 Skill-mine + pilot orchestrator** *(~8h)*
+- [~] **4.2 Skill-mine + pilot orchestrator** *(~8h)*
   - `skills/mnemos-mine-llm/` — refined session .md'yi okuyup drawer
     .md'leri doğrudan yazan skill (frontmatter + H1 + source wikilink)
   - `mnemos/pilot.py` — `mnemos mine --pilot-llm [N=10]`: iki palace
