@@ -242,6 +242,11 @@ def _discover_sources(vault: Path) -> list[Path]:
                 continue
             if md.name.startswith("_"):
                 continue
+            # .gitkeep.md and variants are directory-placeholder markers
+            # (79-90 bytes, no mineable content). Real-vault 2026-04-19
+            # pilot wasted ~620k tokens on two copies — filter at discovery.
+            if md.name.startswith(".gitkeep"):
+                continue
             key = os.path.normcase(os.path.normpath(str(md)))
             if key in seen:
                 continue

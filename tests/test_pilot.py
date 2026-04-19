@@ -150,6 +150,18 @@ def test_build_plan_skips_leading_underscore_files(tmp_path: Path) -> None:
     assert plan.sources == [session]
 
 
+def test_build_plan_skips_gitkeep_placeholders(tmp_path: Path) -> None:
+    """Post-2026-04-19-pilot fix: .gitkeep.md placeholders waste tokens."""
+    session = _make_session(tmp_path / "Sessions", "s.md")
+    (tmp_path / "Sessions" / ".gitkeep.md").write_text(
+        "---\ntype: index\n---\n# placeholder\n", encoding="utf-8"
+    )
+    (tmp_path / "Sessions" / ".gitkeep.bak.md").write_text("noise", encoding="utf-8")
+
+    plan = build_plan(tmp_path, limit=10)
+    assert plan.sources == [session]
+
+
 def test_build_plan_recurses_into_source_subdirs(tmp_path: Path) -> None:
     """memory/ dirs may nest files under subfolders — rglob must catch them."""
     ext = tmp_path / "ext-memory"
