@@ -748,16 +748,31 @@ Rerank skill-recall'ın içinde eridi; contradiction v0.5 hygiene'a ertelendi.
   `docs/specs/2026-04-19-phase1-ai-boost-design.md` — skill-first reframe,
   4-kombo mimarisi, pilot orchestrator, settings TUI, v0.5'e ertelenen
   işler.
-- [~] **4.2 Skill-mine + pilot orchestrator** *(~8h)*
-  - `skills/mnemos-mine-llm/` — refined session .md'yi okuyup drawer
-    .md'leri doğrudan yazan skill (frontmatter + H1 + source wikilink)
-  - `mnemos/pilot.py` — `mnemos mine --pilot-llm [N=10]`: iki palace
-    paralel (`Mnemos/` script + `Mnemos-pilot/` skill), token accounting,
-    pilot rapor iskeleti
-  - `skills/mnemos-compare-palaces/` — LLM judgment raporu (3 yan yana
-    sample + kalitatif öneri, kararı kullanıcıya bırakır)
-  - `mnemos pilot --accept <script|skill>` — kazananı seç, kaybeden
-    `_recycled/`'a
+- [~] **4.2 Skill-mine + pilot orchestrator** *(~8h kod + post-pilot fixes)*
+  - [x] **4.2.1** `skills/mnemos-mine-llm/` skill + canonical prompt *(commit `c7d6c58`)*
+  - [x] **4.2.2** `mnemos/pilot.py` orchestrator + `mnemos mine --pilot-llm` *(commit `e300a2c`, 28+3 test)*
+  - [x] **4.2.3** `skills/mnemos-compare-palaces/` skill + prompt *(commit `777d076`)*
+  - [x] **4.2.5** `mnemos pilot --accept <script|skill>` komutu *(commit `777d076`, 7+3 test)*
+  - [x] **4.2.6 Real-vault pilot** *(2026-04-19, kasamd 3 session)* — çalıştı,
+        skill-mine drawer kalitesi script'ten açıkça üstün; 4 operational
+        finding çıktı. Rapor:
+        [`docs/pilots/2026-04-19-v0.4-phase1-real-vault-pilot.md`](pilots/2026-04-19-v0.4-phase1-real-vault-pilot.md)
+  - [ ] **4.2.7 Ledger reliability fix** *(~1h, Finding 2)* — skill 3/3 session'da
+        drawer yazdı ama ledger'a 1/3 kaydetti. SKILL.md hardening +
+        orchestrator filesystem-fallback (ledger boşsa drawer'dan `source:`
+        oku, say).
+  - [ ] **4.2.8 Report session-filter** *(~30m, Finding 3)* —
+        `format_pilot_report` "Total drawers" script-tarafı palace-tüm
+        sayıyor, skill-tarafı pilot-only. Apples-to-oranges. Drawer
+        frontmatter `source:` ile filter.
+  - [ ] **4.2.9 Palace indexer + `mnemos mine --from-palace`** *(~1.5h, Finding 4)* —
+        skill-mined drawer'lar ChromaDB/sqlite-vec'e yazılmıyor; accept
+        skill WARNING ile surface ediyor ama arama stale. Frontmatter-
+        authoritative indexing (classification tekrar koşmaz).
+  - [ ] **4.2.10 Latency realism + parallel-3** *(~1h, Finding 1)* —
+        spec `25s/session` öngördü, gerçek `~4 min/session`. Spec + CLI
+        estimate güncelle; sequential'ı paralel-3'e geç (spec'in orijinal
+        tasarımı, MVP'de sequential shipped).
 - [ ] **4.3 Skill-recall** *(~5h)*
   - `skills/mnemos-recall/` — user-invoked `/mnemos-recall <query>`,
     vector top-50 → LLM judge → curated 300-500 kelime context

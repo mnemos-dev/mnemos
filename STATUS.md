@@ -1,7 +1,7 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-19 (Phase 1 design spec delivered — skill-first reframe)
-**Stable PyPI version:** `v0.3.3` · **Next:** `v0.4.0` (AI Boost / Phase 1 — implementation starting)
+**Last updated:** 2026-04-19 (v0.4 Phase 1 4.2 code-complete + real-vault pilot — 4 findings feed into 4.2.7-10)
+**Stable PyPI version:** `v0.3.3` · **Next:** `v0.4.0` (AI Boost / Phase 1 — 4.2.7-10 fixes in flight)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
 This file is the single-glance answer to: *why does Mnemos exist, what can it
@@ -327,44 +327,43 @@ gap.
 
 ### Next session starts here
 
-v0.3.3 PyPI + GitHub'da canlı. **Phase 1 design spec teslim edildi**
-(2026-04-19): [`docs/specs/2026-04-19-phase1-ai-boost-design.md`](docs/specs/2026-04-19-phase1-ai-boost-design.md).
+**Bugünkü ilerleme (2026-04-19, 5 commit):**
+- `033a7d4` Phase 1 design spec (skill-first reframe)
+- `c7d6c58` 4.2.1 mnemos-mine-llm skill + canonical prompt
+- `e300a2c` 4.2.2 pilot.py orchestrator + CLI (28+3 test)
+- `777d076` 4.2.3 compare-palaces + 4.2.5 accept komutu (7+3 test)
+- (not yet committed at write time) **4.2.6 real-vault pilot** — kasamd'da
+  3 session ile koşuldu. **Skill-mine drawer kalitesi script'ten açıkça
+  üstün** (smart H1, 5-hall compliance, entity person/project ayrımı).
+  Ama pilot 4 operational finding ortaya çıkardı:
 
-**Phase 1 artık skill-first.** Orijinal API-based plan (Claude SDK
-mining + rerank + contradiction detection, `mnemos-dev[llm]` extra)
-**iptal** — `mnemos-refine-transcripts` skill paterni mining ve recall'a
-genişletildi. mnemos hâlâ LLM API çağırmıyor; skill'ler Claude Code
-oturumu içinde `claude --print` ile çalışıyor (abonelik quota, sıfır
-paket bağımlılığı).
+  1. **Latency 10x spec** — 25s → ~4 min/session (parallel-3 gerekli)
+  2. **Ledger reliability** — skill 3/3 session'da drawer yazdı, ledger 1/3
+  3. **Report apples-to-oranges** — script-tarafı whole-palace, skill-tarafı pilot-only
+  4. **Skill-mined palace indexer eksik** — accept skill sonrası index stale
 
-**Kullanıcıya sunulan 4-kombo:**
-```
-                   Script-recall     Skill-recall
-  Script-mine   │ (1) BUGÜN         │ (2)              │
-  Skill-mine    │ (3)               │ (4) MAKS KALİTE  │
-```
-Mine-mode vault başına tek seçim (pilot'la karar), recall-mode flip'lenebilir.
+  Pilot raporları: [`docs/pilots/2026-04-19-v0.4-phase1-real-vault-pilot.md`](docs/pilots/2026-04-19-v0.4-phase1-real-vault-pilot.md)
+  (repo) + kasamd-local `<vault>/docs/pilots/2026-04-19-llm-mine-pilot.md`
 
-**v0.4.0 görevler (spec §10 sırası):**
-- **4.2** skill-mine + pilot orchestrator + compare-palaces skill
-  (`mnemos mine --pilot-llm [N=10]` iki palace paralel üretir, kullanıcı
-  karar verir, `mnemos pilot --accept <mode>`)
-- **4.3** skill-recall (`/mnemos-recall <query>` + opt-in SessionStart
-  briefing hook, MCP server `instructions` recall_mode-aware)
-- **4.5** `mnemos settings` interaktif TUI (mine-mode, recall-mode,
-  hook'lar, migrate, languages — 8 satırlık numbered menu)
-- **4.6** LongMemEval 500q benchmark, S+S combo için hedef **R@5 ≥ %93**
-  (skill modları kalitatif, pilot raporunda)
-- **4.7** PyPI release v0.4.0
-- **4.4 contradiction → v0.5.3'e ertelendi** (hygiene skill)
+**Sırada — 4.2'yi tamamlayacak post-pilot fix'leri:**
 
-**Sırada 4.2'nin ilk parçası:** `skills/mnemos-mine-llm/SKILL.md` + prompt
-tasarımı (~2h). Refine-transcripts skill'ini base alacak.
+- [ ] **4.2.7** Ledger reliability fix (~1h) — SKILL.md hardening +
+      orchestrator filesystem fallback (`source:` frontmatter'dan drawer say)
+- [ ] **4.2.8** Report session-filter (~30m) — `format_pilot_report`'un
+      `_count_drawers`'ı pilot session'larına filtrelensin
+- [ ] **4.2.9** Palace indexer + `mnemos mine --from-palace` (~1.5h) —
+      frontmatter-authoritative indexing, accept skill warning'i kapatır
+- [ ] **4.2.10** Latency realism + parallel-3 (~1h) — spec + CLI estimate
+      güncelle, sequential → paralel-3 geç
+
+Fix'ler shipped olmadan v0.4.0 external user'a gelmemeli — "ERROR=2" +
+"1.63M token" rapor ilk pilot deneyimini zehirler.
+
+Ondan sonra **4.3 (skill-recall)**, **4.5 (settings TUI)**, **4.6 (benchmark)**,
+**4.7 (release)**.
 
 **🟡 Pending user action** — social-preview PNG hâlâ GitHub Settings'e
 elden yüklenecek (tek tıklık; Phase 1 bunu bloklamıyor).
-
-**Son commit:** bugün Phase 1 spec + ROADMAP reshape.
 
 ### Practical stats (author's vault, 2026-04-19)
 
