@@ -59,6 +59,24 @@ yine hızlıca yap ama 5. sormadan o göreve geç.
 4. Scope değişirse ROADMAP'te satırı güncelle, gerekirse alt-görev böl
 5. Yeni phase başlarken önce `docs/specs/` altında design spec yaz (Phase 0
    formatında); sonra implementasyon
+6. **Session-end STATUS discipline** — ROADMAP-takipli iş 2. maddeyle zaten
+   STATUS'u güncel tutuyor. Ama iki durumda elle STATUS'a yazılmazsa bilgi
+   sonraki resume'de kaybolur:
+   - **ROADMAP-dışı meta iş** (repo polish, CI workflow, README ELI5,
+     social preview, docs refresh — checkbox'ı olmayan iş): STATUS'a
+     `### Post-v0.x.y repo polish (YYYY-MM-DD, not a release)` bloğu
+     ekle. Gerekirse "Next session starts here" bloğunu da güncelle ki
+     meta iş sıradaki Phase'i gölgelemesin.
+   - **Pending user action** (GitHub UI upload, elle koşulacak komut,
+     dışarıdan token rotate — kodda/git'te izi olmayan iş): STATUS'a
+     `🟡 **Pending user action**` işaretli bir satır ekle. İşaret
+     zorunlu — resume protokolü bu glyph'i yakalamalı.
+   - Aynı zamanda STATUS'ta stale kalmış section varsa (eski istatistik,
+     artık geçerli olmayan hardening recap) trim et.
+   - **Tetik:** "tamam bu kadar", "kapatıyorum", "session'ı bitirelim",
+     "yeni session'a hazırlık", "/clear öncesi" gibi ifadelerde bu
+     checkpoint'i yap. Kullanıcı sormadıysa da batch commit sonrası
+     kendine sor: "bu işin STATUS izi var mı?"
 
 ---
 
