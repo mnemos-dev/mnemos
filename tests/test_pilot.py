@@ -19,12 +19,12 @@ from mnemos.pilot import (
     accept_script,
     accept_skill,
     build_plan,
-    count_drawers_for_session,
+    count_drawers_for_source,
     format_pilot_report,
     parse_claude_json_output,
     read_ledger_entry,
     run_pilot,
-    sessions_needing_run,
+    sources_needing_run,
     write_pilot_report,
 )
 
@@ -63,9 +63,9 @@ def test_build_plan_discovers_sessions_newest_first(tmp_path: Path) -> None:
 
     plan = build_plan(tmp_path, limit=10)
 
-    assert plan.session_count == 3
-    assert plan.sessions[0] == recent
-    assert plan.sessions[1] == middle
+    assert plan.source_count == 3
+    assert plan.sources[0] == recent
+    assert plan.sources[1] == middle
 
 
 def test_build_plan_respects_limit(tmp_path: Path) -> None:
@@ -74,18 +74,94 @@ def test_build_plan_respects_limit(tmp_path: Path) -> None:
         _make_session(sdir, f"2026-04-{i+1:02d}-s.md", mtime=time.time() - i)
 
     plan = build_plan(tmp_path, limit=5)
-    assert plan.session_count == 5
+    assert plan.source_count == 5
 
 
 def test_build_plan_raises_without_sessions_dir(tmp_path: Path) -> None:
-    with pytest.raises(PilotError, match="No refined sessions"):
+    with pytest.raises(PilotError, match="No source files"):
         build_plan(tmp_path)
 
 
 def test_build_plan_raises_with_empty_sessions_dir(tmp_path: Path) -> None:
     (tmp_path / "Sessions").mkdir()
-    with pytest.raises(PilotError, match="No refined sessions"):
+    with pytest.raises(PilotError, match="No source files"):
         build_plan(tmp_path)
+
+
+def test_build_plan_picks_from_all_source_dirs(tmp_path: Path) -> None:
+    """4.2.12 — union of Sessions/, Topics/, and mining_sources entries."""
+    session = _make_session(tmp_path / "Sessions", "s.md", mtime=time.time() - 10)
+    topic = _make_session(tmp_path / "Topics", "t.md", mtime=time.time() - 20)
+    # external mining_source entry (Claude Code-style memory dir)
+    ext = tmp_path / "ext-memory"
+    memfile = _make_session(ext, "feedback_x.md", mtime=time.time() - 30)
+
+    (tmp_path / "mnemos.yaml").write_text(
+        "mining_sources:\n"
+        f"  - path: {ext}\n"
+        "    mode: session\n"
+        "    external: true\n",
+        encoding="utf-8",
+    )
+
+    plan = build_plan(tmp_path, limit=10)
+    assert set(plan.sources) == {session, topic, memfile}
+    # Newest first: session (10s ago) > topic (20s) > memfile (30s)
+    assert plan.sources == [session, topic, memfile]
+
+
+def test_build_plan_skips_MEMORY_md(tmp_path: Path) -> None:
+    """Type D MEMORY.md index files must not show up as sources."""
+    sdir = tmp_path / "Sessions"
+    session = _make_session(sdir, "real.md", mtime=time.time() - 10)
+    # Create a MEMORY.md alongside — must be filtered
+    memory_index = sdir / "MEMORY.md"
+    memory_index.write_text(
+        "# Memory index\n\n- [Foo](foo.md) — description\n", encoding="utf-8"
+    )
+
+    plan = build_plan(tmp_path, limit=10)
+    assert plan.sources == [session]
+    assert memory_index not in plan.sources
+
+
+def test_build_plan_dedupes_overlapping_sources(tmp_path: Path) -> None:
+    """mining_sources entry pointing at Sessions/ must not yield duplicates."""
+    session = _make_session(tmp_path / "Sessions", "s.md")
+    (tmp_path / "mnemos.yaml").write_text(
+        "mining_sources:\n"
+        f"  - path: {tmp_path / 'Sessions'}\n"
+        "    mode: session\n",
+        encoding="utf-8",
+    )
+
+    plan = build_plan(tmp_path, limit=10)
+    assert plan.sources == [session]
+    assert plan.source_count == 1
+
+
+def test_build_plan_skips_leading_underscore_files(tmp_path: Path) -> None:
+    """_wing.md / _room.md summaries must not be mined as input sources."""
+    session = _make_session(tmp_path / "Sessions", "s.md")
+    (tmp_path / "Sessions" / "_wing.md").write_text("noise", encoding="utf-8")
+
+    plan = build_plan(tmp_path, limit=10)
+    assert plan.sources == [session]
+
+
+def test_build_plan_recurses_into_source_subdirs(tmp_path: Path) -> None:
+    """memory/ dirs may nest files under subfolders — rglob must catch them."""
+    ext = tmp_path / "ext-memory"
+    nested = ext / "sub"
+    deep = _make_session(nested, "deep.md")
+
+    (tmp_path / "mnemos.yaml").write_text(
+        f"mining_sources:\n  - path: {ext}\n    mode: session\n",
+        encoding="utf-8",
+    )
+
+    plan = build_plan(tmp_path, limit=10)
+    assert plan.sources == [deep]
 
 
 def test_build_plan_raises_for_bad_vault(tmp_path: Path) -> None:
@@ -230,11 +306,11 @@ def test_read_ledger_entry_ignores_different_palace(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# sessions_needing_run
+# sources_needing_run
 # ---------------------------------------------------------------------------
 
 
-def test_sessions_needing_run_filters_processed(tmp_path: Path) -> None:
+def test_sources_needing_run_filters_processed(tmp_path: Path) -> None:
     sdir = tmp_path / "Sessions"
     s1 = _make_session(sdir, "s1.md")
     s2 = _make_session(sdir, "s2.md")
@@ -242,12 +318,12 @@ def test_sessions_needing_run_filters_processed(tmp_path: Path) -> None:
     ledger = tmp_path / "mined.tsv"
     _write_ledger_row(ledger, s1, plan.skill_palace, 3, "2026-04-19T10:00:00Z")
 
-    todo = sessions_needing_run(plan, ledger)
+    todo = sources_needing_run(plan, ledger)
     assert s1 not in todo
     assert s2 in todo
 
 
-def test_sessions_needing_run_retries_errors(tmp_path: Path) -> None:
+def test_sources_needing_run_retries_errors(tmp_path: Path) -> None:
     sdir = tmp_path / "Sessions"
     s1 = _make_session(sdir, "s1.md")
     plan = build_plan(tmp_path)
@@ -255,11 +331,11 @@ def test_sessions_needing_run_retries_errors(tmp_path: Path) -> None:
     # drawer_count=0 and no SKIP marker → error row
     _write_ledger_row(ledger, s1, plan.skill_palace, 0, "2026-04-19T10:00:00Z")
 
-    todo = sessions_needing_run(plan, ledger)
+    todo = sources_needing_run(plan, ledger)
     assert s1 in todo
 
 
-def test_sessions_needing_run_honors_skip_marker(tmp_path: Path) -> None:
+def test_sources_needing_run_honors_skip_marker(tmp_path: Path) -> None:
     """SKIP is an affirmative decision — don't retry."""
     sdir = tmp_path / "Sessions"
     s1 = _make_session(sdir, "s1.md")
@@ -267,7 +343,7 @@ def test_sessions_needing_run_honors_skip_marker(tmp_path: Path) -> None:
     ledger = tmp_path / "mined.tsv"
     _write_ledger_row(ledger, s1, plan.skill_palace, 0, "SKIP: empty")
 
-    todo = sessions_needing_run(plan, ledger)
+    todo = sources_needing_run(plan, ledger)
     assert s1 not in todo
 
 
@@ -440,7 +516,7 @@ def test_run_pilot_recovers_from_filesystem_when_ledger_missing(tmp_path: Path) 
     assert "recovered from filesystem" in result.outcomes[0].reason
 
 
-def test_count_drawers_for_session_matches_normalized_paths(tmp_path: Path) -> None:
+def test_count_drawers_for_source_matches_normalized_paths(tmp_path: Path) -> None:
     palace = tmp_path / "P"
     session = tmp_path / "Sessions" / "s.md"
     session.parent.mkdir(parents=True)
@@ -452,13 +528,13 @@ def test_count_drawers_for_session_matches_normalized_paths(tmp_path: Path) -> N
     _write_drawer(palace, "Mnemos", "r", "events", "b.md", str(session))
     _write_drawer(palace, "Mnemos", "r", "decisions", "c.md", str(other_session))
 
-    assert count_drawers_for_session(palace, session) == 2
-    assert count_drawers_for_session(palace, other_session) == 1
-    assert count_drawers_for_session(palace, tmp_path / "nope.md") == 0
+    assert count_drawers_for_source(palace, session) == 2
+    assert count_drawers_for_source(palace, other_session) == 1
+    assert count_drawers_for_source(palace, tmp_path / "nope.md") == 0
 
 
-def test_count_drawers_for_session_handles_missing_palace(tmp_path: Path) -> None:
-    assert count_drawers_for_session(tmp_path / "nope", tmp_path / "s.md") == 0
+def test_count_drawers_for_source_handles_missing_palace(tmp_path: Path) -> None:
+    assert count_drawers_for_source(tmp_path / "nope", tmp_path / "s.md") == 0
 
 
 # ---------------------------------------------------------------------------
@@ -531,7 +607,7 @@ def test_format_pilot_report_filters_non_pilot_drawers(tmp_path: Path) -> None:
     os.utime(other_session, (time.time() - 1000, time.time() - 1000))
 
     plan = build_plan(tmp_path, limit=1)
-    assert plan.sessions == [pilot_session]
+    assert plan.sources == [pilot_session]
 
     # Script palace has 2 drawers total: 1 from pilot session + 1 from other
     _write_drawer(plan.script_palace, "Mnemos", "r", "decisions",

@@ -796,10 +796,18 @@ Rerank skill-recall'ın içinde eridi; contradiction v0.5 hygiene'a ertelendi.
       Type C için dead-link yaratmıyor (v0.3.2 A5 synthetic-source
       kuralı genişletildi). Orchestrator (4.2.12) artık bu prompt'a
       Sessions + Topics + memory dosyalarını güvenle pas'layabilir.
-- [ ] **4.2.12 Orchestrator multi-source plan** *(~1h)* — `build_plan`
-      `rebuild._resolve_sources` paternini kullansın (Sessions + Topics
-      + cfg.mining_sources union). Plan API: `plan.sources` (plan.sessions
-      rename). Tests.
+- [x] **4.2.12 Orchestrator multi-source plan** *(2026-04-19)* — `build_plan`
+      artık `_resolve_source_dirs(vault)` helper'ı üzerinden Sessions/ +
+      Topics/ + `cfg.mining_sources` union'ını keşfediyor (rebuild.py
+      paterni). `rglob("*.md")` recursive — memory/ subfolder'ları dahil.
+      MEMORY.md + leading-underscore dosyalar filtrelenir. Dedup normpath
+      üstünden. Plan API rename: `plan.sessions` → `plan.sources`,
+      `session_count` → `source_count`, `sessions_needing_run` →
+      `sources_needing_run`, `count_drawers_for_session` →
+      `count_drawers_for_source`. CLI help metinleri + Pilot plan çıktısı
+      "Sources" etiketi kullanıyor. 5 yeni test (multi-source union,
+      MEMORY.md skip, overlap dedup, `_` prefix skip, recursive subdir).
+      Full suite **529 pass / 2 skip / 3 deselect**.
 - [ ] **4.2.13 CLI `--skill-all` / `--pilot-limit 0`** *(~30 dk)* —
       no-limit mode + Estimated time hesabında 114 dosya görünür.
 - [ ] **4.2.14 Parallel-3 execution** *(~1.5h)* — ThreadPoolExecutor +

@@ -77,14 +77,14 @@ class TokenUsage:
 @dataclass
 class PilotPlan:
     vault: Path
-    sessions: list[Path]
+    sources: list[Path]  # markdown files to mine (Sessions/Topics/memory)
     script_palace: Path  # existing, e.g. <vault>/Mnemos/
     skill_palace: Path  # to be produced, e.g. <vault>/Mnemos-pilot/
     limit: int
 
     @property
-    def session_count(self) -> int:
-        return len(self.sessions)
+    def source_count(self) -> int:
+        return len(self.sources)
 
 
 @dataclass
@@ -127,18 +127,75 @@ class PilotResult:
 # ---------------------------------------------------------------------------
 
 
-def _sessions_dir(vault: Path) -> Path:
-    return Path(vault) / "Sessions"
+def _resolve_source_dirs(vault: Path) -> list[Path]:
+    """Resolve the source directories the pilot should mine from.
+
+    Union of:
+      - Auto-discovered vault dirs: ``Sessions/`` and ``Topics/`` if they exist
+      - ``cfg.mining_sources`` entries from ``<vault>/mnemos.yaml`` (external
+        imports like Claude Code ``memory/`` folders)
+
+    Deduped by normalized path. Mirrors rebuild._resolve_sources' additive
+    semantics so skill-mine and script-mine see the same universe of inputs.
+    """
+    from mnemos.config import load_config
+
+    cfg = load_config(str(vault))
+    out: list[Path] = []
+    seen: set[str] = set()
+
+    def _add(candidate: Path) -> None:
+        key = os.path.normcase(os.path.normpath(str(candidate)))
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(candidate)
+
+    for name in ("Sessions", "Topics"):
+        candidate = vault / name
+        if candidate.exists() and candidate.is_dir():
+            _add(candidate)
+
+    for src in cfg.mining_sources:
+        p = Path(src.path)
+        if not p.is_absolute():
+            p = vault / p
+        _add(p)
+
+    return out
 
 
-def _discover_sessions(vault: Path) -> list[Path]:
-    """Return all refined session .md files sorted newest-first by mtime."""
-    sdir = _sessions_dir(vault)
-    if not sdir.exists() or not sdir.is_dir():
-        return []
-    mds = [p for p in sdir.glob("*.md") if p.is_file()]
-    mds.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    return mds
+def _discover_sources(vault: Path) -> list[Path]:
+    """Return all input .md files across configured source dirs, newest first.
+
+    Skips ``MEMORY.md`` (Type D index files — links are processed as Type C
+    individually, per canonical prompt INPUT FORMAT DETECTION §D). Skips
+    leading-underscore files (``_wing.md``, ``_room.md``) and files the
+    miner already excludes.
+
+    Deduped across sources in case a yaml ``mining_sources`` entry overlaps
+    with auto-discovered ``Sessions/`` or ``Topics/``.
+    """
+    dirs = _resolve_source_dirs(vault)
+    out: list[Path] = []
+    seen: set[str] = set()
+    for d in dirs:
+        if not d.exists() or not d.is_dir():
+            continue
+        for md in d.rglob("*.md"):
+            if not md.is_file():
+                continue
+            if md.name == "MEMORY.md":
+                continue
+            if md.name.startswith("_"):
+                continue
+            key = os.path.normcase(os.path.normpath(str(md)))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(md)
+    out.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return out
 
 
 def build_plan(
@@ -147,29 +204,32 @@ def build_plan(
     script_palace_name: str = DEFAULT_SCRIPT_PALACE,
     skill_palace_name: str = DEFAULT_PILOT_PALACE,
 ) -> PilotPlan:
-    """Discover candidate sessions + compute palace paths.
+    """Discover candidate source files + compute palace paths.
 
-    Raises PilotError if vault lacks a non-empty Sessions/ directory.
+    Raises PilotError if no source files are found across Sessions/, Topics/,
+    and configured ``mining_sources``.
     """
     vault = Path(vault)
     if not vault.exists() or not vault.is_dir():
         raise PilotError(f"Vault path does not exist or is not a directory: {vault}")
 
-    sessions = _discover_sessions(vault)
-    if not sessions:
+    sources = _discover_sources(vault)
+    if not sources:
         raise PilotError(
-            f"No refined sessions found in {_sessions_dir(vault)}. "
-            "Run the mnemos-refine-transcripts skill first."
+            f"No source files found in {vault}. Checked Sessions/, Topics/, "
+            "and mnemos.yaml mining_sources. Either run the mnemos-refine-"
+            "transcripts skill (to populate Sessions/), add curated notes to "
+            "Topics/, or configure mining_sources in mnemos.yaml."
         )
 
     if limit < 1:
         raise PilotError(f"limit must be >= 1, got {limit}")
 
-    picked = sessions[:limit]
+    picked = sources[:limit]
 
     return PilotPlan(
         vault=vault,
-        sessions=picked,
+        sources=picked,
         script_palace=vault / script_palace_name,
         skill_palace=vault / skill_palace_name,
         limit=limit,
@@ -271,15 +331,15 @@ def read_ledger_entry(
     return latest
 
 
-def sessions_needing_run(
+def sources_needing_run(
     plan: PilotPlan, ledger_path: Path
 ) -> list[Path]:
-    """Filter plan.sessions to those NOT already recorded for skill_palace.
+    """Filter plan.sources to those NOT already recorded for skill_palace.
 
     An OK or SKIP row counts as processed; an error row does not (retry).
     """
     out: list[Path] = []
-    for s in plan.sessions:
+    for s in plan.sources:
         entry = read_ledger_entry(ledger_path, s, plan.skill_palace)
         if entry is None:
             out.append(s)
@@ -327,16 +387,16 @@ def _skill_cmd(session: Path, skill_palace: Path) -> list[str]:
     ]
 
 
-def count_drawers_for_session(palace_root: Path, session: Path) -> int:
+def count_drawers_for_source(palace_root: Path, source: Path) -> int:
     """Count drawers under *palace_root* whose frontmatter ``source:`` field
-    matches *session* (normalized path compare).
+    matches *source* (normalized path compare).
 
     Used as a filesystem fallback for the orchestrator when the mine-llm
-    ledger has no row for a session — the skill may have written drawers
+    ledger has no row for a source file — the skill may have written drawers
     but skipped the append (see docs/pilots/2026-04-19-v0.4-phase1-real-
     vault-pilot.md Finding 2).
     """
-    return _count_drawers(palace_root, sessions=[session])
+    return _count_drawers(palace_root, sources=[source])
 
 
 def _run_one_session(
@@ -354,7 +414,7 @@ def _run_one_session(
         # Filesystem fallback — did the skill write drawers but drop the
         # ledger append? Real-vault pilot showed this happens 2/3 of the time
         # on long sessions. Count drawers with matching `source:` frontmatter.
-        fs_count = count_drawers_for_session(skill_palace, session)
+        fs_count = count_drawers_for_source(skill_palace, session)
         if fs_count > 0:
             return SessionOutcome(
                 session=session,
@@ -409,24 +469,24 @@ def run_pilot(
     plan.skill_palace.mkdir(parents=True, exist_ok=True)
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
 
-    to_run = sessions_needing_run(plan, ledger_path)
+    to_run = sources_needing_run(plan, ledger_path)
 
     outcomes: list[SessionOutcome] = []
     total_usage = TokenUsage()
     start = time.monotonic()
 
-    # Replay existing ledger entries for sessions already processed, so the
+    # Replay existing ledger entries for sources already processed, so the
     # final result reflects the full plan even on resume.
-    for session in plan.sessions:
-        if session in to_run:
+    for source in plan.sources:
+        if source in to_run:
             continue
-        entry = read_ledger_entry(ledger_path, session, plan.skill_palace)
+        entry = read_ledger_entry(ledger_path, source, plan.skill_palace)
         if entry is None:
             continue
         outcome_str, drawer_count, reason = entry
         outcomes.append(
             SessionOutcome(
-                session=session,
+                session=source,
                 exit_code=0,
                 drawer_count=drawer_count,
                 outcome=outcome_str,
@@ -434,16 +494,16 @@ def run_pilot(
             )
         )
 
-    for session in to_run:
-        so = _run_one_session(session, plan.skill_palace, ledger_path, runner)
+    for source in to_run:
+        so = _run_one_session(source, plan.skill_palace, ledger_path, runner)
         total_usage.add(so.usage)
         outcomes.append(so)
 
     elapsed = time.monotonic() - start
 
     # Preserve plan order in outcomes
-    by_session = {o.session: o for o in outcomes}
-    ordered = [by_session[s] for s in plan.sessions if s in by_session]
+    by_source = {o.session: o for o in outcomes}
+    ordered = [by_source[s] for s in plan.sources if s in by_source]
 
     return PilotResult(
         plan=plan,
@@ -483,49 +543,49 @@ def _drawer_source(drawer_path: Path) -> str | None:
     return None
 
 
-def _sessions_key_set(sessions: Sequence[Path] | None) -> set[str] | None:
-    """Normalize a sequence of session paths to a case-insensitive key set.
+def _sources_key_set(sources: Sequence[Path] | None) -> set[str] | None:
+    """Normalize a sequence of source paths to a case-insensitive key set.
 
-    Returns ``None`` if *sessions* is None — caller should treat as "no filter".
+    Returns ``None`` if *sources* is None — caller should treat as "no filter".
     """
-    if sessions is None:
+    if sources is None:
         return None
-    return {os.path.normcase(os.path.normpath(str(s))) for s in sessions}
+    return {os.path.normcase(os.path.normpath(str(s))) for s in sources}
 
 
-def _drawer_matches_sessions(drawer: Path, session_keys: set[str] | None) -> bool:
+def _drawer_matches_sources(drawer: Path, source_keys: set[str] | None) -> bool:
     """True if *drawer*'s ``source:`` field normalizes to a key in the set.
 
-    When *session_keys* is None (no filter), all drawers match.
+    When *source_keys* is None (no filter), all drawers match.
     """
-    if session_keys is None:
+    if source_keys is None:
         return True
     src = _drawer_source(drawer)
     if src is None:
         return False
-    return os.path.normcase(os.path.normpath(src)) in session_keys
+    return os.path.normcase(os.path.normpath(src)) in source_keys
 
 
 def _hall_counts_for_palace(
     palace_root: Path,
-    sessions: Sequence[Path] | None = None,
+    sources: Sequence[Path] | None = None,
 ) -> dict[str, int]:
     """Count drawer .md files under palace_root/wings/*/*/<hall>/.
 
-    When *sessions* is provided, only count drawers whose frontmatter
-    ``source:`` field matches one of the session paths (pilot-scoped
+    When *sources* is provided, only count drawers whose frontmatter
+    ``source:`` field matches one of the source paths (pilot-scoped
     comparison). Default ``None`` preserves the whole-palace count.
     """
     counts: dict[str, int] = {}
     wings = palace_root / "wings"
     if not wings.exists():
         return counts
-    keys = _sessions_key_set(sessions)
+    keys = _sources_key_set(sources)
     for md in wings.rglob("*.md"):
         # hall = parent dir name; skip _wing.md / _room.md
         if md.name.startswith("_"):
             continue
-        if not _drawer_matches_sessions(md, keys):
+        if not _drawer_matches_sources(md, keys):
             continue
         hall = md.parent.name
         counts[hall] = counts.get(hall, 0) + 1
@@ -534,20 +594,20 @@ def _hall_counts_for_palace(
 
 def _count_drawers(
     palace_root: Path,
-    sessions: Sequence[Path] | None = None,
+    sources: Sequence[Path] | None = None,
 ) -> int:
-    """Count drawers under palace_root. Pilot-filter via *sessions* (see
+    """Count drawers under palace_root. Pilot-filter via *sources* (see
     :func:`_hall_counts_for_palace`).
     """
     wings = palace_root / "wings"
     if not wings.exists():
         return 0
-    keys = _sessions_key_set(sessions)
+    keys = _sources_key_set(sources)
     total = 0
     for md in wings.rglob("*.md"):
         if md.name.startswith("_"):
             continue
-        if not _drawer_matches_sessions(md, keys):
+        if not _drawer_matches_sources(md, keys):
             continue
         total += 1
     return total
@@ -558,13 +618,13 @@ def format_pilot_report(result: PilotResult) -> str:
     plan = result.plan
     date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    # Session-filter both palaces so quantitative summary is apples-to-apples
+    # Source-filter both palaces so quantitative summary is apples-to-apples
     # (whole-palace drawer totals were misleading — see docs/pilots/
     # 2026-04-19-v0.4-phase1-real-vault-pilot.md Finding 3).
-    script_count = _count_drawers(plan.script_palace, plan.sessions)
-    skill_count = _count_drawers(plan.skill_palace, plan.sessions)
-    script_halls = _hall_counts_for_palace(plan.script_palace, plan.sessions)
-    skill_halls = _hall_counts_for_palace(plan.skill_palace, plan.sessions)
+    script_count = _count_drawers(plan.script_palace, plan.sources)
+    skill_count = _count_drawers(plan.skill_palace, plan.sources)
+    script_halls = _hall_counts_for_palace(plan.script_palace, plan.sources)
+    skill_halls = _hall_counts_for_palace(plan.skill_palace, plan.sources)
 
     def _halls_line(halls: dict[str, int]) -> str:
         if not halls:
@@ -576,7 +636,7 @@ def format_pilot_report(result: PilotResult) -> str:
         f"# LLM-mine pilot — {date}",
         "",
         f"**Vault:** `{plan.vault}`",
-        f"**Sessions piloted:** {plan.session_count} (limit={plan.limit})",
+        f"**Sources piloted:** {plan.source_count} (limit={plan.limit})",
         f"**Skill elapsed:** {result.skill_elapsed_sec:.1f}s",
         "",
         "## Quantitative summary",

@@ -345,8 +345,8 @@ gap.
 | Parça | Durum |
 |---|---|
 | 4.2.11 skill prompt multi-format (Type A/B/C/D) | ✅ shipped |
-| 4.2.12 orchestrator multi-source plan | ⏭ sıradaki |
-| 4.2.13 CLI `--skill-all` / `--pilot-limit 0` | ⏸ |
+| 4.2.12 orchestrator multi-source plan | ✅ shipped |
+| 4.2.13 CLI `--skill-all` / `--pilot-limit 0` | ⏭ sıradaki |
 | 4.2.14 parallel-3 execution | ⏸ |
 | 4.2.15 full skill-mine run (~2.5h paralel-3) | ⏸ |
 

@@ -748,18 +748,18 @@ def _run_pilot_llm(vault_path: Path, args: argparse.Namespace) -> None:
 
     print(f"Pilot plan:")
     print(f"  Vault:          {plan.vault}")
-    print(f"  Sessions:       {plan.session_count} (limit={plan.limit})")
+    print(f"  Sources:        {plan.source_count} (limit={plan.limit})")
     print(f"  Script palace:  {plan.script_palace}")
     print(f"  Skill palace:   {plan.skill_palace}")
-    # Empirical per-session latency from 2026-04-19 kasamd pilot: ~260s
+    # Empirical per-source latency from 2026-04-19 kasamd pilot: ~260s
     # sequential (long sessions, multi-drawer write + LLM reasoning). Spec
     # originally estimated 25s which was 10x off. See docs/pilots/
     # 2026-04-19-v0.4-phase1-real-vault-pilot.md Finding 1.
-    est_total_sec = plan.session_count * 260
+    est_total_sec = plan.source_count * 260
     est_min = est_total_sec // 60
     print(
         f"  Estimated time: ~{est_min} min sequential "
-        f"(~4 min per session at `claude --print` + skill write cycle; "
+        f"(~4 min per source at `claude --print` + skill write cycle; "
         f"paralel-3 v0.4.1'de gelecek)"
     )
     print()
@@ -1126,14 +1126,15 @@ def main() -> None:
         "--pilot-llm",
         action="store_true",
         default=False,
-        help="Run a skill-mine pilot on the most recent Sessions/ entries "
-        "(produces Mnemos-pilot/ alongside Mnemos/ for side-by-side review)",
+        help="Run a skill-mine pilot on the most recent source files "
+        "(Sessions/ + Topics/ + mining_sources — produces Mnemos-pilot/ "
+        "alongside Mnemos/ for side-by-side review)",
     )
     parser_mine.add_argument(
         "--pilot-limit",
         type=int,
         default=10,
-        help="With --pilot-llm: number of most-recent sessions to pilot (default 10)",
+        help="With --pilot-llm: number of most-recent source files to pilot (default 10)",
     )
     parser_mine.add_argument(
         "--from-palace",

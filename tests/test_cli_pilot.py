@@ -62,7 +62,7 @@ def test_pilot_cli_prints_plan_and_hands_off(tmp_path, capsys):
     fake_result = PilotResult(
         plan=PilotPlan(
             vault=vault,
-            sessions=[vault / "Sessions" / "2026-04-19-test.md"],
+            sources=[vault / "Sessions" / "2026-04-19-test.md"],
             script_palace=vault / "Mnemos",
             skill_palace=vault / "Mnemos-pilot",
             limit=10,
@@ -87,7 +87,7 @@ def test_pilot_cli_prints_plan_and_hands_off(tmp_path, capsys):
 
     out = capsys.readouterr().out
     assert "Pilot plan:" in out
-    assert "Sessions:       1" in out
+    assert "Sources:        1" in out
     assert str(vault / "Mnemos-pilot") in out
     assert "Pilot complete: OK=1" in out
     assert "drawers=4" in out
@@ -125,7 +125,7 @@ def test_pilot_cli_reports_pilot_error_and_exits(tmp_path, capsys):
     assert exc.value.code == 2
     err = capsys.readouterr().err
     assert "Pilot error" in err
-    assert "No refined sessions" in err
+    assert "No source files" in err
 
 
 # ---------------------------------------------------------------------------
