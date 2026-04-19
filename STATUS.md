@@ -295,39 +295,60 @@ gap.
   <https://pypi.org/project/mnemos-dev/0.3.3/>, GitHub release at
   <https://github.com/mnemos-dev/mnemos/releases/tag/v0.3.3>.
 
+### Post-v0.3.3 repo polish (2026-04-19, not a release — docs/meta only)
+
+- ✅ **GitHub community surface** (`.github/`) — structured bug + feature
+  issue forms (dropdowns for backend / OS / Python version), PR
+  template with checklist (pytest / CHANGELOG / ROADMAP checkbox / no
+  secrets), `config.yml` redirects blank-issue traffic to ROADMAP /
+  CHANGELOG / Discussions.
+- ✅ **CI** — `.github/workflows/test.yml` runs the default pytest
+  suite on push + PR, matrix ubuntu + windows × Python 3.10 + 3.12.
+  README hero bar now carries a live "tests" badge and a live PyPI
+  version badge (replaced the static v0.3.x one).
+- ✅ **Policy documents** — `SECURITY.md` (latest-minor support
+  policy + private GitHub advisory reporting) and `CODE_OF_CONDUCT.md`
+  (Contributor Covenant v2.1). Both appear in the GitHub sidebar
+  automatically.
+- ✅ **Visual identity** — `assets/make_social_preview.py` generates
+  a 1280×640 PNG (deep-indigo gradient, Georgia bold title, palace
+  motif). The committed `assets/social-preview.png` is the source of
+  truth; maintainer uploads it via *Settings → Social preview* for the
+  Twitter/Discord link-card.
+- ✅ **README ELI5 block** — a "New here? Read this first" section
+  between the nav bar and "The Problem" covers Claude Code / Obsidian
+  / MCP in plain language, an end-to-end pipeline diagram, the 5-minute
+  happy path, and five pre-install FAQs (API cost, Obsidian-optional,
+  backend choice, disk footprint, mixed-use vault).
+- 🟡 **Pending user action** — social-preview PNG still needs to be
+  uploaded to the GitHub repo settings page (*Settings → Social
+  preview → Edit → upload `assets/social-preview.png`*). Done once,
+  sticks forever.
+
 ### Next session starts here
 
-v0.3.3 PyPI + GitHub'da canlı. v0.3.1 ve v0.3.2 pilotlarından kalan
-dört deferred follow-up (migrate rollback+lock, dry-run estimate
-edge case, sqlite-vec score display, slow-test deselect) kapandı.
-Pipeline hygiene (wing canonicalization, lazy summaries, source-date
-filenames, H1+wikilink body, entity dedup) + atomic `mnemos mine
---rebuild` (v0.3.2) ship'lendi. kasamd real-vault rebuild doğruladı:
-683 drawer, 16 wing, `sha256` unchanged. Tüm Claude Code geçmişi
-(122 transcript → 52 OK + 70 SKIP) refine + mine edildi.
+v0.3.3 PyPI + GitHub'da canlı, tüm post-release repo polish (CI,
+community templates, SECURITY + CoC, social preview, README ELI5)
+tamam. **v0.4.0 AI Boost / Phase 1 sırada — ilk görev 4.1: Phase 1
+design spec yazmak** (`docs/specs/YYYY-MM-DD-phase1-ai-boost-design.md`,
+Phase 0 spec formatında). Sonra subagent-driven execution'la 4.2 (LLM
+mining + emotional hall) → 4.3 (LLM reranking) → 4.4 (contradiction
+detection) → 4.5 (LongMemEval full 500q benchmark; target R@5 ≥ 0.95)
+→ 4.6 (PyPI release v0.4.0). Tek dış bağımlılık: `anthropic` (opsiyonel
+`mnemos-dev[llm]` extra üzerinden).
 
-**v0.4 (AI Boost / Phase 1) sırada** — ROADMAP §v0.4.0:
+**Son resume:** bugün (2026-04-19) v0.3.3 release + repo polish
+batch'i ship edildi. Commit'ler: `4ba52e4` (cleanups) → `fd4e008`
+(0.3.3 release) → `68df8d0` (GitHub polish) → `4a691eb` (README
+ELI5). Working tree temiz, main origin ile senkron.
 
-1. **4.1 Phase 1 design spec** — `docs/specs/YYYY-MM-DD-phase1-ai-boost-design.md`
-2. **4.2 LLM mining** — Claude API regex'in yakaladığını doğrular + emotional hall
-3. **4.3 LLM reranking** — top-50 → top-10 precision boost
-4. **4.4 Contradiction detection** — yeni memory eski memory ile çelişiyor mu?
-5. **4.5 Benchmark tekrar** — Recall@5 ≥ %95, Recall@10 ≥ %97 hedefi
-6. **4.6 PyPI release v0.4.0**
+**Reminder:** sosyal preview upload hâlâ kullanıcı tarafında bekliyor
+(tek tıklık iş). Phase 1 işi bunu bloklamıyor.
 
-**3.11-3.13 production hardening özeti (2026-04-17):**
-- 3.11: `MIN_USER_TURNS=3` noise filter + `last_ok/last_skip` truthful status
-- 3.12: PID marker active-session exclusion (multi-window safe)
-- 3.12b: mtime fallback (pre-marker sessions) + wrapper status guard
-- 3.12c: per-session statusline (`triggering_session_id`) + one-shot simplification
-  (Claude Code statusline'ı sürekli poll etmiyor — debug logla kanıtlandı)
-- 3.13: 53 backlog batch temizliği (5 paralel subagent triage + 34 `claude --print`
-  refine). Final: ledger 122 entry (52 OK / 70 SKIP), backlog 0.
+### Practical stats (author's vault, 2026-04-19)
 
-### Practical stats (author's vault, 2026-04-17)
-
-- 277+ drawers across 9 wings, 2-language (TR+EN) regex mining
-- Cosine search scores healthy at 0.30–0.70 range
+- 683 drawers across 16 wings, 2-language (TR+EN) regex mining
+- Surface scores now in 0.30–0.70 range on both backends (v0.3.3 score rescale)
 - 66 refined session notes in `Sessions/` (52 OK from 122 processed transcripts)
 - Backlog: **0** — all Claude Code JSONL transcripts processed
 - Auto-refine hook processes 3 closed transcripts per new session start

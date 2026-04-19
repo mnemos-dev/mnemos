@@ -41,7 +41,7 @@ yine hızlıca yap ama 5. sormadan o göreve geç.
   junction'lı, bu repo canonical
 - **Canonical refinement prompt:** `docs/prompts/refine-transcripts.md`
 - **Yazarın vault'u (test/pilot için):** `C:\Users\tugrademirors\OneDrive\Masaüstü\kasamd`
-- **PyPI:** `mnemos-dev` — stable v0.3.2, v0.4.0 (AI Boost / Phase 1) hazırlıkta
+- **PyPI:** `mnemos-dev` — stable v0.3.3, v0.4.0 (AI Boost / Phase 1) hazırlıkta
 - **GitHub:** `github.com/mnemos-dev/mnemos`
 
 ---
