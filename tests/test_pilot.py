@@ -24,6 +24,7 @@ from mnemos.pilot import (
     parse_claude_json_output,
     read_ledger_entry,
     run_pilot,
+    source_breakdown,
     sources_needing_run,
     write_pilot_report,
 )
@@ -170,10 +171,39 @@ def test_build_plan_raises_for_bad_vault(tmp_path: Path) -> None:
         build_plan(missing)
 
 
-def test_build_plan_rejects_zero_limit(tmp_path: Path) -> None:
+def test_build_plan_rejects_negative_limit(tmp_path: Path) -> None:
     _make_session(tmp_path / "Sessions", "s.md")
-    with pytest.raises(PilotError, match="limit must be >= 1"):
-        build_plan(tmp_path, limit=0)
+    with pytest.raises(PilotError, match="limit must be >= 0"):
+        build_plan(tmp_path, limit=-1)
+
+
+def test_build_plan_limit_zero_picks_all_sources(tmp_path: Path) -> None:
+    """4.2.13 — `--pilot-limit 0` means "mine everything" (full batch mode)."""
+    sdir = tmp_path / "Sessions"
+    for i in range(25):
+        _make_session(sdir, f"s{i:02d}.md", mtime=time.time() - i)
+
+    plan = build_plan(tmp_path, limit=0)
+    assert plan.source_count == 25
+    assert plan.limit == 0
+
+
+def test_source_breakdown_groups_by_origin_dir(tmp_path: Path) -> None:
+    """4.2.13 — CLI display helper buckets sources by Sessions/Topics/external."""
+    s1 = _make_session(tmp_path / "Sessions", "a.md")
+    s2 = _make_session(tmp_path / "Sessions", "b.md")
+    t1 = _make_session(tmp_path / "Topics", "t.md")
+    ext = tmp_path / "ext"
+    m1 = _make_session(ext, "m.md")
+
+    (tmp_path / "mnemos.yaml").write_text(
+        f"mining_sources:\n  - path: {ext}\n    mode: session\n",
+        encoding="utf-8",
+    )
+
+    breakdown = source_breakdown(tmp_path, [s1, s2, t1, m1])
+    # Resolution order: Sessions, Topics, then yaml entries
+    assert breakdown == [("Sessions", 2), ("Topics", 1), ("ext", 1)]
 
 
 def test_build_plan_computes_palace_paths(tmp_path: Path) -> None:

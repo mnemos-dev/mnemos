@@ -808,8 +808,16 @@ Rerank skill-recall'ın içinde eridi; contradiction v0.5 hygiene'a ertelendi.
       "Sources" etiketi kullanıyor. 5 yeni test (multi-source union,
       MEMORY.md skip, overlap dedup, `_` prefix skip, recursive subdir).
       Full suite **529 pass / 2 skip / 3 deselect**.
-- [ ] **4.2.13 CLI `--skill-all` / `--pilot-limit 0`** *(~30 dk)* —
-      no-limit mode + Estimated time hesabında 114 dosya görünür.
+- [x] **4.2.13 CLI `--pilot-limit 0` no-limit mode** *(2026-04-19)* —
+      `build_plan(limit=0)` artık "tüm kaynaklar" anlamına geliyor (full
+      batch mine); negative limit hâlâ PilotError. CLI çıktısı
+      zenginleşti: `Sources: N files (X Sessions + Y Topics + Z ext)
+      (limit=all|N)` breakdown + `_format_duration_estimate` helper'ı
+      (saniyeden dakikaya ve saate geçiş) + sequential vs paralel-3
+      (target, 4.2.14) iki estimate. Yeni `source_breakdown(vault,
+      sources)` helper'ı pilot.py'da — resolution order'ı (Sessions,
+      Topics, yaml mining_sources) korur. 3 yeni test (limit=0=all,
+      negative limit reject, source_breakdown). Full suite 531 pass.
 - [ ] **4.2.14 Parallel-3 execution** *(~1.5h)* — ThreadPoolExecutor +
       filelock ledger lock + `--no-parallel` fallback. Progress output.
 - [ ] **4.2.15 Full skill-mine run** *(~2.5h paralel-3 gerçek iş)* —

@@ -731,12 +731,26 @@ def _run_from_palace(vault_path: Path, cfg, palace_path: str) -> None:
     print("to repopulate raw if your search workflow relies on it.")
 
 
+def _format_duration_estimate(seconds: int) -> str:
+    """Render a duration for the Pilot plan display.
+
+    Under 60 min → minutes; else hours with 1 decimal. Always prefixed with ``~``.
+    """
+    if seconds < 60:
+        return f"~{seconds}s"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"~{minutes} min"
+    return f"~{minutes/60:.1f}h"
+
+
 def _run_pilot_llm(vault_path: Path, args: argparse.Namespace) -> None:
     """Drive the skill-mine pilot: plan, confirm, run, report, hand-off."""
     from mnemos.pilot import (
         PilotError,
         build_plan,
         run_pilot,
+        source_breakdown,
         write_pilot_report,
     )
 
@@ -746,21 +760,27 @@ def _run_pilot_llm(vault_path: Path, args: argparse.Namespace) -> None:
         print(f"Pilot error: {e}", file=sys.stderr)
         sys.exit(2)
 
+    limit_label = "all" if plan.limit == 0 else str(plan.limit)
+    breakdown = source_breakdown(plan.vault, plan.sources)
+    breakdown_str = " + ".join(f"{n} {label}" for label, n in breakdown if n > 0)
+    sources_line = f"{plan.source_count} files"
+    if breakdown_str:
+        sources_line += f" ({breakdown_str})"
+
     print(f"Pilot plan:")
     print(f"  Vault:          {plan.vault}")
-    print(f"  Sources:        {plan.source_count} (limit={plan.limit})")
+    print(f"  Sources:        {sources_line} (limit={limit_label})")
     print(f"  Script palace:  {plan.script_palace}")
     print(f"  Skill palace:   {plan.skill_palace}")
     # Empirical per-source latency from 2026-04-19 kasamd pilot: ~260s
     # sequential (long sessions, multi-drawer write + LLM reasoning). Spec
     # originally estimated 25s which was 10x off. See docs/pilots/
     # 2026-04-19-v0.4-phase1-real-vault-pilot.md Finding 1.
-    est_total_sec = plan.source_count * 260
-    est_min = est_total_sec // 60
+    est_sec_seq = plan.source_count * 260
+    est_sec_par = est_sec_seq // 3  # parallel-3 best-case (4.2.14)
     print(
-        f"  Estimated time: ~{est_min} min sequential "
-        f"(~4 min per source at `claude --print` + skill write cycle; "
-        f"paralel-3 v0.4.1'de gelecek)"
+        f"  Estimated time: {_format_duration_estimate(est_sec_seq)} sequential "
+        f"/ {_format_duration_estimate(est_sec_par)} paralel-3 (target, 4.2.14)"
     )
     print()
 
@@ -1134,7 +1154,8 @@ def main() -> None:
         "--pilot-limit",
         type=int,
         default=10,
-        help="With --pilot-llm: number of most-recent source files to pilot (default 10)",
+        help="With --pilot-llm: number of most-recent source files to pilot "
+        "(default 10; use 0 for all sources — full batch mine, ~4 min per file)",
     )
     parser_mine.add_argument(
         "--from-palace",

@@ -165,6 +165,59 @@ def _resolve_source_dirs(vault: Path) -> list[Path]:
     return out
 
 
+def _source_dir_label(vault: Path, src_dir: Path) -> str:
+    """Short label for a resolved source directory (CLI display).
+
+    ``Sessions`` / ``Topics`` for the vault's auto-discovered dirs;
+    basename for yaml ``mining_sources`` entries (e.g. ``memory``).
+    """
+    try:
+        rel = src_dir.resolve().relative_to(Path(vault).resolve())
+        parts = rel.parts
+        if len(parts) == 1 and parts[0] in ("Sessions", "Topics"):
+            return parts[0]
+    except ValueError:
+        pass
+    return src_dir.name or str(src_dir)
+
+
+def source_breakdown(vault: Path, sources: Sequence[Path]) -> list[tuple[str, int]]:
+    """Group *sources* by originating source dir, returning ``(label, count)``
+    pairs in resolution order (Sessions, Topics, then yaml mining_sources).
+
+    Paths that don't fall under any resolved source dir land in ``("other", N)``.
+    Used by the CLI to display "N files (X Sessions + Y Topics + Z memory)".
+    """
+    dirs = _resolve_source_dirs(vault)
+    dir_keys = [
+        (d, os.path.normcase(os.path.normpath(str(d.resolve() if d.exists() else d))))
+        for d in dirs
+    ]
+    buckets: dict[str, int] = {}
+    labels: list[str] = []
+    for d, _ in dir_keys:
+        label = _source_dir_label(vault, d)
+        if label not in buckets:
+            buckets[label] = 0
+            labels.append(label)
+
+    for src in sources:
+        src_norm = os.path.normcase(os.path.normpath(str(src.resolve() if src.exists() else src)))
+        matched = False
+        for d, d_norm in dir_keys:
+            if src_norm == d_norm or src_norm.startswith(d_norm + os.sep):
+                buckets[_source_dir_label(vault, d)] += 1
+                matched = True
+                break
+        if not matched:
+            buckets.setdefault("other", 0)
+            if "other" not in labels:
+                labels.append("other")
+            buckets["other"] += 1
+
+    return [(label, buckets[label]) for label in labels]
+
+
 def _discover_sources(vault: Path) -> list[Path]:
     """Return all input .md files across configured source dirs, newest first.
 
@@ -222,10 +275,12 @@ def build_plan(
             "Topics/, or configure mining_sources in mnemos.yaml."
         )
 
-    if limit < 1:
-        raise PilotError(f"limit must be >= 1, got {limit}")
+    if limit < 0:
+        raise PilotError(f"limit must be >= 0, got {limit}")
 
-    picked = sources[:limit]
+    # limit == 0 → all sources (no-limit mode for full batch mine).
+    # limit > 0 → first N newest sources.
+    picked = sources if limit == 0 else sources[:limit]
 
     return PilotPlan(
         vault=vault,
