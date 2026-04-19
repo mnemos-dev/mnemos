@@ -4,7 +4,7 @@
 Eski `docs/specs/2026-04-*` ve `docs/plans/2026-04-*` dosyaları historical
 archive; burada çelişki olursa bu dosya geçerlidir.
 
-**Son güncelleme:** 2026-04-19
+**Son güncelleme:** 2026-04-19 (Phase 1 design spec teslim, skill-first reframe)
 
 ---
 
@@ -18,8 +18,8 @@ archive; burada çelişki olursa bu dosya geçerlidir.
 | v0.3.1 | Backend UX (keşif + migrate + recovery) | ✅ | ✅ |
 | v0.3.2 | Palace Hygiene (pipeline fixes + atomic rebuild) | ✅ | ✅ |
 | v0.3.3 | Post-v0.3.2 cleanup (migrate rollback+lock, score parity, slow-tests) | ✅ | ✅ |
-| **v0.4.0** | **AI Boost (= Phase 1)** | **🔄 next** | — |
-| v0.5.0 | Automation (= Phase 2) | ⏸ | — |
+| **v0.4.0** | **AI Boost / Phase 1 — skill-first (mine + recall + pilot + settings TUI)** | **🔄 spec done** | — |
+| v0.5.0 | Automation / Phase 2 (+ contradiction hygiene v0.4'ten) | ⏸ | — |
 | v0.6.0 | Community & Ecosystem | ⏸ | — |
 
 ---
@@ -727,31 +727,57 @@ tree'yi yeşil bırakmak için tek commit'te kapatıldı.
 
 ---
 
-## v0.4.0 — AI Boost / Phase 1 ⏸
+## v0.4.0 — AI Boost / Phase 1 🔄 *(başladı 2026-04-19)*
 
-**Hedef:** Recall@5 ≥ %95 (Phase 0 baseline'ı **%90** — her iki backend'de
-verified 2026-04-17 — → hedef %100). Claude API opsiyonel;
-`mnemos-dev[llm]` extra'ya bağlı.
+**Hedef:** Skill-first LLM augmentation. Kullanıcıya iki ortogonal eksen
+sunuyoruz (mine-mode × recall-mode), her biri script (API'siz,
+deterministic) veya skill (Claude Code oturumunda `claude --print`,
+abonelik quota kullanır, API paketi yok). Pilot orchestrator 10 session'u
+iki palace'ta paralel üretir, kullanıcı kendi verisinde karar verir.
+
+**Orijinal API-based 4.2-4.4** (Claude SDK mining + rerank +
+contradiction) **iptal** — skill paterni ile aynı amaca daha temiz ulaşıyor.
+Rerank skill-recall'ın içinde eridi; contradiction v0.5 hygiene'a ertelendi.
+
+**Canonical spec:**
+[`docs/specs/2026-04-19-phase1-ai-boost-design.md`](specs/2026-04-19-phase1-ai-boost-design.md)
 
 ### Görevler
 
-- [ ] **4.1 Phase 1 design spec yaz** *(1h)*
-  `docs/specs/YYYY-MM-DD-phase1-ai-boost-design.md` — Phase 0 spec formatında
-- [ ] **4.2 LLM mining** *(3-4h)*
-  - Claude API regex'in yakaladıklarını doğrular + kaçırdıklarını yakalar
-  - **Emotional hall eklenir** (Phase 0'da false-positive riski nedeniyle ertelendi)
-  - `mnemos mine Sessions/ --llm` mevcut flag'in arkasında
-- [ ] **4.3 LLM reranking** *(2h)*
-  - Search top-50 → Claude → top-10 precision boost
-  - `mnemos_search` tool'una `rerank: bool` parametresi
-- [ ] **4.4 Contradiction detection** *(2-3h)*
-  - Yeni memory mevcut memory'lerle çelişiyor mu? (örn. "X kullanıyoruz" vs
-    yeni "Y'ye geçtik" → eski outdated işaretlenir, `_recycled`'a taşınır)
-  - `mnemos_add` sırasında otomatik check
-- [ ] **4.5 Benchmark tekrar** *(1h)*
-  - LongMemEval full 500 soru, 4 mod
-  - Hedef: Recall@5 ≥ %95, Recall@10 ≥ %97
-- [ ] **4.6 PyPI release v0.4.0**
+- [x] **4.1 Phase 1 design spec yaz** *(2026-04-19)*
+  `docs/specs/2026-04-19-phase1-ai-boost-design.md` — skill-first reframe,
+  4-kombo mimarisi, pilot orchestrator, settings TUI, v0.5'e ertelenen
+  işler.
+- [ ] **4.2 Skill-mine + pilot orchestrator** *(~8h)*
+  - `skills/mnemos-mine-llm/` — refined session .md'yi okuyup drawer
+    .md'leri doğrudan yazan skill (frontmatter + H1 + source wikilink)
+  - `mnemos/pilot.py` — `mnemos mine --pilot-llm [N=10]`: iki palace
+    paralel (`Mnemos/` script + `Mnemos-pilot/` skill), token accounting,
+    pilot rapor iskeleti
+  - `skills/mnemos-compare-palaces/` — LLM judgment raporu (3 yan yana
+    sample + kalitatif öneri, kararı kullanıcıya bırakır)
+  - `mnemos pilot --accept <script|skill>` — kazananı seç, kaybeden
+    `_recycled/`'a
+- [ ] **4.3 Skill-recall** *(~5h)*
+  - `skills/mnemos-recall/` — user-invoked `/mnemos-recall <query>`,
+    vector top-50 → LLM judge → curated 300-500 kelime context
+  - `skills/mnemos-briefing/` + `mnemos/recall_briefing.py` + `mnemos
+    install-recall-hook` — opt-in SessionStart briefing (<4h freshness
+    window, stale-ama-fresh model, refine-hook paraleli)
+  - MCP server `instructions` alanı `recall_mode` yaml'dan dinamik
+    (`script` → AI auto-query; `skill` → AI sessiz, skill-driven)
+- [ ] **4.4 ~~Contradiction detection~~ → v0.5'e ertelendi** (spec §2)
+- [ ] **4.5 `mnemos settings` TUI** *(~2.5h)*
+  - `mnemos/settings_tui.py` — numbered menu, 8 satır: backend, mine-mode,
+    recall-mode, refine-hook, recall-hook, statusline, languages, briefing
+    hint. Alt-aksiyon mevcut komutlara (migrate, install-hook, vb.)
+    delegate. i18n TR+EN.
+- [ ] **4.6 Benchmark S+S combo** *(~3h)*
+  - LongMemEval full 500q, sadece script-mine + script-recall ölçümü
+  - **Hedef: Recall@5 ≥ %93** (Phase 0 %90'dan marjinal iyileşme;
+    orijinal %95 iddiası skill-first yaklaşımla düştü — S+S combo'ya
+    rerank gelmiyor. Skill modları kalitatif, pilot raporuyla değerlenir.)
+- [ ] **4.7 PyPI release v0.4.0**
 
 ---
 
@@ -767,14 +793,20 @@ asgariye iner.
 - [ ] **5.2 Session hooks** *(2-3h)*
   - Claude Code session bittiğinde otomatik mine
   - `settings.json` hook'u: `SessionEnd → mnemos mine --incremental`
-- [ ] **5.3 Memory lifecycle / decay** *(2h)*
+- [ ] **5.3 Contradiction detection / stale memory hygiene** *(2-3h, v0.4'ten ertelendi)*
+  - Yeni memory mevcut memory'lerle çelişiyor mu? (örn. "X kullanıyoruz" vs
+    yeni "Y'ye geçtik" → eski outdated işaretlenir)
+  - Skill-based: `/mnemos-hygiene` periodic audit — skill yeni drawer'ları
+    eskilerle karşılaştırır, çelişenleri `contradicts:` frontmatter + `stale: true`
+    ile işaretler. Auto-recycle yerine kullanıcı onayıyla `_recycled/`'a.
+- [ ] **5.4 Memory lifecycle / decay** *(2h)*
   - Eski, hiç aranmamış, çelişki-işaretli memory'ler zaman içinde fade out
   - `mnemos prune --dry-run` komutu
-- [ ] **5.4 Knowledge graph deepening** *(3-4h)*
+- [ ] **5.5 Knowledge graph deepening** *(3-4h)*
   - Cross-reference: "bu memory X projesinde, X projesi Y wing'inde, Y wing
     son Z günde şu kararları aldı" gibi dolaylı sorgular
   - `mnemos_graph` tool genişletme
-- [ ] **5.5 PyPI release v0.5.0**
+- [ ] **5.6 PyPI release v0.5.0**
 
 ---
 

@@ -1,7 +1,7 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-19 (v0.3.3 post-cleanup released to PyPI + GitHub)
-**Stable PyPI version:** `v0.3.3` · **Next:** `v0.4.0` (AI Boost / Phase 1)
+**Last updated:** 2026-04-19 (Phase 1 design spec delivered — skill-first reframe)
+**Stable PyPI version:** `v0.3.3` · **Next:** `v0.4.0` (AI Boost / Phase 1 — implementation starting)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
 This file is the single-glance answer to: *why does Mnemos exist, what can it
@@ -327,23 +327,44 @@ gap.
 
 ### Next session starts here
 
-v0.3.3 PyPI + GitHub'da canlı, tüm post-release repo polish (CI,
-community templates, SECURITY + CoC, social preview, README ELI5)
-tamam. **v0.4.0 AI Boost / Phase 1 sırada — ilk görev 4.1: Phase 1
-design spec yazmak** (`docs/specs/YYYY-MM-DD-phase1-ai-boost-design.md`,
-Phase 0 spec formatında). Sonra subagent-driven execution'la 4.2 (LLM
-mining + emotional hall) → 4.3 (LLM reranking) → 4.4 (contradiction
-detection) → 4.5 (LongMemEval full 500q benchmark; target R@5 ≥ 0.95)
-→ 4.6 (PyPI release v0.4.0). Tek dış bağımlılık: `anthropic` (opsiyonel
-`mnemos-dev[llm]` extra üzerinden).
+v0.3.3 PyPI + GitHub'da canlı. **Phase 1 design spec teslim edildi**
+(2026-04-19): [`docs/specs/2026-04-19-phase1-ai-boost-design.md`](docs/specs/2026-04-19-phase1-ai-boost-design.md).
 
-**Son resume:** bugün (2026-04-19) v0.3.3 release + repo polish
-batch'i ship edildi. Commit'ler: `4ba52e4` (cleanups) → `fd4e008`
-(0.3.3 release) → `68df8d0` (GitHub polish) → `4a691eb` (README
-ELI5). Working tree temiz, main origin ile senkron.
+**Phase 1 artık skill-first.** Orijinal API-based plan (Claude SDK
+mining + rerank + contradiction detection, `mnemos-dev[llm]` extra)
+**iptal** — `mnemos-refine-transcripts` skill paterni mining ve recall'a
+genişletildi. mnemos hâlâ LLM API çağırmıyor; skill'ler Claude Code
+oturumu içinde `claude --print` ile çalışıyor (abonelik quota, sıfır
+paket bağımlılığı).
 
-**Reminder:** sosyal preview upload hâlâ kullanıcı tarafında bekliyor
-(tek tıklık iş). Phase 1 işi bunu bloklamıyor.
+**Kullanıcıya sunulan 4-kombo:**
+```
+                   Script-recall     Skill-recall
+  Script-mine   │ (1) BUGÜN         │ (2)              │
+  Skill-mine    │ (3)               │ (4) MAKS KALİTE  │
+```
+Mine-mode vault başına tek seçim (pilot'la karar), recall-mode flip'lenebilir.
+
+**v0.4.0 görevler (spec §10 sırası):**
+- **4.2** skill-mine + pilot orchestrator + compare-palaces skill
+  (`mnemos mine --pilot-llm [N=10]` iki palace paralel üretir, kullanıcı
+  karar verir, `mnemos pilot --accept <mode>`)
+- **4.3** skill-recall (`/mnemos-recall <query>` + opt-in SessionStart
+  briefing hook, MCP server `instructions` recall_mode-aware)
+- **4.5** `mnemos settings` interaktif TUI (mine-mode, recall-mode,
+  hook'lar, migrate, languages — 8 satırlık numbered menu)
+- **4.6** LongMemEval 500q benchmark, S+S combo için hedef **R@5 ≥ %93**
+  (skill modları kalitatif, pilot raporunda)
+- **4.7** PyPI release v0.4.0
+- **4.4 contradiction → v0.5.3'e ertelendi** (hygiene skill)
+
+**Sırada 4.2'nin ilk parçası:** `skills/mnemos-mine-llm/SKILL.md` + prompt
+tasarımı (~2h). Refine-transcripts skill'ini base alacak.
+
+**🟡 Pending user action** — social-preview PNG hâlâ GitHub Settings'e
+elden yüklenecek (tek tıklık; Phase 1 bunu bloklamıyor).
+
+**Son commit:** bugün Phase 1 spec + ROADMAP reshape.
 
 ### Practical stats (author's vault, 2026-04-19)
 
