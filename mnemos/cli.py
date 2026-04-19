@@ -768,7 +768,6 @@ def _print_migration_result(result, cfg: "MnemosConfig") -> None:  # type: ignor
 
     if result.status == "dry-run":
         plan = result.plan
-        lo_min, hi_min = plan.estimate_minutes_range()
         src_list = ", ".join(f"{d}/" for d in plan.source_dirs) or "(none found)"
         print("Migration plan (dry-run, no files changed):")
         print(f"  From:         {plan.from_backend}")
@@ -781,7 +780,7 @@ def _print_migration_result(result, cfg: "MnemosConfig") -> None:  # type: ignor
             print("  Warning:      no source .md files found under Sessions/, Topics/, memory/.")
             print("                Rebuild would produce an empty index. Pass --no-rebuild to")
             print("                update yaml only, or restore your source files before running.")
-        print(f"  Time est.:    ~{lo_min}–{hi_min} minutes (based on 0.46 s/drawer ±30%)")
+        print(f"  Time est.:    {plan.format_estimate()} (based on 0.46 s/drawer ±30%)")
         return
 
     # migrated
@@ -1161,11 +1160,15 @@ def main() -> None:
         sys.exit(0)
 
     from mnemos.errors import BackendInitError
+    from mnemos.migrate import MigrateError
 
     try:
         args.func(args)
     except BackendInitError as exc:
         print(str(exc), file=sys.stderr)
+        sys.exit(2)
+    except MigrateError as exc:
+        print(f"Migration failed: {exc}", file=sys.stderr)
         sys.exit(2)
 
 

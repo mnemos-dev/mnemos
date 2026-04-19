@@ -13,6 +13,7 @@ import yaml
 
 from mnemos.config import MnemosConfig, load_config
 from mnemos.migrate import (
+    MigrateError,
     MigrationPlan,
     MigrationResult,
     build_plan,
@@ -93,6 +94,60 @@ def test_build_plan_time_estimate_scales_with_drawers(tmp_path: Path) -> None:
     expected_max = plan.current_drawers * 0.60
     assert plan.estimate_min_seconds == pytest.approx(expected_min, abs=1.0)
     assert plan.estimate_max_seconds == pytest.approx(expected_max, abs=1.0)
+
+
+def test_format_estimate_uses_seconds_below_one_minute() -> None:
+    """Tiny vaults estimate in seconds instead of `~0–0 minutes`."""
+    plan = MigrationPlan(
+        from_backend="chromadb",
+        to_backend="sqlite-vec",
+        current_drawers=5,
+        source_files=1,
+        estimate_min_seconds=1.6,
+        estimate_max_seconds=3.0,
+    )
+    assert plan.format_estimate() == "~2–3 seconds"
+
+
+def test_format_estimate_floors_min_at_one_second() -> None:
+    """Sub-second windows still render ≥1 second so user sees a real number."""
+    plan = MigrationPlan(
+        from_backend="chromadb",
+        to_backend="sqlite-vec",
+        current_drawers=1,
+        source_files=1,
+        estimate_min_seconds=0.32,
+        estimate_max_seconds=0.60,
+    )
+    assert plan.format_estimate() == "~1–1 second"
+
+
+def test_format_estimate_switches_to_minutes_when_max_reaches_one_minute() -> None:
+    """Once the upper bound crosses 60s the unit flips to minutes."""
+    plan = MigrationPlan(
+        from_backend="chromadb",
+        to_backend="sqlite-vec",
+        current_drawers=140,
+        source_files=20,
+        estimate_min_seconds=45,
+        estimate_max_seconds=84,
+    )
+    result = plan.format_estimate()
+    assert "minute" in result
+    assert "second" not in result
+
+
+def test_format_estimate_large_vault_uses_minutes_plural() -> None:
+    """Large estimates use `minutes` with the correct minute range."""
+    plan = MigrationPlan(
+        from_backend="chromadb",
+        to_backend="sqlite-vec",
+        current_drawers=8000,
+        source_files=100,
+        estimate_min_seconds=2560,
+        estimate_max_seconds=4800,
+    )
+    assert plan.format_estimate() == "~43–80 minutes"
 
 
 # ---------------------------------------------------------------------------
@@ -217,3 +272,80 @@ def test_migrate_backup_name_counter_on_same_day(tmp_path: Path, monkeypatch) ->
     assert result.backup_path.name != ".chroma.bak-2026-04-17"
     # Original backup untouched
     assert (fake_bak / "placeholder.txt").exists()
+
+
+# ---------------------------------------------------------------------------
+# Rollback + migration lock
+# ---------------------------------------------------------------------------
+
+
+def test_migrate_rolls_back_on_rebuild_failure(tmp_path: Path, monkeypatch) -> None:
+    """If rebuild blows up, yaml and storage must return to the old backend."""
+    from mnemos import migrate as migrate_mod
+
+    vault = _seed_vault(tmp_path, backend="chromadb")
+    cfg = load_config(str(vault))
+    assert cfg.chromadb_full_path.exists()
+
+    def _boom(_vault_path: str) -> int:
+        raise RuntimeError("simulated rebuild failure")
+
+    monkeypatch.setattr(migrate_mod, "_rebuild_with_new_backend", _boom)
+
+    with pytest.raises(MigrateError, match="rolled back"):
+        migrate(cfg, new_backend="sqlite-vec")
+
+    # yaml reverted to chromadb (parsed — yaml.safe_dump may reformat list indent)
+    yaml_after = yaml.safe_load((vault / "mnemos.yaml").read_text(encoding="utf-8"))
+    assert yaml_after["search_backend"] == "chromadb"
+    # ChromaDB storage restored from backup — still the live backend
+    assert cfg.chromadb_full_path.exists()
+    # No orphaned backup sitting next to restored storage
+    palace = cfg.palace_dir
+    assert not any(p.name.startswith(".chroma.bak") for p in palace.iterdir())
+    # Partial sqlite-vec storage cleaned up
+    assert not (palace / "search.sqlite3").exists()
+
+
+def test_migrate_rollback_restores_mine_log(tmp_path: Path, monkeypatch) -> None:
+    """Rollback puts mine_log back where it was so the next run doesn't rescan."""
+    from mnemos import migrate as migrate_mod
+
+    vault = _seed_vault(tmp_path, backend="chromadb")
+    cfg = load_config(str(vault))
+    mine_log = cfg.mine_log_full_path
+    assert mine_log.exists(), "seed vault must have mined content"
+    mine_log_before = mine_log.read_text(encoding="utf-8")
+
+    monkeypatch.setattr(
+        migrate_mod,
+        "_rebuild_with_new_backend",
+        lambda _p: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+
+    with pytest.raises(MigrateError):
+        migrate(cfg, new_backend="sqlite-vec")
+
+    assert mine_log.exists()
+    assert mine_log.read_text(encoding="utf-8") == mine_log_before
+
+
+def test_migrate_lock_blocks_concurrent_migration(tmp_path: Path) -> None:
+    """A second migrate attempt while the lock is held raises MigrateError."""
+    from filelock import FileLock
+
+    vault = _seed_vault(tmp_path, backend="chromadb")
+    cfg = load_config(str(vault))
+    cfg.palace_dir.mkdir(parents=True, exist_ok=True)
+
+    competitor = FileLock(str(cfg.palace_dir / ".migrate.lock.flock"))
+    competitor.acquire(timeout=1)
+    try:
+        with pytest.raises(MigrateError, match="already running"):
+            migrate(cfg, new_backend="sqlite-vec")
+    finally:
+        competitor.release()
+
+    # After release the next migrate can acquire the lock normally (no stale file block)
+    result = migrate(cfg, new_backend="sqlite-vec")
+    assert result.status == "migrated"

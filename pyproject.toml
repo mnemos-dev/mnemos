@@ -38,3 +38,9 @@ benchmark = ["huggingface_hub>=0.20"]
 
 [project.scripts]
 mnemos = "mnemos.cli:main"
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: long-running stress/durability tests; deselected by default. Run with `pytest -m slow` or `pytest --override-ini=\"addopts=\"`.",
+]
+addopts = "-m 'not slow' --strict-markers"

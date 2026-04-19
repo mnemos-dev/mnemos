@@ -17,9 +17,11 @@ Flow:
   5. Open a fresh MnemosApp with the new backend and mine the vault.
   6. Return a summary with drawers before/after and backup location.
 
-Edge cases like rollback-on-failure and migration-lock recovery are
-deferred to follow-up passes — this module establishes the happy path
-plus no-op/dry-run/same-backend shortcuts.
+If the rebuild step fails (exception, crash, KeyboardInterrupt), the
+backup is moved back, yaml is reverted, and the partial new-backend
+storage is cleaned up — the vault lands exactly where it started.
+Concurrent migrations are blocked by a ``.migrate.lock.flock`` advisory
+lock so two sessions can't fight over the same vault.
 """
 from __future__ import annotations
 
@@ -30,8 +32,13 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
+from filelock import FileLock, Timeout
 
 from mnemos.config import MnemosConfig, load_config
+
+
+class MigrateError(Exception):
+    """Raised when migration cannot proceed or is rolled back."""
 
 
 # Source directories scanned for rebuild. Keep in sync with ROADMAP/spec:
@@ -69,6 +76,17 @@ class MigrationPlan:
         lo = max(0, int(round(self.estimate_min_seconds / 60)))
         hi = max(lo, int(round(self.estimate_max_seconds / 60)))
         return lo, hi
+
+    def format_estimate(self) -> str:
+        """Human-readable estimate range — seconds below the minute threshold."""
+        if self.estimate_max_seconds < 60:
+            lo = max(1, int(round(self.estimate_min_seconds)))
+            hi = max(lo, int(round(self.estimate_max_seconds)))
+            unit = "second" if hi == 1 else "seconds"
+            return f"~{lo}–{hi} {unit}"
+        lo_min, hi_min = self.estimate_minutes_range()
+        unit = "minute" if hi_min == 1 else "minutes"
+        return f"~{lo_min}–{hi_min} {unit}"
 
 
 @dataclass
@@ -184,26 +202,56 @@ def migrate(
             source_files=plan.source_files,
         )
 
-    # Close any live backend before moving its storage — Windows refuses
-    # to rename open directories.
-    backup_path = _backup_old_storage(cfg)
-    _write_backend_in_yaml(cfg.vault_path, new_backend)
-    _clear_mine_log(cfg)
+    old_backend = cfg.search_backend
+    palace = cfg.palace_dir
+    palace.mkdir(parents=True, exist_ok=True)
+    lock = FileLock(str(palace / ".migrate.lock.flock"))
+    try:
+        lock.acquire(timeout=0.1)
+    except Timeout as exc:
+        raise MigrateError(
+            "Another mnemos migrate is already running for this vault. "
+            "Wait for it to finish, or remove "
+            f"{palace / '.migrate.lock.flock'} if you are sure it is stale."
+        ) from exc
 
-    drawers_after = 0
-    if not no_rebuild:
-        drawers_after = _rebuild_with_new_backend(cfg.vault_path)
+    backup_path: Optional[Path] = None
+    mine_log_backup: Optional[Path] = None
+    try:
+        # Phase 1 — move old storage + mine_log aside, flip yaml.
+        backup_path = _backup_old_storage(cfg)
+        mine_log_backup = _backup_mine_log(cfg)
+        _write_backend_in_yaml(cfg.vault_path, new_backend)
 
-    return MigrationResult(
-        status="migrated",
-        from_backend=cfg.search_backend,
-        to_backend=new_backend,
-        drawers_before=plan.current_drawers,
-        drawers_after=drawers_after,
-        backup_path=backup_path,
-        plan=plan,
-        source_files=plan.source_files,
-    )
+        # Phase 2 — mine into the fresh backend. This is the risky step.
+        drawers_after = 0
+        if not no_rebuild:
+            try:
+                drawers_after = _rebuild_with_new_backend(cfg.vault_path)
+            except BaseException as exc:
+                _rollback_migration(
+                    cfg, old_backend, backup_path, mine_log_backup
+                )
+                raise MigrateError(
+                    f"Rebuild on {new_backend!r} failed: {exc}. "
+                    f"Migration rolled back — still on {old_backend!r}."
+                ) from exc
+
+        return MigrationResult(
+            status="migrated",
+            from_backend=old_backend,
+            to_backend=new_backend,
+            drawers_before=plan.current_drawers,
+            drawers_after=drawers_after,
+            backup_path=backup_path,
+            plan=plan,
+            source_files=plan.source_files,
+        )
+    finally:
+        try:
+            lock.release()
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -263,11 +311,89 @@ def _write_backend_in_yaml(vault_path: str, new_backend: str) -> None:
         yaml.safe_dump(data, fh, allow_unicode=True, sort_keys=False)
 
 
-def _clear_mine_log(cfg: MnemosConfig) -> None:
-    """Remove mine_log so the rebuild re-scans every .md file."""
+def _backup_mine_log(cfg: MnemosConfig) -> Optional[Path]:
+    """Rename mine_log aside so a rollback can restore it instead of losing it."""
     mine_log = cfg.mine_log_full_path
-    if mine_log.exists():
-        mine_log.unlink()
+    if not mine_log.exists():
+        return None
+    target = mine_log.with_suffix(mine_log.suffix + f".bak-{_utc_date_str()}")
+    counter = 2
+    while target.exists():
+        target = mine_log.with_suffix(
+            mine_log.suffix + f".bak-{_utc_date_str()}.{counter}"
+        )
+        counter += 1
+    mine_log.rename(target)
+    return target
+
+
+def _new_backend_storage(cfg: MnemosConfig, new_backend: str) -> Path:
+    """Where the freshly-switched backend will write its index."""
+    if new_backend == "chromadb":
+        return cfg.chromadb_full_path
+    if new_backend == "sqlite-vec":
+        return cfg.palace_dir / "search.sqlite3"
+    raise ValueError(f"Unknown backend: {new_backend!r}")  # pragma: no cover
+
+
+def _remove_storage(path: Path) -> None:
+    """Best-effort delete of a backend's storage (dir or file) during rollback."""
+    if not path.exists():
+        return
+    if path.is_dir():
+        shutil.rmtree(path, ignore_errors=True)
+    else:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
+
+def _rollback_migration(
+    cfg: MnemosConfig,
+    old_backend: str,
+    backup_path: Optional[Path],
+    mine_log_backup: Optional[Path],
+) -> None:
+    """Undo a failed migrate — restore yaml, backend storage, and mine_log.
+
+    Best-effort: swallows secondary failures so the original error
+    (raised by the caller) is the one the user sees.
+    """
+    # Load current yaml to discover which backend rebuild was attempting,
+    # then remove its partial storage before restoring the backup.
+    try:
+        current_cfg = load_config(cfg.vault_path)
+        partial_new_storage = _new_backend_storage(
+            current_cfg, current_cfg.search_backend
+        )
+        _remove_storage(partial_new_storage)
+    except Exception:
+        pass
+
+    # Move the old backend's storage back.
+    if backup_path is not None and backup_path.exists():
+        try:
+            target = _new_backend_storage(cfg, old_backend)
+            if target.exists():
+                _remove_storage(target)
+            backup_path.rename(target)
+        except Exception:
+            pass
+
+    # Restore mine_log so the next run doesn't re-scan every file.
+    if mine_log_backup is not None and mine_log_backup.exists():
+        try:
+            mine_log_backup.rename(cfg.mine_log_full_path)
+        except Exception:
+            pass
+
+    # Revert yaml last — if anything above failed, leaving yaml on the
+    # new backend would send the next open to empty storage.
+    try:
+        _write_backend_in_yaml(cfg.vault_path, old_backend)
+    except Exception:
+        pass
 
 
 def _rebuild_with_new_backend(vault_path: str) -> int:

@@ -445,15 +445,23 @@ def _clamp_unit(x: float) -> float:
     return x
 
 
-def _l2_to_cosine_sim(l2_dist: float) -> float:
-    """Convert L2 distance between unit-length vectors to cosine similarity.
+def _l2_to_score(l2_dist: float) -> float:
+    """Convert L2 distance on unit-length vectors to a [0, 1] relevance score.
 
-    sqlite-vec's vec0 virtual table defaults to L2 distance. For unit vectors
-    u, v the identity ``||u - v||² = 2(1 - u·v)`` gives
-    ``cos_sim = 1 - L2² / 2``. Clamped to [0, 1] so callers can treat score
-    as a similarity monotonically increasing with relevance.
+    sqlite-vec's vec0 virtual table returns L2 distance. With unit vectors
+    that distance lies in ``[0, 2]``, so we map linearly to ``[1, 0]``:
+
+        score = 1 - L2 / 2
+
+    The earlier implementation used the mathematically cleaner
+    ``cos_sim = 1 - L2² / 2`` (from ``||u - v||² = 2(1 - u·v)`` on unit
+    vectors). That produced scores compressed into roughly ``[0, 0.05]``
+    for typical document similarity — monotonically correct but cosmetically
+    alarming next to the ChromaDB backend's familiar 0.3–0.7 range. This
+    form is still monotonic in L2 distance (ranking identical) and places
+    "relevant" matches in the same visual band as ChromaDB.
     """
-    return _clamp_unit(1.0 - (l2_dist * l2_dist) / 2.0)
+    return _clamp_unit(1.0 - l2_dist / 2.0)
 
 
 def _l2_normalize(vec: list[float]) -> list[float]:
@@ -756,7 +764,7 @@ class SqliteVecBackend(SearchBackend):
                 "drawer_id": doc_id,
                 "text": text,
                 "metadata": meta,
-                "score": _l2_to_cosine_sim(float(dist)),
+                "score": _l2_to_score(float(dist)),
             })
             if len(output) >= limit:
                 break

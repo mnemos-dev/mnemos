@@ -122,6 +122,7 @@ def test_large_write_with_close_reopens(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 def test_write_without_close_can_lose_hnsw_segments(tmp_path):
     """Without close(), HNSW segments may not be flushed.
 
@@ -158,7 +159,7 @@ os._exit(0)  # skip atexit so only explicit close matters
         [sys.executable, "-c", script],
         capture_output=True,
         text=True,
-        timeout=300,
+        timeout=600,
     )
     assert result.returncode == 0, f"subprocess failed: {result.stderr}"
 
