@@ -822,7 +822,13 @@ def _run_pilot_llm(vault_path: Path, args: argparse.Namespace) -> None:
         drawers = ev["drawer_count"]
         reason = ev.get("reason") or ""
         usage = ev.get("usage")
-        tok_str = f" · {_fmt_tok(usage.total())} tok" if usage is not None else ""
+        cum = ev.get("cumulative_tokens", 0)
+        # Per-line: source token + running total side-by-side. Σ = sum of
+        # all completed sources so far (updates atomically with this row).
+        if usage is not None:
+            tok_str = f" · {_fmt_tok(usage.total())} tok (Σ {_fmt_tok(cum)})"
+        else:
+            tok_str = ""
         if outcome == "ok":
             line = f"[{idx}/{total}] OK    {src_name} → {drawers} drawers{tok_str}"
             if reason:
