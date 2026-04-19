@@ -768,10 +768,13 @@ Rerank skill-recall'ın içinde eridi; contradiction v0.5 hygiene'a ertelendi.
         drawer frontmatter `source:` field'ından eşleştirir; `format_pilot_report`
         her iki palace'ı `plan.sessions` ile filter'lar — apples-to-apples.
         1 yeni test.
-  - [ ] **4.2.9 Palace indexer + `mnemos mine --from-palace`** *(~1.5h, Finding 4)* —
-        skill-mined drawer'lar ChromaDB/sqlite-vec'e yazılmıyor; accept
-        skill WARNING ile surface ediyor ama arama stale. Frontmatter-
-        authoritative indexing (classification tekrar koşmaz).
+  - [x] **4.2.9 Palace indexer + `mnemos mine --from-palace`** *(2026-04-19)* —
+        `mnemos/palace_indexer.py`: walk_palace + parse_drawer + index_palace.
+        Frontmatter-authoritative (wing/room/hall/source/importance/language),
+        drop_and_reinit + index_drawers_bulk. CLI `--from-palace PATH`.
+        `accept_skill(reindex=True)` default → `_reindex_after_accept` helper;
+        başarılıysa WARNING çıkmaz, fail'de advisory WARNING. 13+2 yeni test
+        (palace_indexer + pilot reindex). Full suite 524 pass.
   - [~] **4.2.10 Latency realism + parallel-3** *(~1h, Finding 1)* —
         spec `25s/session` öngördü, gerçek `~4 min/session`.
         Docs kısmı *(2026-04-19)*: spec §4.2.2 step 4 "Latency realism"

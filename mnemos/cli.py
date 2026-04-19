@@ -668,6 +668,10 @@ def cmd_mine(args: argparse.Namespace) -> None:
         _run_pilot_llm(vault_path, args)
         return
 
+    if args.from_palace:
+        _run_from_palace(vault_path, cfg, args.from_palace)
+        return
+
     if args.rebuild:
         from mnemos.rebuild import rebuild_vault, RebuildError
         try:
@@ -692,6 +696,39 @@ def cmd_mine(args: argparse.Namespace) -> None:
             use_llm=args.llm,
         )
         print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+def _run_from_palace(vault_path: Path, cfg, palace_path: str) -> None:
+    """Frontmatter-authoritative re-index: read drawers from an existing
+    palace root, drop + bulk-insert the mined collection. No mining.
+    """
+    from mnemos.palace_indexer import index_palace
+    from mnemos.search import SearchEngine
+
+    palace = Path(palace_path)
+    if not palace.is_absolute():
+        palace = vault_path / palace
+    if not palace.exists():
+        print(f"Palace root does not exist: {palace}", file=sys.stderr)
+        sys.exit(2)
+
+    print(f"Re-indexing from palace: {palace}")
+    with SearchEngine(cfg) as backend:
+        stats = index_palace(backend, palace)
+
+    print(f"  Dropped mined+raw collections: {stats.dropped_first}")
+    print(f"  Drawers indexed:               {stats.indexed}")
+    if stats.skipped:
+        print(f"  Skipped (bad frontmatter):     {stats.skipped}")
+    if stats.errors:
+        for e in stats.errors[:5]:
+            print(f"    - {e}")
+        if len(stats.errors) > 5:
+            print(f"    - ...and {len(stats.errors) - 5} more")
+
+    print()
+    print("Note: raw collection is empty. Re-run `mnemos mine Sessions/`")
+    print("to repopulate raw if your search workflow relies on it.")
 
 
 def _run_pilot_llm(vault_path: Path, args: argparse.Namespace) -> None:
@@ -973,6 +1010,8 @@ def cmd_pilot(args: argparse.Namespace) -> None:
         print(f"  Promoted: {result.promoted_from.name} → Mnemos/")
     if result.yaml_updated:
         print(f"  mnemos.yaml updated: mine_mode = {result.mode}")
+    if result.indexed_drawers:
+        print(f"  Index rebuilt: {result.indexed_drawers} drawers")
     if result.index_stale_warning:
         print()
         print(f"WARNING: {result.index_stale_warning}")
@@ -1095,6 +1134,14 @@ def main() -> None:
         type=int,
         default=10,
         help="With --pilot-llm: number of most-recent sessions to pilot (default 10)",
+    )
+    parser_mine.add_argument(
+        "--from-palace",
+        default=None,
+        metavar="PATH",
+        help="Re-index drawers from an existing palace root (frontmatter-"
+        "authoritative; no mining, no classification). Used after "
+        "`mnemos pilot --accept skill` to refresh the vector index.",
     )
     parser_mine.set_defaults(func=cmd_mine)
 

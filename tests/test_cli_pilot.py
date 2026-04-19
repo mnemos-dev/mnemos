@@ -155,9 +155,12 @@ def test_cmd_pilot_accept_script_prints_summary(tmp_path, capsys):
     assert not (vault / "Mnemos-pilot").exists()
 
 
-def test_cmd_pilot_accept_skill_prints_warning(tmp_path, capsys):
+def test_cmd_pilot_accept_skill_prints_reindex_summary(tmp_path, capsys, monkeypatch):
+    """4.2.9: accept skill auto-reindexes; CLI prints index rebuild count."""
     vault = _write_vault(tmp_path)
     _make_pilot_palace(vault)
+
+    monkeypatch.setattr("mnemos.pilot._reindex_after_accept", lambda v, p: 5)
 
     cli_mod.cmd_pilot(_pilot_accept_args(vault, "skill"))
 
@@ -165,8 +168,27 @@ def test_cmd_pilot_accept_skill_prints_warning(tmp_path, capsys):
     assert "Accepted mode: skill" in out
     assert "Promoted:" in out
     assert "mine_mode = skill" in out
-    assert "WARNING" in out
+    assert "Index rebuilt: 5 drawers" in out
+    assert "WARNING" not in out  # success path → no warning
     assert (vault / "Mnemos").exists()
+
+
+def test_cmd_pilot_accept_skill_prints_warning_on_reindex_failure(tmp_path, capsys, monkeypatch):
+    """When reindex fails, CLI surfaces WARNING with follow-up instructions."""
+    vault = _write_vault(tmp_path)
+    _make_pilot_palace(vault)
+
+    def boom(v, p):
+        raise RuntimeError("embedding model missing")
+
+    monkeypatch.setattr("mnemos.pilot._reindex_after_accept", boom)
+
+    cli_mod.cmd_pilot(_pilot_accept_args(vault, "skill"))
+
+    out = capsys.readouterr().out
+    assert "Accepted mode: skill" in out
+    assert "WARNING" in out
+    assert "embedding model missing" in out
 
 
 def test_cmd_pilot_accept_skill_errors_without_pilot_palace(tmp_path, capsys):

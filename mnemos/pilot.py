@@ -655,6 +655,7 @@ class AcceptResult:
     promoted_from: Path | None = None  # for skill mode: Mnemos-pilot → Mnemos
     yaml_updated: bool = False
     index_stale_warning: str = ""
+    indexed_drawers: int = 0  # populated by accept_skill when reindex=True
 
 
 def _recycled_target(vault: Path, source_name: str) -> Path:
@@ -698,9 +699,11 @@ def accept_skill(
     vault: Path,
     script_palace_name: str = DEFAULT_SCRIPT_PALACE,
     skill_palace_name: str = DEFAULT_PILOT_PALACE,
+    reindex: bool = True,
 ) -> AcceptResult:
     """Switch to skill-mine: recycle Mnemos/, promote Mnemos-pilot/ → Mnemos/,
-    update yaml, emit index staleness warning.
+    update yaml, and — when *reindex* is True (default) — rebuild the vector
+    index from the promoted palace's drawer frontmatter (4.2.9).
 
     Raises PilotError if the skill palace is missing (cannot promote nothing).
     Script palace absence is tolerated (fresh vault).
@@ -729,13 +732,23 @@ def accept_skill(
 
     yaml_updated = _update_mine_mode(vault, "skill")
 
-    warning = (
-        "Vector index still reflects the recycled script-mine palace. "
-        "Re-indexing of skill-mined drawers is tracked as a follow-up "
-        "(v0.4.1). Until then, search results may be stale. "
-        "Workaround: delete <vault>/.chroma/ or <vault>/search.sqlite3 "
-        "and re-run mining via the skill workflow."
-    )
+    indexed = 0
+    warning = ""
+    if reindex:
+        try:
+            indexed = _reindex_after_accept(vault, script_palace)
+        except Exception as e:  # pragma: no cover — surfaced to user
+            warning = (
+                f"Index rebuild failed after file moves: {e}. "
+                "Run `mnemos mine --from-palace <new-mnemos-path>` manually "
+                "to refresh the vector index."
+            )
+    else:
+        warning = (
+            "Index left untouched (reindex=False). Search results will "
+            "reflect the recycled script-mine palace until you run "
+            "`mnemos mine --from-palace <new-mnemos-path>`."
+        )
 
     return AcceptResult(
         mode="skill",
@@ -743,7 +756,24 @@ def accept_skill(
         promoted_from=promoted_from,
         yaml_updated=yaml_updated,
         index_stale_warning=warning,
+        indexed_drawers=indexed,
     )
+
+
+def _reindex_after_accept(vault: Path, palace: Path) -> int:
+    """Open a SearchEngine against *vault*'s config and re-index drawers
+    from *palace* via palace_indexer. Returns drawers indexed count.
+
+    Isolated helper so tests can patch it.
+    """
+    from mnemos.config import load_config
+    from mnemos.palace_indexer import index_palace
+    from mnemos.search import SearchEngine
+
+    cfg = load_config(vault)
+    with SearchEngine(cfg) as backend:
+        stats = index_palace(backend, palace)
+    return stats.indexed
 
 
 def _update_mine_mode(vault: Path, mode: str) -> bool:

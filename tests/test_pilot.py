@@ -643,7 +643,7 @@ def test_accept_skill_promotes_and_recycles(tmp_path: Path) -> None:
         "use_llm: false\n"
     )
 
-    result = accept_skill(tmp_path)
+    result = accept_skill(tmp_path, reindex=False)
 
     assert result.mode == "skill"
     # Old script palace in _recycled
@@ -660,9 +660,10 @@ def test_accept_skill_promotes_and_recycles(tmp_path: Path) -> None:
     yaml_text = (tmp_path / "mnemos.yaml").read_text(encoding="utf-8")
     assert "mine_mode: skill" in yaml_text
     assert "languages: [tr, en]" in yaml_text  # other keys preserved
-    # Index-staleness warning surfaced
+    # reindex=False → advisory warning pointing to --from-palace
     assert result.index_stale_warning
-    assert "re-index" in result.index_stale_warning.lower() or "re-run" in result.index_stale_warning.lower()
+    assert "--from-palace" in result.index_stale_warning
+    assert result.indexed_drawers == 0
 
 
 def test_accept_skill_raises_without_pilot_palace(tmp_path: Path) -> None:
@@ -676,7 +677,7 @@ def test_accept_skill_tolerates_missing_script_palace(tmp_path: Path) -> None:
     _make_palace(tmp_path, "Mnemos-pilot", drawer_marker="skill")
     _write_yaml(tmp_path, "vault_path: /tmp\n")
 
-    result = accept_skill(tmp_path)
+    result = accept_skill(tmp_path, reindex=False)
 
     assert result.recycled_paths == []
     assert (tmp_path / "Mnemos" / "wings" / "Mnemos" / "backend" / "decisions"
@@ -697,6 +698,46 @@ def test_accept_skill_updates_existing_mine_mode_key(tmp_path: Path) -> None:
     assert "mine_mode: skill" in yaml_text
     assert "mine_mode: script" not in yaml_text
     assert "use_llm: false" in yaml_text
+
+
+def test_accept_skill_triggers_reindex_by_default(tmp_path: Path, monkeypatch) -> None:
+    """4.2.9: accept_skill(reindex=True) should call _reindex_after_accept."""
+    _make_palace(tmp_path, "Mnemos-pilot", drawer_marker="skill")
+    _write_yaml(tmp_path, "vault_path: /tmp\n")
+
+    calls: list[tuple[Path, Path]] = []
+
+    def fake_reindex(vault, palace):
+        calls.append((Path(vault), Path(palace)))
+        return 7
+
+    monkeypatch.setattr("mnemos.pilot._reindex_after_accept", fake_reindex)
+
+    result = accept_skill(tmp_path)  # reindex=True by default
+
+    assert len(calls) == 1
+    assert calls[0][0] == tmp_path
+    assert calls[0][1] == tmp_path / "Mnemos"  # the promoted palace
+    assert result.indexed_drawers == 7
+    assert result.index_stale_warning == ""  # no warning on success
+
+
+def test_accept_skill_surfaces_reindex_failure(tmp_path: Path, monkeypatch) -> None:
+    _make_palace(tmp_path, "Mnemos-pilot")
+    _write_yaml(tmp_path, "vault_path: /tmp\n")
+
+    def broken_reindex(vault, palace):
+        raise RuntimeError("backend unavailable")
+
+    monkeypatch.setattr("mnemos.pilot._reindex_after_accept", broken_reindex)
+
+    result = accept_skill(tmp_path)
+
+    # File moves still succeeded
+    assert (tmp_path / "Mnemos").exists()
+    assert result.indexed_drawers == 0
+    assert "Index rebuild failed" in result.index_stale_warning
+    assert "backend unavailable" in result.index_stale_warning
 
 
 def test_accept_script_collision_safe(tmp_path: Path) -> None:
