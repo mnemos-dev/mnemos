@@ -832,7 +832,11 @@ Rerank skill-recall'ın içinde eridi; contradiction v0.5 hygiene'a ertelendi.
       ETA elapsed/completed throughput'undan türetilir — parallel hızlanmayı
       otomatik yansıtır. 7 yeni test (cap concurrency, preserve order,
       sequential=1 strict order, progress fires, resumed silent, reject
-      parallel=0).
+      parallel=0). **Follow-up patch**: progress event dict artık
+      `usage` (per-source TokenUsage) + `cumulative_tokens` alanlarını
+      da taşıyor; CLI per-line `... → N drawers · 45k tok` + Progress
+      line `... · 842k tok · ...` gösteriyor. `_fmt_tok` compact
+      notasyon (k/M).
 - [ ] **4.2.15 Full skill-mine run** *(~2.5h paralel-3 gerçek iş)* —
       ledger wipe → recycle Mnemos-pilot → 114-source mine → compare →
       accept skill. Kasamd kullanım deneyimi smoke.

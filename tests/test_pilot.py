@@ -698,6 +698,13 @@ def test_run_pilot_progress_callback_fires_per_source(tmp_path: Path) -> None:
     assert events[-1]["parallel"] == 1
     assert result.ok_count == 3
 
+    # Per-source usage exposed; cumulative_tokens strictly monotonic
+    for ev in events:
+        assert ev["usage"].total() > 0
+    cumulative = [e["cumulative_tokens"] for e in events]
+    assert cumulative == sorted(cumulative)  # non-decreasing
+    assert cumulative[-1] == sum(e["usage"].total() for e in events)
+
 
 def test_run_pilot_progress_callback_skipped_for_resumed_entries(tmp_path: Path) -> None:
     """Resumed ledger rows shouldn't fire progress events — nothing ran."""

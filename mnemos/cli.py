@@ -806,6 +806,14 @@ def _run_pilot_llm(vault_path: Path, args: argparse.Namespace) -> None:
 
     progress_state = {"last_milestone": 0}
 
+    def _fmt_tok(n: int) -> str:
+        """Compact token count: 842000 → '842k', 1200000 → '1.2M'."""
+        if n >= 1_000_000:
+            return f"{n/1_000_000:.1f}M"
+        if n >= 1_000:
+            return f"{n//1_000}k"
+        return str(n)
+
     def _on_progress(ev: dict) -> None:
         idx = ev["index"]
         total = ev["total"]
@@ -813,17 +821,20 @@ def _run_pilot_llm(vault_path: Path, args: argparse.Namespace) -> None:
         outcome = ev["outcome"]
         drawers = ev["drawer_count"]
         reason = ev.get("reason") or ""
+        usage = ev.get("usage")
+        tok_str = f" · {_fmt_tok(usage.total())} tok" if usage is not None else ""
         if outcome == "ok":
-            line = f"[{idx}/{total}] OK    {src_name} → {drawers} drawers"
+            line = f"[{idx}/{total}] OK    {src_name} → {drawers} drawers{tok_str}"
             if reason:
                 line += f" ({reason})"
         elif outcome == "skip":
-            line = f"[{idx}/{total}] SKIP  {src_name} — {reason or 'no reason'}"
+            line = f"[{idx}/{total}] SKIP  {src_name}{tok_str} — {reason or 'no reason'}"
         else:
-            line = f"[{idx}/{total}] ERROR {src_name} — {reason or 'unknown'}"
+            line = f"[{idx}/{total}] ERROR {src_name}{tok_str} — {reason or 'unknown'}"
         print(line, flush=True)
 
-        # Every 10 completed, emit a monitor-friendly summary line with ETA.
+        # Every 10 completed, emit a monitor-friendly summary line with ETA
+        # and running token burn — lets you track both pace and budget.
         if idx - progress_state["last_milestone"] >= 10 or idx == total:
             progress_state["last_milestone"] = idx
             elapsed = ev["elapsed_sec"]
@@ -831,10 +842,11 @@ def _run_pilot_llm(vault_path: Path, args: argparse.Namespace) -> None:
             if idx > 0:
                 eta_sec = (total - idx) * elapsed / idx
                 eta_str = f"~{_format_duration_estimate(int(eta_sec))}"
+            cum = ev.get("cumulative_tokens", 0)
             print(
                 f"Progress: {idx}/{total} done · OK={ev['ok_count']} "
                 f"SKIP={ev['skip_count']} ERROR={ev['error_count']} · "
-                f"{elapsed/60:.1f}min elapsed · ETA {eta_str}",
+                f"{_fmt_tok(cum)} tok · {elapsed/60:.1f}min elapsed · ETA {eta_str}",
                 flush=True,
             )
 

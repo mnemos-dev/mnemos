@@ -585,6 +585,15 @@ def run_pilot(
             counts[bucket] += 1
             index = len(outcomes)
             elapsed = time.monotonic() - start
+            # Snapshot usage at this moment — TokenUsage is mutable and
+            # total_usage keeps mutating in other threads; freeze a copy.
+            source_usage = TokenUsage(
+                input_tokens=so.usage.input_tokens,
+                output_tokens=so.usage.output_tokens,
+                cache_read_input_tokens=so.usage.cache_read_input_tokens,
+                cache_creation_input_tokens=so.usage.cache_creation_input_tokens,
+            )
+            cumulative = total_usage.total()
             progress_event = {
                 "index": index,
                 "total": total,
@@ -592,6 +601,8 @@ def run_pilot(
                 "outcome": so.outcome,
                 "drawer_count": so.drawer_count,
                 "reason": so.reason,
+                "usage": source_usage,
+                "cumulative_tokens": cumulative,
                 "ok_count": counts["ok"],
                 "skip_count": counts["skip"],
                 "error_count": counts["error"],
