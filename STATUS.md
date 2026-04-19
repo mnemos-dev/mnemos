@@ -340,6 +340,16 @@ gap.
 | `da85a58` | 4.2.10 partial — latency realism docs |
 | `6e00736` | 4.2.9 palace indexer + `mnemos mine --from-palace` (13+2 test) |
 
+**v0.4.2-alpha batch ilerlemesi (bu oturum):**
+
+| Parça | Durum |
+|---|---|
+| 4.2.11 skill prompt multi-format (Type A/B/C/D) | ✅ shipped |
+| 4.2.12 orchestrator multi-source plan | ⏭ sıradaki |
+| 4.2.13 CLI `--skill-all` / `--pilot-limit 0` | ⏸ |
+| 4.2.14 parallel-3 execution | ⏸ |
+| 4.2.15 full skill-mine run (~2.5h paralel-3) | ⏸ |
+
 **Real-vault pilot 2× validated** (kasamd 3 session, rebuild sonrası fix'li
 re-run): skill-mine drawer kalitesi script-mine'dan açıkça üstün — smart H1,
 5-hall compliance, entity person/project ayrımı, temiz semantik slug.

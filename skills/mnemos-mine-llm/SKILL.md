@@ -1,12 +1,14 @@
 ---
 name: mnemos-mine-llm
 description: >
-  Refined Mnemos session note'larını (`Sessions/*.md`) okuyup LLM-judged
-  drawer `.md` dosyalarına ayrıştırır. Hedef: pilot-orchestrator tarafından
-  çağrılır (script-mine'ın skill-mine karşılığı), ama user manuel de
-  çağırabilir. Tetikler: "/mnemos-mine-llm", "LLM ile mine et", "skill-mine",
-  "bu session'ı drawer'a ayır". mnemos API ÇAĞIRMAZ, LLM API ÇAĞIRMAZ —
-  iş bu oturumdaki Claude tarafından yapılır.
+  Mnemos vault'undaki markdown dosyalarını (refined `Sessions/`, curated
+  `Topics/`, Claude Code `memory/`) okuyup LLM-judged drawer `.md`
+  dosyalarına ayrıştırır. Canonical prompt 4 input format tipi destekler
+  (A: refined session, B: topic note, C: memory file, D: MEMORY.md skip).
+  Hedef: pilot-orchestrator tarafından çağrılır (script-mine'ın skill-mine
+  karşılığı), ama user manuel de çağırabilir. Tetikler: "/mnemos-mine-llm",
+  "LLM ile mine et", "skill-mine", "bu dosyayı drawer'a ayır". mnemos API
+  ÇAĞIRMAZ, LLM API ÇAĞIRMAZ — iş bu oturumdaki Claude tarafından yapılır.
 ---
 
 <!--
@@ -20,9 +22,18 @@ v0.4'te `mnemos install-skills` komutu her iki skill'i tek seferde kuracak
 
 # Mnemos — Mine with LLM
 
-Refined session `.md` → drawer `.md` dönüşümü. Refine-transcripts'in
-**devamı** (noise temizlendikten sonraki ayrıştırma). Script-mine'ın
-(`mnemos mine`) aynı işi regex'le yapan kardeşi.
+Markdown input → drawer `.md` dönüşümü. Dört input format tipi (canonical
+prompt'taki INPUT FORMAT DETECTION bölümü):
+
+- **Type A** — Refined session (`Sessions/*.md`). Refine-transcripts'in
+  **devamı** (noise temizlendikten sonraki ayrıştırma).
+- **Type B** — Curated topic note (`Topics/*.md`). H2 subsection başına
+  drawer.
+- **Type C** — Claude Code memory file (`~/.claude/projects/*/memory/
+  *.md`). Dosya başına tek drawer.
+- **Type D** — `MEMORY.md` index. SKIP (Type C'ler zaten işleniyor).
+
+Script-mine'ın (`mnemos mine`) aynı işi regex'le yapan kardeşi.
 
 ## Sabitler
 
@@ -35,13 +46,18 @@ Diğer path'ler argümanlarla gelir (vault-agnostic skill).
 
 ## Tetik örnekleri
 
-- `/mnemos-mine-llm <session.md> <palace-root>` — tek session
-- `/mnemos-mine-llm --dir <sessions-dir> <palace-root>` — dir altındaki
-  tüm `.md`'ler
-- `/mnemos-mine-llm --limit N --dir <sessions-dir> <palace-root>` — pilot
+- `/mnemos-mine-llm <input.md> <palace-root>` — tek dosya (Sessions, Topics
+  veya memory fark etmez — canonical prompt format'ı auto-detect eder)
+- `/mnemos-mine-llm --dir <input-dir> <palace-root>` — dir altındaki
+  tüm `.md`'ler (MEMORY.md dosyaları otomatik skip)
+- `/mnemos-mine-llm --limit N --dir <input-dir> <palace-root>` — pilot
   batch
-- `/mnemos-mine-llm --all --dir <sessions-dir> <palace-root>` — tüm
+- `/mnemos-mine-llm --all --dir <input-dir> <palace-root>` — tüm
   unprocessed, soru sormadan
+
+**Not:** Orchestrator (`mnemos pilot --pilot-llm`) çoklu kaynağı
+(`Sessions/` + `Topics/` + `mining_sources`) kendisi keşfeder ve skill'i
+dosya-başına çağırır. `--dir` modu flat glob (tek dizin).
 
 ## Akış
 
@@ -57,7 +73,7 @@ repo yolu değişti."
 
 | Girdi | Davranış |
 |---|---|
-| `<session.md> <palace-root>` | Tek dosya |
+| `<input.md> <palace-root>` | Tek dosya (Sessions/Topics/memory fark etmez) |
 | `--dir <dir> <palace-root>` | Glob `<dir>/*.md`, ledger'ı filtrele |
 | `--limit N ...` | İlk N |
 | `--all ...` | Tüm unprocessed, pilot yok |
@@ -67,11 +83,11 @@ alt-dizinini pre-create et).
 
 **Ledger filtresi:** `state/mined.tsv` dosyasını Read. Format:
 ```
-<session-abs-path>\t<palace-root>\t<drawer-count>\t<ISO-timestamp>
+<input-abs-path>\t<palace-root>\t<drawer-count>\t<ISO-timestamp>
 ```
 İkinci kolondaki palace root AYNI ise (aynı pilot'a tekrar) ledger'lı
-session'ları skip et. Farklı palace root ise (yeni pilot, örn. `Mnemos/`
-script-mine ama sonra `Mnemos-pilot/` skill-mine başlatıldı) o session'ı
+input'ları skip et. Farklı palace root ise (yeni pilot, örn. `Mnemos/`
+script-mine ama sonra `Mnemos-pilot/` skill-mine başlatıldı) o input'u
 YENIDEN işle (farklı palace'a yazacaksın).
 
 ### 3) Palace taxonomy hint üret
@@ -103,45 +119,49 @@ Eğer `--all` DEĞİL ve filtrelenmiş liste > 5 ise:
 
 Tek dosya, `--limit N` veya `--all` ile çağrıldıysa pilot yok.
 
-### 5) Her refined session için
+### 5) Her input dosyası için
 
-1. Session `.md`'yi Read
-2. Frontmatter parse (`date`, `project`, `tags`)
-3. Canonical prompt'un kurallarını uygula (chunk section'lara, hall
-   tespiti, wing canonicalize, entity extract, room pick)
-4. Her drawer için:
+1. Dosyayı Read
+2. **Format detect:** canonical prompt'un INPUT FORMAT DETECTION bölümüyle
+   Type A/B/C/D belirle. Type D (MEMORY.md) → anında SKIP (ledger'a yaz,
+   drawer üretme).
+3. Frontmatter + path'ten tip-uygun metadata topla (Type A: `project`+`date`+
+   `tags`; Type B: `project`/`tags`/filename; Type C: path parent + `type`)
+4. Canonical prompt'un kurallarını uygula (chunk tipe göre, hall tespiti,
+   wing canonicalize, entity extract, room pick)
+5. Her drawer için:
    - Dosya yolu: `<palace-root>/wings/<Wing>/<room>/<hall>/<filename>.md`
    - Ara dizinler yoksa canonical prompt önermiş olduğu yapıda oluştur
    - Write tool ile yaz
-5. **🔴 LEDGER APPEND ZORUNLU — session'ı terk etmeden önce en son adım:**
+6. **🔴 LEDGER APPEND ZORUNLU — dosyayı terk etmeden önce en son adım:**
    ```
-   <session-abs-path>\t<palace-root>\t<N>\t<ISO-timestamp>
+   <input-abs-path>\t<palace-root>\t<N>\t<ISO-timestamp>
    ```
    Tüm drawer'lar yazıldıktan sonra **bir kez** Bash/Write ile ledger'a
    append et. Bu adım **atlanamaz**. (2026-04-19 real-vault pilot'ta
    skill 3/3 session'da drawer yazdı ama ledger'a 1/3 düştü — uzun
    session'ın sonuna gelince "iş bitti" sanılıp ledger unutulmuş.)
    Self-check: drawer sayın > 0 ise ledger'a yazdın mı? Hayır → YAZ.
-6. Tek satır rapor: `OK <session-basename> → N drawers (decisions:X events:Y...)`
+7. Tek satır rapor: `OK <input-basename> → N drawers (decisions:X events:Y...)`
 
-**SKIP ise:**
-- Ledger'a: `<session-abs-path>\t<palace-root>\t0\tSKIP:<gerekçe>`
+**SKIP ise (Type D veya drawer çıkmayan Type A/B/C):**
+- Ledger'a: `<input-abs-path>\t<palace-root>\t0\tSKIP:<gerekçe>`
   (yine **zorunlu** — orchestrator'ın resume mantığı buna bağımlı)
-- Tek satır: `SKIP <session-basename> — <10-kelime gerekçe>`
+- Tek satır: `SKIP <input-basename> — <10-kelime gerekçe>`
 
 **Orchestrator fallback (2026-04-19'dan itibaren):** Eğer ledger'a
 yazamadıysan (context limit, crash, unutmak), orchestrator palace'ta
-`source: <session>` içeren drawer'ı tarar ve filesystem'den drawer
+`source: <input-path>` içeren drawer'ı tarar ve filesystem'den drawer
 sayısını okur. Bu senin için güvenlik ağı AMA asıl doğru yer ledger —
-atlarsan resume bozulur (aynı session'ı tekrar işlersin).
+atlarsan resume bozulur (aynı dosyayı tekrar işlersin).
 
 ### 6) Final özet
 
 ```
-İşlenen: N session
+İşlenen: N dosya
 Yazılan: M drawer (hall dağılımı: decisions:X events:Y problems:Z preferences:W emotional:V)
 Wing dağılımı: Mnemos:A ProcureTrack:B General:C
-SKIP: K session
+SKIP: K dosya
 Ledger: <tsv-path>
 ```
 
@@ -150,7 +170,7 @@ Ledger: <tsv-path>
 `state/mined.tsv` — append-only, tab-separated, UTF-8, header yok:
 
 ```
-<session-abs-path>\t<palace-root>\t<drawer-count>\t<ISO-timestamp-or-SKIP-reason>
+<input-abs-path>\t<palace-root>\t<drawer-count>\t<ISO-timestamp-or-SKIP-reason>
 ```
 
 Örnek:

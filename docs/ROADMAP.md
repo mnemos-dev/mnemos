@@ -785,10 +785,17 @@ Rerank skill-recall'ın içinde eridi; contradiction v0.5 hygiene'a ertelendi.
 
 **Canonical plan:** [`docs/plans/2026-04-19-v0.4.2-full-skill-mine-prep.md`](plans/2026-04-19-v0.4.2-full-skill-mine-prep.md)
 
-- [ ] **4.2.11 Skill prompt multi-format** *(~45 dk)* — `mine-llm.md`
-      canonical prompt'una 4 format (A: Sessions refined, B: Topics
-      curated, C: memory structured, D: MEMORY.md skip) detection +
-      chunking rules.
+- [x] **4.2.11 Skill prompt multi-format** *(2026-04-19)* — `mine-llm.md`
+      canonical prompt + `skills/mnemos-mine-llm/SKILL.md` artık 4 input
+      format tipini destekliyor: Type A (refined Sessions), Type B
+      (curated Topics — H2 subsection başına drawer, hall content
+      inference'la), Type C (Claude Code memory — dosya başına tek
+      drawer, `type: user|feedback|project|reference` → hall mapping),
+      Type D (MEMORY.md index → SKIP). CHUNKING bölümü type-aware
+      (Type A bölüm-baz, Type B H2-baz, Type C atomize). Source wikilink
+      Type C için dead-link yaratmıyor (v0.3.2 A5 synthetic-source
+      kuralı genişletildi). Orchestrator (4.2.12) artık bu prompt'a
+      Sessions + Topics + memory dosyalarını güvenle pas'layabilir.
 - [ ] **4.2.12 Orchestrator multi-source plan** *(~1h)* — `build_plan`
       `rebuild._resolve_sources` paternini kullansın (Sessions + Topics
       + cfg.mining_sources union). Plan API: `plan.sources` (plan.sessions
