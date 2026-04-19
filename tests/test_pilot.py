@@ -9,12 +9,15 @@ from pathlib import Path
 import pytest
 
 from mnemos.pilot import (
+    AcceptResult,
     PilotError,
     PilotPlan,
     PilotResult,
     RunnerResult,
     SessionOutcome,
     TokenUsage,
+    accept_script,
+    accept_skill,
     build_plan,
     format_pilot_report,
     parse_claude_json_output,
@@ -482,3 +485,135 @@ def test_write_pilot_report_handles_filename_collision(tmp_path: Path) -> None:
 
     assert path1 != path2
     assert path2.name.endswith("-2.md")
+
+
+# ---------------------------------------------------------------------------
+# Accept — pilot promotion
+# ---------------------------------------------------------------------------
+
+
+def _make_palace(vault: Path, name: str, drawer_marker: str = "x") -> Path:
+    """Create a minimal palace root with a single drawer file for verification."""
+    palace = vault / name
+    drawer_dir = palace / "wings" / "Mnemos" / "backend" / "decisions"
+    drawer_dir.mkdir(parents=True)
+    (drawer_dir / f"drawer-{drawer_marker}.md").write_text(
+        f"marker={drawer_marker}", encoding="utf-8"
+    )
+    return palace
+
+
+def _write_yaml(vault: Path, contents: str) -> Path:
+    p = vault / "mnemos.yaml"
+    p.write_text(contents, encoding="utf-8")
+    return p
+
+
+def test_accept_script_recycles_pilot_palace(tmp_path: Path) -> None:
+    _make_palace(tmp_path, "Mnemos", drawer_marker="script")
+    _make_palace(tmp_path, "Mnemos-pilot", drawer_marker="skill")
+
+    result = accept_script(tmp_path)
+
+    assert result.mode == "script"
+    assert len(result.recycled_paths) == 1
+    assert not (tmp_path / "Mnemos-pilot").exists()
+    # Mnemos/ untouched
+    assert (tmp_path / "Mnemos").exists()
+    assert (tmp_path / "Mnemos" / "wings" / "Mnemos" / "backend" / "decisions"
+            / "drawer-script.md").read_text(encoding="utf-8") == "marker=script"
+    # Recycled content preserved
+    recycled = result.recycled_paths[0]
+    assert recycled.parent == tmp_path / "_recycled"
+    assert (recycled / "wings" / "Mnemos" / "backend" / "decisions"
+            / "drawer-skill.md").read_text(encoding="utf-8") == "marker=skill"
+
+
+def test_accept_script_tolerates_missing_pilot_palace(tmp_path: Path) -> None:
+    _make_palace(tmp_path, "Mnemos")
+    result = accept_script(tmp_path)
+    assert result.recycled_paths == []
+
+
+def test_accept_skill_promotes_and_recycles(tmp_path: Path) -> None:
+    _make_palace(tmp_path, "Mnemos", drawer_marker="script")
+    _make_palace(tmp_path, "Mnemos-pilot", drawer_marker="skill")
+    _write_yaml(tmp_path,
+        "vault_path: " + str(tmp_path).replace("\\", "/") + "\n"
+        "languages: [tr, en]\n"
+        "use_llm: false\n"
+    )
+
+    result = accept_skill(tmp_path)
+
+    assert result.mode == "skill"
+    # Old script palace in _recycled
+    assert len(result.recycled_paths) == 1
+    recycled = result.recycled_paths[0]
+    assert (recycled / "wings" / "Mnemos" / "backend" / "decisions"
+            / "drawer-script.md").exists()
+    # Pilot palace promoted to Mnemos/
+    assert not (tmp_path / "Mnemos-pilot").exists()
+    assert (tmp_path / "Mnemos" / "wings" / "Mnemos" / "backend" / "decisions"
+            / "drawer-skill.md").read_text(encoding="utf-8") == "marker=skill"
+    # yaml now has mine_mode: skill
+    assert result.yaml_updated is True
+    yaml_text = (tmp_path / "mnemos.yaml").read_text(encoding="utf-8")
+    assert "mine_mode: skill" in yaml_text
+    assert "languages: [tr, en]" in yaml_text  # other keys preserved
+    # Index-staleness warning surfaced
+    assert result.index_stale_warning
+    assert "re-index" in result.index_stale_warning.lower() or "re-run" in result.index_stale_warning.lower()
+
+
+def test_accept_skill_raises_without_pilot_palace(tmp_path: Path) -> None:
+    _make_palace(tmp_path, "Mnemos")
+    with pytest.raises(PilotError, match="Skill palace not found"):
+        accept_skill(tmp_path)
+
+
+def test_accept_skill_tolerates_missing_script_palace(tmp_path: Path) -> None:
+    """Fresh vault: no Mnemos/, just Mnemos-pilot/ — still promote cleanly."""
+    _make_palace(tmp_path, "Mnemos-pilot", drawer_marker="skill")
+    _write_yaml(tmp_path, "vault_path: /tmp\n")
+
+    result = accept_skill(tmp_path)
+
+    assert result.recycled_paths == []
+    assert (tmp_path / "Mnemos" / "wings" / "Mnemos" / "backend" / "decisions"
+            / "drawer-skill.md").exists()
+
+
+def test_accept_skill_updates_existing_mine_mode_key(tmp_path: Path) -> None:
+    _make_palace(tmp_path, "Mnemos-pilot")
+    _write_yaml(tmp_path,
+        "vault_path: /tmp\n"
+        "mine_mode: script\n"
+        "use_llm: false\n"
+    )
+
+    accept_skill(tmp_path)
+
+    yaml_text = (tmp_path / "mnemos.yaml").read_text(encoding="utf-8")
+    assert "mine_mode: skill" in yaml_text
+    assert "mine_mode: script" not in yaml_text
+    assert "use_llm: false" in yaml_text
+
+
+def test_accept_script_collision_safe(tmp_path: Path) -> None:
+    """Two accepts in the same day should not overwrite each other's recycled dir."""
+    # First accept
+    _make_palace(tmp_path, "Mnemos-pilot", drawer_marker="first")
+    r1 = accept_script(tmp_path)
+    assert len(r1.recycled_paths) == 1
+
+    # Second accept same day (different pilot content)
+    _make_palace(tmp_path, "Mnemos-pilot", drawer_marker="second")
+    r2 = accept_script(tmp_path)
+
+    assert r1.recycled_paths[0] != r2.recycled_paths[0]
+    # Both recycled dirs still have their respective content
+    assert (r1.recycled_paths[0] / "wings" / "Mnemos" / "backend" / "decisions"
+            / "drawer-first.md").exists()
+    assert (r2.recycled_paths[0] / "wings" / "Mnemos" / "backend" / "decisions"
+            / "drawer-second.md").exists()

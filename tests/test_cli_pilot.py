@@ -126,3 +126,56 @@ def test_pilot_cli_reports_pilot_error_and_exits(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "Pilot error" in err
     assert "No refined sessions" in err
+
+
+# ---------------------------------------------------------------------------
+# mnemos pilot --accept {script, skill}
+# ---------------------------------------------------------------------------
+
+
+def _pilot_accept_args(vault: Path, mode: str) -> argparse.Namespace:
+    return argparse.Namespace(vault=str(vault), accept=mode)
+
+
+def _make_pilot_palace(vault: Path, name: str = "Mnemos-pilot") -> None:
+    d = vault / name / "wings" / "Mnemos" / "r" / "decisions"
+    d.mkdir(parents=True)
+    (d / "x.md").write_text("marker", encoding="utf-8")
+
+
+def test_cmd_pilot_accept_script_prints_summary(tmp_path, capsys):
+    vault = _write_vault(tmp_path)
+    _make_pilot_palace(vault)
+
+    cli_mod.cmd_pilot(_pilot_accept_args(vault, "script"))
+
+    out = capsys.readouterr().out
+    assert "Accepted mode: script" in out
+    assert "Recycled:" in out
+    assert not (vault / "Mnemos-pilot").exists()
+
+
+def test_cmd_pilot_accept_skill_prints_warning(tmp_path, capsys):
+    vault = _write_vault(tmp_path)
+    _make_pilot_palace(vault)
+
+    cli_mod.cmd_pilot(_pilot_accept_args(vault, "skill"))
+
+    out = capsys.readouterr().out
+    assert "Accepted mode: skill" in out
+    assert "Promoted:" in out
+    assert "mine_mode = skill" in out
+    assert "WARNING" in out
+    assert (vault / "Mnemos").exists()
+
+
+def test_cmd_pilot_accept_skill_errors_without_pilot_palace(tmp_path, capsys):
+    vault = _write_vault(tmp_path)
+    # No Mnemos-pilot/ created
+
+    with pytest.raises(SystemExit) as exc:
+        cli_mod.cmd_pilot(_pilot_accept_args(vault, "skill"))
+
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "Skill palace not found" in err

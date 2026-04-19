@@ -544,3 +544,140 @@ def write_pilot_report(result: PilotResult, pilots_dir: Path | None = None) -> P
     path.write_text(format_pilot_report(result), encoding="utf-8")
     result.report_path = path
     return path
+
+
+# ---------------------------------------------------------------------------
+# Accept — promote a pilot outcome to steady-state palace
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class AcceptResult:
+    mode: str  # "script" | "skill"
+    recycled_paths: list[Path]
+    promoted_from: Path | None = None  # for skill mode: Mnemos-pilot → Mnemos
+    yaml_updated: bool = False
+    index_stale_warning: str = ""
+
+
+def _recycled_target(vault: Path, source_name: str) -> Path:
+    """Compute a collision-safe _recycled/ path for an accepted-pilot move."""
+    date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    recycled = vault / "_recycled"
+    recycled.mkdir(parents=True, exist_ok=True)
+    base = recycled / f"{source_name}-{date}"
+    if not base.exists():
+        return base
+    i = 2
+    while (recycled / f"{source_name}-{date}.{i}").exists():
+        i += 1
+    return recycled / f"{source_name}-{date}.{i}"
+
+
+def accept_script(
+    vault: Path,
+    skill_palace_name: str = DEFAULT_PILOT_PALACE,
+) -> AcceptResult:
+    """Keep script-mine: move Mnemos-pilot/ to _recycled/.
+
+    No yaml change (script-mine is the default). Idempotent if the pilot
+    palace no longer exists — returns an empty-recycled result.
+    """
+    import shutil
+
+    vault = Path(vault)
+    skill_palace = vault / skill_palace_name
+    recycled: list[Path] = []
+
+    if skill_palace.exists():
+        target = _recycled_target(vault, skill_palace_name)
+        shutil.move(str(skill_palace), str(target))
+        recycled.append(target)
+
+    return AcceptResult(mode="script", recycled_paths=recycled)
+
+
+def accept_skill(
+    vault: Path,
+    script_palace_name: str = DEFAULT_SCRIPT_PALACE,
+    skill_palace_name: str = DEFAULT_PILOT_PALACE,
+) -> AcceptResult:
+    """Switch to skill-mine: recycle Mnemos/, promote Mnemos-pilot/ → Mnemos/,
+    update yaml, emit index staleness warning.
+
+    Raises PilotError if the skill palace is missing (cannot promote nothing).
+    Script palace absence is tolerated (fresh vault).
+    """
+    import shutil
+
+    vault = Path(vault)
+    script_palace = vault / script_palace_name
+    skill_palace = vault / skill_palace_name
+
+    if not skill_palace.exists():
+        raise PilotError(
+            f"Skill palace not found at {skill_palace}. "
+            "Run `mnemos mine --pilot-llm` first."
+        )
+
+    recycled: list[Path] = []
+
+    if script_palace.exists():
+        target = _recycled_target(vault, script_palace_name)
+        shutil.move(str(script_palace), str(target))
+        recycled.append(target)
+
+    shutil.move(str(skill_palace), str(script_palace))
+    promoted_from = skill_palace
+
+    yaml_updated = _update_mine_mode(vault, "skill")
+
+    warning = (
+        "Vector index still reflects the recycled script-mine palace. "
+        "Re-indexing of skill-mined drawers is tracked as a follow-up "
+        "(v0.4.1). Until then, search results may be stale. "
+        "Workaround: delete <vault>/.chroma/ or <vault>/search.sqlite3 "
+        "and re-run mining via the skill workflow."
+    )
+
+    return AcceptResult(
+        mode="skill",
+        recycled_paths=recycled,
+        promoted_from=promoted_from,
+        yaml_updated=yaml_updated,
+        index_stale_warning=warning,
+    )
+
+
+def _update_mine_mode(vault: Path, mode: str) -> bool:
+    """Write `mine_mode: <mode>` to <vault>/mnemos.yaml, preserving other keys.
+
+    Returns True if yaml existed and was updated, False if missing.
+    Uses a minimal line-level edit so existing comments and key ordering
+    survive (the project's yaml wrangling pattern, see mnemos/config.py).
+    """
+    import yaml
+
+    yaml_path = vault / "mnemos.yaml"
+    if not yaml_path.exists():
+        return False
+
+    text = yaml_path.read_text(encoding="utf-8")
+    lines = text.splitlines(keepends=True)
+
+    found = False
+    for i, line in enumerate(lines):
+        stripped = line.lstrip()
+        if stripped.startswith("mine_mode:") or stripped.startswith("mine_mode :"):
+            indent = line[: len(line) - len(stripped)]
+            trailing_newline = "\n" if line.endswith("\n") else ""
+            lines[i] = f"{indent}mine_mode: {mode}{trailing_newline}"
+            found = True
+            break
+
+    if not found:
+        sep = "\n" if text and not text.endswith("\n") else ""
+        lines.append(f"{sep}mine_mode: {mode}\n")
+
+    yaml_path.write_text("".join(lines), encoding="utf-8")
+    return True

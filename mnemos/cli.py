@@ -941,6 +941,36 @@ def cmd_install_statusline(args: argparse.Namespace) -> None:
         print(f"script backup: {result.script_backup_path}")
 
 
+def cmd_pilot(args: argparse.Namespace) -> None:
+    """`mnemos pilot --accept <script|skill>` — promote a pilot outcome."""
+    from mnemos.pilot import PilotError, accept_script, accept_skill
+
+    vault_path = _resolve_vault(args.vault)
+    _require_vault(vault_path, "pilot")
+
+    try:
+        if args.accept == "script":
+            result = accept_script(vault_path)
+        elif args.accept == "skill":
+            result = accept_skill(vault_path)
+        else:  # pragma: no cover — argparse choices guard this
+            raise PilotError(f"Unknown --accept value: {args.accept}")
+    except PilotError as e:
+        print(f"Pilot error: {e}", file=sys.stderr)
+        sys.exit(2)
+
+    print(f"Accepted mode: {result.mode}")
+    for rp in result.recycled_paths:
+        print(f"  Recycled: {rp}")
+    if result.promoted_from is not None:
+        print(f"  Promoted: {result.promoted_from.name} → Mnemos/")
+    if result.yaml_updated:
+        print(f"  mnemos.yaml updated: mine_mode = {result.mode}")
+    if result.index_stale_warning:
+        print()
+        print(f"WARNING: {result.index_stale_warning}")
+
+
 def cmd_benchmark(args: argparse.Namespace) -> None:
     """Run a recall benchmark and print aggregated metrics as JSON."""
     if args.dataset != "longmemeval":
@@ -1098,6 +1128,22 @@ def main() -> None:
         help="Show memory palace status",
     )
     parser_status.set_defaults(func=cmd_status)
+
+    # ------------------------------------------------------------------
+    # pilot — accept a skill-mine pilot outcome
+    # ------------------------------------------------------------------
+    parser_pilot = subparsers.add_parser(
+        "pilot",
+        help="Promote a skill-mine pilot outcome (recycle loser, keep winner)",
+    )
+    parser_pilot.add_argument(
+        "--accept",
+        required=True,
+        choices=["script", "skill"],
+        help="Which mode to keep: 'script' recycles Mnemos-pilot/; "
+        "'skill' recycles Mnemos/ and promotes Mnemos-pilot/ → Mnemos/",
+    )
+    parser_pilot.set_defaults(func=cmd_pilot)
 
     # ------------------------------------------------------------------
     # import — bring an external knowledge source into the palace
