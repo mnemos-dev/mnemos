@@ -664,6 +664,10 @@ def cmd_mine(args: argparse.Namespace) -> None:
 
     cfg = load_config(vault_path)
 
+    if args.pilot_llm:
+        _run_pilot_llm(vault_path, args)
+        return
+
     if args.rebuild:
         from mnemos.rebuild import rebuild_vault, RebuildError
         try:
@@ -688,6 +692,65 @@ def cmd_mine(args: argparse.Namespace) -> None:
             use_llm=args.llm,
         )
         print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+def _run_pilot_llm(vault_path: Path, args: argparse.Namespace) -> None:
+    """Drive the skill-mine pilot: plan, confirm, run, report, hand-off."""
+    from mnemos.pilot import (
+        PilotError,
+        build_plan,
+        run_pilot,
+        write_pilot_report,
+    )
+
+    try:
+        plan = build_plan(vault_path, limit=args.pilot_limit)
+    except PilotError as e:
+        print(f"Pilot error: {e}", file=sys.stderr)
+        sys.exit(2)
+
+    print(f"Pilot plan:")
+    print(f"  Vault:          {plan.vault}")
+    print(f"  Sessions:       {plan.session_count} (limit={plan.limit})")
+    print(f"  Script palace:  {plan.script_palace}")
+    print(f"  Skill palace:   {plan.skill_palace}")
+    print(
+        f"  Estimated time: ~{plan.session_count * 25}s sequential "
+        f"(one `claude --print` per session, ~25s each)"
+    )
+    print()
+
+    if not args.yes:
+        try:
+            ans = input("Proceed? [y/N] ").strip().lower()
+        except EOFError:
+            ans = ""
+        if ans not in ("y", "yes"):
+            print("Aborted.")
+            return
+
+    print("Running skill-mine against each session (sequential)...")
+    result = run_pilot(plan)
+    path = write_pilot_report(result)
+
+    print()
+    print(
+        f"Pilot complete: OK={result.ok_count}, SKIP={result.skip_count}, "
+        f"ERROR={result.error_count}, drawers={result.total_drawers}"
+    )
+    print(
+        f"Tokens consumed: {result.skill_total_tokens.total():,} "
+        f"(input={result.skill_total_tokens.input_tokens:,}, "
+        f"output={result.skill_total_tokens.output_tokens:,})"
+    )
+    print(f"Elapsed: {result.skill_elapsed_sec:.1f}s")
+    print(f"Report: {path}")
+    print()
+    print("Next:")
+    print("  1. Review the report and run /mnemos-compare-palaces in Claude Code")
+    print("  2. Pick one mode:")
+    print("       mnemos pilot --accept script   # keep script-mine")
+    print("       mnemos pilot --accept skill    # switch to skill-mine")
 
 
 # ---------------------------------------------------------------------------
@@ -982,6 +1045,19 @@ def main() -> None:
         action="store_true",
         default=False,
         help="With --rebuild: skip wings/index/graph backup (dangerous)",
+    )
+    parser_mine.add_argument(
+        "--pilot-llm",
+        action="store_true",
+        default=False,
+        help="Run a skill-mine pilot on the most recent Sessions/ entries "
+        "(produces Mnemos-pilot/ alongside Mnemos/ for side-by-side review)",
+    )
+    parser_mine.add_argument(
+        "--pilot-limit",
+        type=int,
+        default=10,
+        help="With --pilot-llm: number of most-recent sessions to pilot (default 10)",
     )
     parser_mine.set_defaults(func=cmd_mine)
 
