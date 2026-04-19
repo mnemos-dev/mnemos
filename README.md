@@ -2,17 +2,23 @@
 <p align="center"><strong>Turn your Claude Code history into a searchable memory palace.</strong></p>
 <p align="center">Every conversation becomes markdown in your Obsidian vault. Every decision stays findable. Your AI finally remembers you.</p>
 <p align="center">
-  <a href="https://github.com/mnemos-dev/mnemos/blob/main/LICENSE">
-    <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License">
+  <a href="https://github.com/mnemos-dev/mnemos/actions/workflows/test.yml">
+    <img src="https://github.com/mnemos-dev/mnemos/actions/workflows/test.yml/badge.svg?branch=main" alt="tests">
+  </a>
+  <a href="https://pypi.org/project/mnemos-dev/">
+    <img src="https://img.shields.io/pypi/v/mnemos-dev.svg" alt="PyPI">
   </a>
   <a href="https://www.python.org/downloads/">
     <img src="https://img.shields.io/badge/python-3.10+-green.svg" alt="Python 3.10+">
   </a>
+  <a href="https://github.com/mnemos-dev/mnemos/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License">
+  </a>
+  <a href="https://github.com/mnemos-dev/mnemos/blob/main/CODE_OF_CONDUCT.md">
+    <img src="https://img.shields.io/badge/code%20of%20conduct-Contributor%20Covenant%202.1-ff69b4.svg" alt="Contributor Covenant">
+  </a>
   <a href="https://github.com/MemPalace/mempalace">
     <img src="https://img.shields.io/badge/inspired%20by-MemPalace-purple.svg" alt="Inspired by MemPalace">
-  </a>
-  <a href="https://github.com/mnemos-dev/mnemos/releases">
-    <img src="https://img.shields.io/badge/version-0.3.2-orange.svg" alt="v0.3.2">
   </a>
 </p>
 

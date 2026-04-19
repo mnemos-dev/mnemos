@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Roadmap and status
+    url: https://github.com/mnemos-dev/mnemos/blob/main/docs/ROADMAP.md
+    about: Planned, in-progress, and shipped work — check here before filing a feature request.
+  - name: Changelog
+    url: https://github.com/mnemos-dev/mnemos/blob/main/CHANGELOG.md
+    about: What changed in each release.
+  - name: Discussions
+    url: https://github.com/mnemos-dev/mnemos/discussions
+    about: Open-ended questions, design debates, "how do I…" — not a bug or feature request.

@@ -1,0 +1,61 @@
+name: Feature request
+description: Propose a new capability or an improvement to an existing one
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before opening: check [`docs/ROADMAP.md`](../blob/main/docs/ROADMAP.md)
+        and existing issues. If this is a design discussion rather than a
+        concrete ask, please use Discussions instead.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What can't you do today, or what's frustrating? Describe the user need, not the solution yet.
+      placeholder: "When I import a Claude Code memory folder, the drawers are all tagged `General` instead of the project name…"
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How would you like mnemos to behave? Be specific — command shape, config keys, output format.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you rejected and why.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Which area is this?
+      options:
+        - CLI / commands
+        - MCP tools
+        - Mining pipeline
+        - Search / ranking
+        - Auto-refine hook
+        - Obsidian integration
+        - Docs / onboarding
+        - Benchmarks
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: willing
+    attributes:
+      label: Are you willing to contribute this?
+      description: Totally optional — maintainers are happy to pick it up, but bandwidth is finite.
+    validations:
+      required: false

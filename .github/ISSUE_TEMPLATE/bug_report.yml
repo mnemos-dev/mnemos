@@ -1,0 +1,97 @@
+name: Bug report
+description: Something is broken or behaving unexpectedly in mnemos
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. A reproducible example
+        and the exact commands you ran speed up triage more than anything.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: A clear, short description of the bug.
+      placeholder: "`mnemos mine Sessions/` crashed with `KeyError: wing`…"
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: Minimal commands to reproduce, top to bottom.
+      placeholder: |
+        1. `pip install mnemos-dev==0.3.3`
+        2. `mnemos init` (choose sqlite-vec)
+        3. `mnemos mine Sessions/ --rebuild`
+        4. Error appears here
+      render: bash
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should happen instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / traceback
+      description: Full stack trace if one was printed. Trim secrets (paths are usually fine).
+      render: text
+    validations:
+      required: false
+
+  - type: input
+    id: mnemos-version
+    attributes:
+      label: mnemos version
+      description: Output of `mnemos --version` (or whichever version `pip show mnemos-dev` reports).
+      placeholder: "0.3.3"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Vector backend
+      options:
+        - chromadb
+        - sqlite-vec
+        - not sure
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "3.12.1"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Config snippets (`mnemos.yaml`), screenshots, related issues.
+    validations:
+      required: false
