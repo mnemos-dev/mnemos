@@ -757,14 +757,17 @@ Rerank skill-recall'ın içinde eridi; contradiction v0.5 hygiene'a ertelendi.
         skill-mine drawer kalitesi script'ten açıkça üstün; 4 operational
         finding çıktı. Rapor:
         [`docs/pilots/2026-04-19-v0.4-phase1-real-vault-pilot.md`](pilots/2026-04-19-v0.4-phase1-real-vault-pilot.md)
-  - [ ] **4.2.7 Ledger reliability fix** *(~1h, Finding 2)* — skill 3/3 session'da
-        drawer yazdı ama ledger'a 1/3 kaydetti. SKILL.md hardening +
-        orchestrator filesystem-fallback (ledger boşsa drawer'dan `source:`
-        oku, say).
-  - [ ] **4.2.8 Report session-filter** *(~30m, Finding 3)* —
-        `format_pilot_report` "Total drawers" script-tarafı palace-tüm
-        sayıyor, skill-tarafı pilot-only. Apples-to-oranges. Drawer
-        frontmatter `source:` ile filter.
+  - [x] **4.2.7 Ledger reliability fix** *(2026-04-19)* — orchestrator
+        `count_drawers_for_session` fallback: ledger boşsa drawer
+        frontmatter `source:` field'ını okur, session'a ait drawer'ları
+        filesystem'den sayar + "recovered from filesystem" OK outcome.
+        SKILL.md'de ledger-append refleks olarak sertleştirildi ("🔴 ZORUNLU"
+        + neden ile). 3 yeni test.
+  - [x] **4.2.8 Report session-filter** *(2026-04-19)* — `_count_drawers`
+        + `_hall_counts_for_palace` opsiyonel `sessions` filtresi alır;
+        drawer frontmatter `source:` field'ından eşleştirir; `format_pilot_report`
+        her iki palace'ı `plan.sessions` ile filter'lar — apples-to-apples.
+        1 yeni test.
   - [ ] **4.2.9 Palace indexer + `mnemos mine --from-palace`** *(~1.5h, Finding 4)* —
         skill-mined drawer'lar ChromaDB/sqlite-vec'e yazılmıyor; accept
         skill WARNING ile surface ediyor ama arama stale. Frontmatter-

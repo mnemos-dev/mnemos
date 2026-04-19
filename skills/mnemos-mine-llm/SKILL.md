@@ -113,12 +113,27 @@ Tek dosya, `--limit N` veya `--all` ile çağrıldıysa pilot yok.
    - Dosya yolu: `<palace-root>/wings/<Wing>/<room>/<hall>/<filename>.md`
    - Ara dizinler yoksa canonical prompt önermiş olduğu yapıda oluştur
    - Write tool ile yaz
-5. Ledger'a ekle: `<session-abs-path>\t<palace-root>\t<N>\t<ISO-timestamp>`
+5. **🔴 LEDGER APPEND ZORUNLU — session'ı terk etmeden önce en son adım:**
+   ```
+   <session-abs-path>\t<palace-root>\t<N>\t<ISO-timestamp>
+   ```
+   Tüm drawer'lar yazıldıktan sonra **bir kez** Bash/Write ile ledger'a
+   append et. Bu adım **atlanamaz**. (2026-04-19 real-vault pilot'ta
+   skill 3/3 session'da drawer yazdı ama ledger'a 1/3 düştü — uzun
+   session'ın sonuna gelince "iş bitti" sanılıp ledger unutulmuş.)
+   Self-check: drawer sayın > 0 ise ledger'a yazdın mı? Hayır → YAZ.
 6. Tek satır rapor: `OK <session-basename> → N drawers (decisions:X events:Y...)`
 
 **SKIP ise:**
-- Tek satır: `SKIP <session-basename> — <10-kelime gerekçe>`
 - Ledger'a: `<session-abs-path>\t<palace-root>\t0\tSKIP:<gerekçe>`
+  (yine **zorunlu** — orchestrator'ın resume mantığı buna bağımlı)
+- Tek satır: `SKIP <session-basename> — <10-kelime gerekçe>`
+
+**Orchestrator fallback (2026-04-19'dan itibaren):** Eğer ledger'a
+yazamadıysan (context limit, crash, unutmak), orchestrator palace'ta
+`source: <session>` içeren drawer'ı tarar ve filesystem'den drawer
+sayısını okur. Bu senin için güvenlik ağı AMA asıl doğru yer ledger —
+atlarsan resume bozulur (aynı session'ı tekrar işlersin).
 
 ### 6) Final özet
 

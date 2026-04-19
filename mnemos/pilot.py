@@ -327,6 +327,18 @@ def _skill_cmd(session: Path, skill_palace: Path) -> list[str]:
     ]
 
 
+def count_drawers_for_session(palace_root: Path, session: Path) -> int:
+    """Count drawers under *palace_root* whose frontmatter ``source:`` field
+    matches *session* (normalized path compare).
+
+    Used as a filesystem fallback for the orchestrator when the mine-llm
+    ledger has no row for a session — the skill may have written drawers
+    but skipped the append (see docs/pilots/2026-04-19-v0.4-phase1-real-
+    vault-pilot.md Finding 2).
+    """
+    return _count_drawers(palace_root, sessions=[session])
+
+
 def _run_one_session(
     session: Path,
     skill_palace: Path,
@@ -337,24 +349,33 @@ def _run_one_session(
     _text, usage = parse_claude_json_output(rr.stdout)
 
     entry = read_ledger_entry(ledger_path, session, skill_palace)
-    if rr.exit_code != 0 and entry is None:
-        return SessionOutcome(
-            session=session,
-            exit_code=rr.exit_code,
-            drawer_count=0,
-            outcome="error",
-            reason=f"claude exit {rr.exit_code}",
-            usage=usage,
-        )
 
     if entry is None:
-        # Exit 0 but skill did not write to ledger — treat as error
+        # Filesystem fallback — did the skill write drawers but drop the
+        # ledger append? Real-vault pilot showed this happens 2/3 of the time
+        # on long sessions. Count drawers with matching `source:` frontmatter.
+        fs_count = count_drawers_for_session(skill_palace, session)
+        if fs_count > 0:
+            return SessionOutcome(
+                session=session,
+                exit_code=rr.exit_code,
+                drawer_count=fs_count,
+                outcome="ok",
+                reason="ledger-skipped; recovered from filesystem",
+                usage=usage,
+            )
+        # Neither ledger nor drawers — real error
+        reason = (
+            f"claude exit {rr.exit_code}"
+            if rr.exit_code != 0
+            else "no ledger entry and no drawers on filesystem"
+        )
         return SessionOutcome(
             session=session,
             exit_code=rr.exit_code,
             drawer_count=0,
             outcome="error",
-            reason="no ledger entry written by skill",
+            reason=reason,
             usage=usage,
         )
 
@@ -437,26 +458,99 @@ def run_pilot(
 # ---------------------------------------------------------------------------
 
 
-def _hall_counts_for_palace(palace_root: Path) -> dict[str, int]:
-    """Count drawer .md files under palace_root/wings/*/*/<hall>/."""
+def _drawer_source(drawer_path: Path) -> str | None:
+    """Extract the `source:` field from a drawer .md's YAML frontmatter.
+
+    Reads at most the first ~60 lines to find the field; robust against
+    missing/unterminated frontmatter. Returns the raw string as stored in
+    frontmatter (no normalization), or ``None`` if absent.
+    """
+    try:
+        with drawer_path.open("r", encoding="utf-8", errors="replace") as fh:
+            first = fh.readline()
+            if first.strip() != "---":
+                return None
+            for i, line in enumerate(fh):
+                if i > 80 or line.strip() == "---":
+                    break
+                if ":" not in line:
+                    continue
+                key, _, value = line.partition(":")
+                if key.strip() == "source":
+                    return value.strip()
+    except OSError:
+        return None
+    return None
+
+
+def _sessions_key_set(sessions: Sequence[Path] | None) -> set[str] | None:
+    """Normalize a sequence of session paths to a case-insensitive key set.
+
+    Returns ``None`` if *sessions* is None — caller should treat as "no filter".
+    """
+    if sessions is None:
+        return None
+    return {os.path.normcase(os.path.normpath(str(s))) for s in sessions}
+
+
+def _drawer_matches_sessions(drawer: Path, session_keys: set[str] | None) -> bool:
+    """True if *drawer*'s ``source:`` field normalizes to a key in the set.
+
+    When *session_keys* is None (no filter), all drawers match.
+    """
+    if session_keys is None:
+        return True
+    src = _drawer_source(drawer)
+    if src is None:
+        return False
+    return os.path.normcase(os.path.normpath(src)) in session_keys
+
+
+def _hall_counts_for_palace(
+    palace_root: Path,
+    sessions: Sequence[Path] | None = None,
+) -> dict[str, int]:
+    """Count drawer .md files under palace_root/wings/*/*/<hall>/.
+
+    When *sessions* is provided, only count drawers whose frontmatter
+    ``source:`` field matches one of the session paths (pilot-scoped
+    comparison). Default ``None`` preserves the whole-palace count.
+    """
     counts: dict[str, int] = {}
     wings = palace_root / "wings"
     if not wings.exists():
         return counts
+    keys = _sessions_key_set(sessions)
     for md in wings.rglob("*.md"):
         # hall = parent dir name; skip _wing.md / _room.md
         if md.name.startswith("_"):
+            continue
+        if not _drawer_matches_sessions(md, keys):
             continue
         hall = md.parent.name
         counts[hall] = counts.get(hall, 0) + 1
     return counts
 
 
-def _count_drawers(palace_root: Path) -> int:
+def _count_drawers(
+    palace_root: Path,
+    sessions: Sequence[Path] | None = None,
+) -> int:
+    """Count drawers under palace_root. Pilot-filter via *sessions* (see
+    :func:`_hall_counts_for_palace`).
+    """
     wings = palace_root / "wings"
     if not wings.exists():
         return 0
-    return sum(1 for md in wings.rglob("*.md") if not md.name.startswith("_"))
+    keys = _sessions_key_set(sessions)
+    total = 0
+    for md in wings.rglob("*.md"):
+        if md.name.startswith("_"):
+            continue
+        if not _drawer_matches_sessions(md, keys):
+            continue
+        total += 1
+    return total
 
 
 def format_pilot_report(result: PilotResult) -> str:
@@ -464,10 +558,13 @@ def format_pilot_report(result: PilotResult) -> str:
     plan = result.plan
     date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    script_count = _count_drawers(plan.script_palace)
-    skill_count = _count_drawers(plan.skill_palace)
-    script_halls = _hall_counts_for_palace(plan.script_palace)
-    skill_halls = _hall_counts_for_palace(plan.skill_palace)
+    # Session-filter both palaces so quantitative summary is apples-to-apples
+    # (whole-palace drawer totals were misleading — see docs/pilots/
+    # 2026-04-19-v0.4-phase1-real-vault-pilot.md Finding 3).
+    script_count = _count_drawers(plan.script_palace, plan.sessions)
+    skill_count = _count_drawers(plan.skill_palace, plan.sessions)
+    script_halls = _hall_counts_for_palace(plan.script_palace, plan.sessions)
+    skill_halls = _hall_counts_for_palace(plan.skill_palace, plan.sessions)
 
     def _halls_line(halls: dict[str, int]) -> str:
         if not halls:

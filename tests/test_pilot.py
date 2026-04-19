@@ -19,6 +19,7 @@ from mnemos.pilot import (
     accept_script,
     accept_skill,
     build_plan,
+    count_drawers_for_session,
     format_pilot_report,
     parse_claude_json_output,
     read_ledger_entry,
@@ -387,7 +388,10 @@ def test_run_pilot_records_skip_outcomes(tmp_path: Path) -> None:
     assert result.outcomes[0].reason == "test"
 
 
-def test_run_pilot_records_error_when_no_ledger_row(tmp_path: Path) -> None:
+def test_run_pilot_records_error_when_no_ledger_row_and_no_drawers(tmp_path: Path) -> None:
+    """If neither ledger nor filesystem have evidence of the skill's work,
+    the orchestrator correctly reports an error (Finding 2's real-error case).
+    """
     sdir = tmp_path / "Sessions"
     _make_session(sdir, "s1.md", mtime=time.time() - 100)
 
@@ -395,7 +399,7 @@ def test_run_pilot_records_error_when_no_ledger_row(tmp_path: Path) -> None:
     ledger = tmp_path / "mined.tsv"
 
     def broken_runner(cmd):
-        # No ledger row written → orchestrator must record this as error
+        # No ledger row, no drawer files → real error
         return RunnerResult(
             exit_code=0,
             stdout=json.dumps({"result": "", "usage": {}}),
@@ -404,7 +408,57 @@ def test_run_pilot_records_error_when_no_ledger_row(tmp_path: Path) -> None:
     result = run_pilot(plan, runner=broken_runner, ledger_path=ledger)
 
     assert result.error_count == 1
-    assert "no ledger entry" in result.outcomes[0].reason
+    assert "no drawers" in result.outcomes[0].reason
+
+
+def test_run_pilot_recovers_from_filesystem_when_ledger_missing(tmp_path: Path) -> None:
+    """Finding 2 fix: skill wrote drawers but skipped ledger append →
+    orchestrator recovers from filesystem, marks session OK.
+    """
+    sdir = tmp_path / "Sessions"
+    session = _make_session(sdir, "long.md", mtime=time.time() - 100)
+    plan = build_plan(tmp_path, limit=1)
+    ledger = tmp_path / "mined.tsv"
+
+    def drawer_writing_runner(cmd):
+        # Simulate the real-world failure mode: runner writes 2 drawers but
+        # forgets the ledger append step.
+        slash = cmd[-1]
+        _, sess_str, palace_str = slash.split(" ", 2)
+        palace = Path(palace_str)
+        _write_drawer(palace, "Mnemos", "r", "decisions", "d1.md", sess_str)
+        _write_drawer(palace, "Mnemos", "r", "events", "d2.md", sess_str)
+        return RunnerResult(
+            exit_code=0,
+            stdout=json.dumps({"result": "OK", "usage": {"input_tokens": 100, "output_tokens": 50}}),
+        )
+
+    result = run_pilot(plan, runner=drawer_writing_runner, ledger_path=ledger)
+
+    assert result.ok_count == 1
+    assert result.outcomes[0].drawer_count == 2
+    assert "recovered from filesystem" in result.outcomes[0].reason
+
+
+def test_count_drawers_for_session_matches_normalized_paths(tmp_path: Path) -> None:
+    palace = tmp_path / "P"
+    session = tmp_path / "Sessions" / "s.md"
+    session.parent.mkdir(parents=True)
+    session.write_text("x", encoding="utf-8")
+    other_session = tmp_path / "Sessions" / "other.md"
+    other_session.write_text("y", encoding="utf-8")
+
+    _write_drawer(palace, "Mnemos", "r", "decisions", "a.md", str(session))
+    _write_drawer(palace, "Mnemos", "r", "events", "b.md", str(session))
+    _write_drawer(palace, "Mnemos", "r", "decisions", "c.md", str(other_session))
+
+    assert count_drawers_for_session(palace, session) == 2
+    assert count_drawers_for_session(palace, other_session) == 1
+    assert count_drawers_for_session(palace, tmp_path / "nope.md") == 0
+
+
+def test_count_drawers_for_session_handles_missing_palace(tmp_path: Path) -> None:
+    assert count_drawers_for_session(tmp_path / "nope", tmp_path / "s.md") == 0
 
 
 # ---------------------------------------------------------------------------
@@ -431,17 +485,27 @@ def test_format_pilot_report_includes_required_sections(tmp_path: Path) -> None:
     assert "Skill-mine (`Mnemos-pilot/`)" in md
 
 
+def _write_drawer(
+    palace: Path, wing: str, room: str, hall: str, name: str, source: str
+) -> Path:
+    d = palace / "wings" / wing / room / hall
+    d.mkdir(parents=True, exist_ok=True)
+    body = f"---\nwing: {wing}\nroom: {room}\nhall: {hall}\nsource: {source}\n---\n\n# body\n"
+    p = d / name
+    p.write_text(body, encoding="utf-8")
+    return p
+
+
 def test_format_pilot_report_counts_drawers_from_palace(tmp_path: Path) -> None:
     sdir = tmp_path / "Sessions"
-    _make_session(sdir, "s1.md", mtime=time.time() - 100)
+    session = _make_session(sdir, "s1.md", mtime=time.time() - 100)
     plan = build_plan(tmp_path, limit=1)
 
-    # Simulate that the skill-mine palace has 2 drawers in different halls
-    skill_drawers_dir = plan.skill_palace / "wings" / "Mnemos" / "backend" / "decisions"
-    skill_drawers_dir.mkdir(parents=True)
-    (skill_drawers_dir / "2026-04-19-a.md").write_text("body", encoding="utf-8")
-    (plan.skill_palace / "wings" / "Mnemos" / "backend" / "events").mkdir(parents=True)
-    (plan.skill_palace / "wings" / "Mnemos" / "backend" / "events" / "2026-04-19-b.md").write_text("body", encoding="utf-8")
+    # Skill palace: 2 drawers in different halls, both sourced from s1
+    _write_drawer(plan.skill_palace, "Mnemos", "backend", "decisions",
+                  "2026-04-19-a.md", str(session))
+    _write_drawer(plan.skill_palace, "Mnemos", "backend", "events",
+                  "2026-04-19-b.md", str(session))
     # A leading-underscore file should NOT count (lazy _wing.md etc)
     (plan.skill_palace / "wings" / "Mnemos" / "_wing.md").write_text("summary", encoding="utf-8")
 
@@ -452,6 +516,41 @@ def test_format_pilot_report_counts_drawers_from_palace(tmp_path: Path) -> None:
     assert "| Total drawers | 0 | 2 |" in md
     assert "decisions:1" in md
     assert "events:1" in md
+
+
+def test_format_pilot_report_filters_non_pilot_drawers(tmp_path: Path) -> None:
+    """Finding 3 fix: Total drawers counts only drawers sourced from pilot
+    sessions, not the whole palace.
+    """
+    import os
+    sdir = tmp_path / "Sessions"
+    pilot_session = _make_session(sdir, "pilot.md", mtime=time.time() - 10)
+    other_session = sdir / "other.md"
+    other_session.write_text("other\n", encoding="utf-8")
+    # other_session must be OLDER so limit=1 picks pilot_session
+    os.utime(other_session, (time.time() - 1000, time.time() - 1000))
+
+    plan = build_plan(tmp_path, limit=1)
+    assert plan.sessions == [pilot_session]
+
+    # Script palace has 2 drawers total: 1 from pilot session + 1 from other
+    _write_drawer(plan.script_palace, "Mnemos", "r", "decisions",
+                  "from-pilot.md", str(pilot_session))
+    _write_drawer(plan.script_palace, "Mnemos", "r", "events",
+                  "from-other.md", str(other_session))
+
+    # Skill palace: 1 drawer from pilot session
+    _write_drawer(plan.skill_palace, "Mnemos", "r", "decisions",
+                  "skill-pilot.md", str(pilot_session))
+
+    result = PilotResult(plan=plan, outcomes=[])
+    md = format_pilot_report(result)
+
+    # Script-mine side now shows ONLY pilot-session drawer (1), not 2
+    assert "| Total drawers | 1 | 1 |" in md
+    # Hall distribution follows same filter — no events: from other session
+    # should appear
+    assert "events" not in md.split("Hall distribution")[1].split("|")[2]
 
 
 def test_write_pilot_report_creates_file_and_sets_path(tmp_path: Path) -> None:
