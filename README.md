@@ -30,6 +30,107 @@
 
 ---
 
+## New here? Read this first
+
+If you're new to Claude Code skills, MCP tools, or Obsidian, here is the whole
+picture in plain language. **If you know what you're doing, skip to
+[Quick Start](#quick-start).**
+
+### The pieces, in plain language
+
+**Claude Code** is the terminal CLI where you chat with Claude. Each time you
+close a session and open a new one, Claude forgets everything about the last
+one — there is no built-in long-term memory. Your past conversations are
+sitting on disk as JSON Lines files under `~/.claude/projects/*.jsonl`, but
+nothing reads them for you.
+
+**Obsidian** is a free app that renders a folder of plain `.md` files as a
+connected note-taking system. *You don't have to install it.* Mnemos writes
+every memory as a plain markdown file regardless — Obsidian is just a nicer
+UI if you want one. Any text editor works.
+
+**MCP (Model Context Protocol)** is the plug-in system Claude Code uses to
+talk to tools. When you install Mnemos, you register it as an MCP server —
+from then on, Claude Code has a `mnemos_search` tool it can call on its own
+whenever something in the conversation rings a bell from a past session.
+
+### What Mnemos does, end to end
+
+```
+past Claude Code sessions (~/.claude/projects/*.jsonl)
+            │
+            │  refined into readable session notes
+            ▼
+  <vault>/Sessions/YYYY-MM-DD-slug.md          ← one .md per closed session
+            │
+            │  mined for decisions, preferences, problems, events
+            ▼
+  <vault>/Mnemos/wings/<topic>/<room>/*.md     ← classified memories
+            │
+            │  indexed for semantic search
+            ▼
+  vector index (ChromaDB or sqlite-vec — pick at init)
+            │
+            │  exposed over MCP
+            ▼
+  Claude Code → mnemos_search → relevant memories loaded into context
+```
+
+Everything lives as plain markdown in a folder *you* pick. Delete a `.md` file
+and the memory is gone. No proprietary database you can't open.
+
+### The happy path (≈ 5 minutes)
+
+```bash
+# 1. Install the package
+pip install mnemos-dev
+
+# 2. Scaffold your vault — the wizard walks through discovery and choice.
+#    Answers are in TR and EN.
+mnemos init
+
+# 3. Register Mnemos as an MCP server so Claude Code can call its tools.
+claude mcp add mnemos -- python -m mnemos --vault /path/to/your/vault
+
+# 4. Wire up the auto-refine hook so every new Claude Code session
+#    catches up on the latest closed transcripts in the background.
+mnemos install-hook
+mnemos install-statusline
+```
+
+That's it. The next time you open Claude Code, the status bar will show a
+`mnemos:` line reporting what it just refined. Ask about something from a past
+session and watch Claude call `mnemos_search` on its own.
+
+### Common questions before you start
+
+**"Will this burn through my Anthropic API credits?"** — No. Refinement runs
+as a Claude Code *skill*, using your existing Claude Code subscription.
+Mnemos itself never calls the Anthropic API. `pip install mnemos-dev` brings
+the tooling; the AI work happens inside the CLI you already pay for.
+
+**"What if I don't want to use Obsidian?"** — Works identically. The vault
+is just a folder of `.md` files; any editor reads them. You can add
+Obsidian later if the graph view and inline links appeal to you.
+
+**"Which backend should I pick — ChromaDB or sqlite-vec?"** — ChromaDB is the
+default and works well on macOS/Linux. If you are on Windows with Python
+3.14, or want a single-file index you can copy around, choose sqlite-vec —
+the 2026-04-17 parity benchmark showed identical recall (R@5=0.90) on both.
+You can switch any time with `mnemos migrate --backend <name>`.
+
+**"Is my vault going to explode in size?"** — The author's vault has 683
+memories in ~9 MB of markdown plus a 40 MB ChromaDB index after 122
+refined sessions. Disk impact is small; everything compresses well because
+it's plain text.
+
+**"Can I run this on an existing vault I already use for other notes?"** —
+Yes, but keep the `Mnemos/` subfolder to Mnemos-managed content; it uses
+that as the palace root. Your existing `Topics/`, `memory/`, and any other
+folders are left alone unless you explicitly point `mnemos import` at them.
+
+---
+
 ## The Problem
 
 You've had hundreds of Claude Code sessions. Decisions, debugging notes, hard-won context — all locked in `~/.claude/projects/*.jsonl` files nobody ever opens again. Every new session starts from zero.
