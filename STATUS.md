@@ -1,7 +1,7 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-19 (v0.4 Phase 1 4.2 code-complete + real-vault pilot — 4 findings feed into 4.2.7-10)
-**Stable PyPI version:** `v0.3.3` · **Next:** `v0.4.0` (AI Boost / Phase 1 — 4.2.7-10 fixes in flight)
+**Last updated:** 2026-04-19 (session-end; v0.4 Phase 1 4.2.1-9 shipped; next session: v0.4.2 full skill-mine prep + run)
+**Stable PyPI version:** `v0.3.3` · **Next:** `v0.4.0` (AI Boost / Phase 1 — v0.4.2 batch queued for next session)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
 This file is the single-glance answer to: *why does Mnemos exist, what can it
@@ -327,43 +327,68 @@ gap.
 
 ### Next session starts here
 
-**Bugünkü ilerleme (2026-04-19, 5 commit):**
-- `033a7d4` Phase 1 design spec (skill-first reframe)
-- `c7d6c58` 4.2.1 mnemos-mine-llm skill + canonical prompt
-- `e300a2c` 4.2.2 pilot.py orchestrator + CLI (28+3 test)
-- `777d076` 4.2.3 compare-palaces + 4.2.5 accept komutu (7+3 test)
-- (not yet committed at write time) **4.2.6 real-vault pilot** — kasamd'da
-  3 session ile koşuldu. **Skill-mine drawer kalitesi script'ten açıkça
-  üstün** (smart H1, 5-hall compliance, entity person/project ayrımı).
-  Ama pilot 4 operational finding ortaya çıkardı:
+**Bugünkü (2026-04-19) ship edilen — 8 commit, 4.2.1-9 kapalı:**
 
-  1. **Latency 10x spec** — 25s → ~4 min/session (parallel-3 gerekli)
-  2. **Ledger reliability** — skill 3/3 session'da drawer yazdı, ledger 1/3
-  3. **Report apples-to-oranges** — script-tarafı whole-palace, skill-tarafı pilot-only
-  4. **Skill-mined palace indexer eksik** — accept skill sonrası index stale
+| Commit | Parça |
+|---|---|
+| `033a7d4` | Phase 1 design spec (skill-first reframe) |
+| `c7d6c58` | 4.2.1 mnemos-mine-llm skill + canonical prompt |
+| `e300a2c` | 4.2.2 pilot.py orchestrator + CLI (31 test) |
+| `777d076` | 4.2.3 compare-palaces + 4.2.5 accept komutu (13 test) |
+| `b8b3b4c` | 4.2.6 real-vault pilot — kasamd 3 session, 4 finding |
+| `d8cb5c1` | 4.2.7 + 4.2.8 filesystem fallback + pilot-session filter |
+| `da85a58` | 4.2.10 partial — latency realism docs |
+| `6e00736` | 4.2.9 palace indexer + `mnemos mine --from-palace` (13+2 test) |
 
-  Pilot raporları: [`docs/pilots/2026-04-19-v0.4-phase1-real-vault-pilot.md`](docs/pilots/2026-04-19-v0.4-phase1-real-vault-pilot.md)
-  (repo) + kasamd-local `<vault>/docs/pilots/2026-04-19-llm-mine-pilot.md`
+**Real-vault pilot 2× validated** (kasamd 3 session, rebuild sonrası fix'li
+re-run): skill-mine drawer kalitesi script-mine'dan açıkça üstün — smart H1,
+5-hall compliance, entity person/project ayrımı, temiz semantik slug.
+Full suite **524 pass / 2 skip / 3 deselect**. Working tree temiz.
 
-**Sırada — 4.2'yi tamamlayacak post-pilot fix'leri:**
+---
 
-- [ ] **4.2.7** Ledger reliability fix (~1h) — SKILL.md hardening +
-      orchestrator filesystem fallback (`source:` frontmatter'dan drawer say)
-- [ ] **4.2.8** Report session-filter (~30m) — `format_pilot_report`'un
-      `_count_drawers`'ı pilot session'larına filtrelensin
-- [ ] **4.2.9** Palace indexer + `mnemos mine --from-palace` (~1.5h) —
-      frontmatter-authoritative indexing, accept skill warning'i kapatır
-- [ ] **4.2.10** Latency realism + parallel-3 (~1h) — spec + CLI estimate
-      güncelle, sequential → paralel-3 geç
+### ⏭ SIRADAKİ OTURUM — v0.4.2-alpha full skill-mine
 
-Fix'ler shipped olmadan v0.4.0 external user'a gelmemeli — "ERROR=2" +
-"1.63M token" rapor ilk pilot deneyimini zehirler.
+**Tek doğruluk kaynağı:**
+[`docs/plans/2026-04-19-v0.4.2-full-skill-mine-prep.md`](docs/plans/2026-04-19-v0.4.2-full-skill-mine-prep.md)
 
-Ondan sonra **4.3 (skill-recall)**, **4.5 (settings TUI)**, **4.6 (benchmark)**,
-**4.7 (release)**.
+Özet: mevcut pilot sadece Sessions/ görüyor + sequential + limited.
+External ship öncesi 114 kaynağı (Sessions + Topics + 5 memory dizini)
+tam mine edip accept etmek için 4 commit altyapı gerek. Plan doc
+detaylı sırayı ve acceptance kriterlerini içeriyor.
 
-**🟡 Pending user action** — social-preview PNG hâlâ GitHub Settings'e
-elden yüklenecek (tek tıklık; Phase 1 bunu bloklamıyor).
+**4 commit (sırayla, plan doc'ta açık):**
+1. Skill prompt multi-format update (~45 dk) — Type A/B/C/D dosya formları
+2. Orchestrator multi-source plan (~1h) — `_resolve_sources` pattern'ı
+3. CLI `--skill-all` / `--pilot-limit 0` modu (~30 dk)
+4. Parallel-3 execution (~1.5h) — ThreadPoolExecutor + filelock
+
+**Ardından mine run (~2.5h paralel-3):**
+- Ledger wipe (`~/.claude/skills/mnemos-mine-llm/state/mined.tsv`)
+- `mnemos pilot --accept script` ile Mnemos-pilot'u recycle (temiz başlangıç)
+- `mnemos mine --pilot-llm --pilot-limit 0 --yes` background
+- Compare-palaces skill → rapor → accept skill (reindex otomatik)
+
+**Sonra v0.4.0 kalanı:**
+- 4.3 skill-recall (~5h) — `/mnemos-recall` + briefing hook + MCP instructions
+- 4.5 settings TUI (~2.5h) — numbered menu, 8 satır
+- 4.6 LongMemEval benchmark (~3h) — S+S combo, R@5 ≥ %93
+- 4.7 PyPI release v0.4.0
+
+**Opsiyonel v0.4.1** (ship sonrası):
+- Script miner section-header kaçışı fix ("Özet/Sonraki Adımlar" filename)
+- `mnemos mine --raw-only` (4.2.9 follow-up, raw collection separate repopulation)
+
+---
+
+**🟡 Pending user actions** (session-sonu durumu):
+
+- Social-preview PNG → GitHub Settings (tek tıklık; Phase 1 bunu bloklamıyor)
+- Kasamd state: `Mnemos/` rebuilt (script-mine 718 drawer), `Mnemos-pilot/`
+  37 drawer (pilot-2 kalıntısı). v0.4.2 batch sonrası full skill-mine +
+  accept → `Mnemos/` skill-mine drawer'larla dolacak
+- Ledger: `~/.claude/skills/mnemos-mine-llm/state/mined.tsv` 2 row
+  (pilot-2'de OK recorded). v0.4.2 mine öncesi silinecek.
 
 ### Practical stats (author's vault, 2026-04-19)
 

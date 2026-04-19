@@ -4,7 +4,7 @@
 Eski `docs/specs/2026-04-*` ve `docs/plans/2026-04-*` dosyaları historical
 archive; burada çelişki olursa bu dosya geçerlidir.
 
-**Son güncelleme:** 2026-04-19 (Phase 1 design spec teslim, skill-first reframe)
+**Son güncelleme:** 2026-04-19 (4.2.1-9 ship, v0.4.2-alpha batch hand-off)
 
 ---
 
@@ -779,8 +779,27 @@ Rerank skill-recall'ın içinde eridi; contradiction v0.5 hygiene'a ertelendi.
         spec `25s/session` öngördü, gerçek `~4 min/session`.
         Docs kısmı *(2026-04-19)*: spec §4.2.2 step 4 "Latency realism"
         satırı; CLI `Estimated time` ~4 min/session × N formüle dayanıyor.
-        Parallel-3 implementation v0.4.1-alpha'ya kaldı (threading +
-        `filelock` advisory).
+        Parallel-3 implementation v0.4.2-alpha batch'ine taşındı (aşağı).
+
+#### v0.4.2-alpha batch — full skill-mine prep + run *(sonraki oturum)*
+
+**Canonical plan:** [`docs/plans/2026-04-19-v0.4.2-full-skill-mine-prep.md`](plans/2026-04-19-v0.4.2-full-skill-mine-prep.md)
+
+- [ ] **4.2.11 Skill prompt multi-format** *(~45 dk)* — `mine-llm.md`
+      canonical prompt'una 4 format (A: Sessions refined, B: Topics
+      curated, C: memory structured, D: MEMORY.md skip) detection +
+      chunking rules.
+- [ ] **4.2.12 Orchestrator multi-source plan** *(~1h)* — `build_plan`
+      `rebuild._resolve_sources` paternini kullansın (Sessions + Topics
+      + cfg.mining_sources union). Plan API: `plan.sources` (plan.sessions
+      rename). Tests.
+- [ ] **4.2.13 CLI `--skill-all` / `--pilot-limit 0`** *(~30 dk)* —
+      no-limit mode + Estimated time hesabında 114 dosya görünür.
+- [ ] **4.2.14 Parallel-3 execution** *(~1.5h)* — ThreadPoolExecutor +
+      filelock ledger lock + `--no-parallel` fallback. Progress output.
+- [ ] **4.2.15 Full skill-mine run** *(~2.5h paralel-3 gerçek iş)* —
+      ledger wipe → recycle Mnemos-pilot → 114-source mine → compare →
+      accept skill. Kasamd kullanım deneyimi smoke.
 - [ ] **4.3 Skill-recall** *(~5h)*
   - `skills/mnemos-recall/` — user-invoked `/mnemos-recall <query>`,
     vector top-50 → LLM judge → curated 300-500 kelime context
