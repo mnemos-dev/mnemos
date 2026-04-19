@@ -347,8 +347,8 @@ gap.
 | 4.2.11 skill prompt multi-format (Type A/B/C/D) | ✅ shipped |
 | 4.2.12 orchestrator multi-source plan | ✅ shipped |
 | 4.2.13 CLI `--pilot-limit 0` no-limit mode | ✅ shipped |
-| 4.2.14 parallel-3 execution | ⏭ sıradaki |
-| 4.2.15 full skill-mine run (~2.5h paralel-3) | ⏸ |
+| 4.2.14 parallel execution + monitor-friendly progress | ✅ shipped |
+| 4.2.15 full skill-mine run (~2.5h paralel-3) | ⏭ pre-mine prep + real run |
 
 **Real-vault pilot 2× validated** (kasamd 3 session, rebuild sonrası fix'li
 re-run): skill-mine drawer kalitesi script-mine'dan açıkça üstün — smart H1,

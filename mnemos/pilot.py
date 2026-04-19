@@ -505,18 +505,40 @@ def _run_one_session(
     )
 
 
+ProgressCallback = Callable[[dict], None]
+
+
 def run_pilot(
     plan: PilotPlan,
     runner: Runner | None = None,
     ledger_path: Path | None = None,
+    parallel: int = 1,
+    on_progress: ProgressCallback | None = None,
 ) -> PilotResult:
-    """Run skill-mine for each planned session, sequentially.
+    """Run skill-mine for each planned source, optionally across N workers.
 
-    Resumable: ledger entries for (session, skill_palace) cause the session
-    to be skipped (already processed). Parallel execution is future work
-    (spec §4.2.2) — sequential keeps the flow debuggable for v0.4 MVP.
+    Resumable: ledger entries for (source, skill_palace) cause that source to
+    be skipped (already processed). When *parallel* > 1, uses a
+    :class:`~concurrent.futures.ThreadPoolExecutor` so up to N ``claude --print``
+    subprocesses run concurrently; outcomes are reordered to match ``plan.sources``
+    before returning.
+
+    *on_progress* is invoked once per completed source (not for resumed entries)
+    with a dict of ``{index, total, source, outcome, drawer_count, reason,
+    ok_count, skip_count, error_count, elapsed_sec, parallel}``. Caller is
+    responsible for thread-safety of the callback (the orchestrator holds an
+    internal lock while invoking, so ``print()`` from the callback is safe).
+
+    Ledger append is assumed atomic via O_APPEND on small (<PIPE_BUF) writes;
+    the skill appends one line at a time, well under the 4KB POSIX atomicity
+    guarantee. Reads tolerate partial lines by requiring ``len(cols) >= 4``.
     """
+    import threading
     import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    if parallel < 1:
+        raise PilotError(f"parallel must be >= 1, got {parallel}")
 
     runner = runner or default_capture_runner
     ledger_path = ledger_path or default_ledger_path()
@@ -529,9 +551,12 @@ def run_pilot(
     outcomes: list[SessionOutcome] = []
     total_usage = TokenUsage()
     start = time.monotonic()
+    lock = threading.Lock()
+    counts = {"ok": 0, "skip": 0, "error": 0}
 
     # Replay existing ledger entries for sources already processed, so the
-    # final result reflects the full plan even on resume.
+    # final result reflects the full plan even on resume. No progress events
+    # fire for resumed entries (they didn't "complete" this run).
     for source in plan.sources:
         if source in to_run:
             continue
@@ -548,15 +573,63 @@ def run_pilot(
                 reason=reason,
             )
         )
+        counts[outcome_str if outcome_str in counts else "error"] += 1
 
-    for source in to_run:
-        so = _run_one_session(source, plan.skill_palace, ledger_path, runner)
-        total_usage.add(so.usage)
-        outcomes.append(so)
+    total = len(plan.sources)
+
+    def _record(source: Path, so: SessionOutcome) -> None:
+        with lock:
+            total_usage.add(so.usage)
+            outcomes.append(so)
+            bucket = so.outcome if so.outcome in counts else "error"
+            counts[bucket] += 1
+            index = len(outcomes)
+            elapsed = time.monotonic() - start
+            progress_event = {
+                "index": index,
+                "total": total,
+                "source": source,
+                "outcome": so.outcome,
+                "drawer_count": so.drawer_count,
+                "reason": so.reason,
+                "ok_count": counts["ok"],
+                "skip_count": counts["skip"],
+                "error_count": counts["error"],
+                "elapsed_sec": elapsed,
+                "parallel": parallel,
+            }
+        if on_progress is not None:
+            on_progress(progress_event)
+
+    if parallel == 1 or len(to_run) <= 1:
+        # Sequential path keeps stack traces readable for single-source runs
+        # and small batches. Also used by the existing test suite.
+        for source in to_run:
+            so = _run_one_session(source, plan.skill_palace, ledger_path, runner)
+            _record(source, so)
+    else:
+        effective_workers = min(parallel, len(to_run))
+        with ThreadPoolExecutor(max_workers=effective_workers) as pool:
+            futures = {
+                pool.submit(
+                    _run_one_session,
+                    src,
+                    plan.skill_palace,
+                    ledger_path,
+                    runner,
+                ): src
+                for src in to_run
+            }
+            for fut in as_completed(futures):
+                src = futures[fut]
+                so = fut.result()
+                _record(src, so)
 
     elapsed = time.monotonic() - start
 
-    # Preserve plan order in outcomes
+    # Preserve plan order in outcomes — parallel execution appends in completion
+    # order, which is non-deterministic; callers (report, tests) expect stable
+    # plan-sequence output.
     by_source = {o.session: o for o in outcomes}
     ordered = [by_source[s] for s in plan.sources if s in by_source]
 

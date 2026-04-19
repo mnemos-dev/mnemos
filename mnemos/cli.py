@@ -777,11 +777,19 @@ def _run_pilot_llm(vault_path: Path, args: argparse.Namespace) -> None:
     # originally estimated 25s which was 10x off. See docs/pilots/
     # 2026-04-19-v0.4-phase1-real-vault-pilot.md Finding 1.
     est_sec_seq = plan.source_count * 260
-    est_sec_par = est_sec_seq // 3  # parallel-3 best-case (4.2.14)
-    print(
-        f"  Estimated time: {_format_duration_estimate(est_sec_seq)} sequential "
-        f"/ {_format_duration_estimate(est_sec_par)} paralel-3 (target, 4.2.14)"
-    )
+    parallel = max(1, getattr(args, "parallel", 1) or 1)
+    est_sec_par = est_sec_seq // parallel if parallel > 1 else est_sec_seq
+    if parallel > 1:
+        est_line = (
+            f"  Estimated time: {_format_duration_estimate(est_sec_seq)} sequential "
+            f"/ {_format_duration_estimate(est_sec_par)} paralel-{parallel}"
+        )
+    else:
+        est_line = (
+            f"  Estimated time: {_format_duration_estimate(est_sec_seq)} sequential "
+            f"(pass --parallel N for N-way concurrency)"
+        )
+    print(est_line)
     print()
 
     if not args.yes:
@@ -793,8 +801,44 @@ def _run_pilot_llm(vault_path: Path, args: argparse.Namespace) -> None:
             print("Aborted.")
             return
 
-    print("Running skill-mine against each session (sequential)...")
-    result = run_pilot(plan)
+    mode_word = f"parallel-{parallel}" if parallel > 1 else "sequential"
+    print(f"Running skill-mine against each source ({mode_word})...")
+
+    progress_state = {"last_milestone": 0}
+
+    def _on_progress(ev: dict) -> None:
+        idx = ev["index"]
+        total = ev["total"]
+        src_name = Path(ev["source"]).name
+        outcome = ev["outcome"]
+        drawers = ev["drawer_count"]
+        reason = ev.get("reason") or ""
+        if outcome == "ok":
+            line = f"[{idx}/{total}] OK    {src_name} → {drawers} drawers"
+            if reason:
+                line += f" ({reason})"
+        elif outcome == "skip":
+            line = f"[{idx}/{total}] SKIP  {src_name} — {reason or 'no reason'}"
+        else:
+            line = f"[{idx}/{total}] ERROR {src_name} — {reason or 'unknown'}"
+        print(line, flush=True)
+
+        # Every 10 completed, emit a monitor-friendly summary line with ETA.
+        if idx - progress_state["last_milestone"] >= 10 or idx == total:
+            progress_state["last_milestone"] = idx
+            elapsed = ev["elapsed_sec"]
+            eta_str = "?"
+            if idx > 0:
+                eta_sec = (total - idx) * elapsed / idx
+                eta_str = f"~{_format_duration_estimate(int(eta_sec))}"
+            print(
+                f"Progress: {idx}/{total} done · OK={ev['ok_count']} "
+                f"SKIP={ev['skip_count']} ERROR={ev['error_count']} · "
+                f"{elapsed/60:.1f}min elapsed · ETA {eta_str}",
+                flush=True,
+            )
+
+    result = run_pilot(plan, parallel=parallel, on_progress=_on_progress)
     path = write_pilot_report(result)
 
     print()
@@ -1156,6 +1200,17 @@ def main() -> None:
         default=10,
         help="With --pilot-llm: number of most-recent source files to pilot "
         "(default 10; use 0 for all sources — full batch mine, ~4 min per file)",
+    )
+    parser_mine.add_argument(
+        "--parallel",
+        type=int,
+        default=1,
+        metavar="N",
+        help="With --pilot-llm: run N `claude --print` skill invocations in "
+        "parallel (default 1 = sequential; 3 is the tested ceiling for full "
+        "batch mine — each worker holds ~200K tokens context). Each worker is "
+        "a fresh subprocess; progress lines are emitted per-completion and a "
+        "monitor-friendly `Progress:` summary every 10 sources.",
     )
     parser_mine.add_argument(
         "--from-palace",

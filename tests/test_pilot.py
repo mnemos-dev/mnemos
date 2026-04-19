@@ -546,6 +546,186 @@ def test_run_pilot_recovers_from_filesystem_when_ledger_missing(tmp_path: Path) 
     assert "recovered from filesystem" in result.outcomes[0].reason
 
 
+# ---------------------------------------------------------------------------
+# Parallel execution (4.2.14)
+# ---------------------------------------------------------------------------
+
+
+def _make_slow_runner(
+    ledger_path: Path,
+    palace: Path,
+    delay: float,
+    *,
+    active_counter: list[int] | None = None,
+    peak_counter: list[int] | None = None,
+    start_order: list[str] | None = None,
+):
+    """Runner that sleeps to simulate claude --print latency; records peak
+    concurrency via shared counters (caller supplies zero-initialized lists).
+
+    Note: the ledger write is serialized under a shared lock because this
+    helper is called from multiple Python threads that share a single process.
+    The real production skill runs in a separate ``claude --print`` subprocess
+    where OS-level ``O_APPEND`` provides atomicity — we emulate that here to
+    keep the concurrency assertions deterministic.
+    """
+    import threading
+    lock = threading.Lock()
+
+    def runner(cmd):
+        slash = cmd[-1]
+        session = Path(slash.split(" ", 2)[1])
+        if active_counter is not None and peak_counter is not None:
+            with lock:
+                active_counter[0] += 1
+                if active_counter[0] > peak_counter[0]:
+                    peak_counter[0] = active_counter[0]
+        if start_order is not None:
+            with lock:
+                start_order.append(session.name)
+        time.sleep(delay)
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with lock:
+            _write_ledger_row(ledger_path, session, palace, 2, now)
+        if active_counter is not None:
+            with lock:
+                active_counter[0] -= 1
+        return RunnerResult(
+            exit_code=0,
+            stdout=json.dumps({
+                "result": "OK", "usage": {"input_tokens": 100, "output_tokens": 50}
+            }),
+        )
+
+    return runner
+
+
+def test_run_pilot_parallel_caps_concurrency_at_max_workers(tmp_path: Path) -> None:
+    """parallel=3 must never have more than 3 workers in flight."""
+    sdir = tmp_path / "Sessions"
+    for i in range(6):
+        _make_session(sdir, f"s{i:02d}.md", mtime=time.time() - i)
+
+    plan = build_plan(tmp_path, limit=6)
+    ledger = tmp_path / "mined.tsv"
+    active = [0]
+    peak = [0]
+    runner = _make_slow_runner(ledger, plan.skill_palace, delay=0.05,
+                               active_counter=active, peak_counter=peak)
+
+    result = run_pilot(plan, runner=runner, ledger_path=ledger, parallel=3)
+
+    assert result.ok_count == 6
+    assert peak[0] <= 3  # never more than 3 workers active
+    assert peak[0] >= 2  # but at least some concurrency observed
+
+
+def test_run_pilot_parallel_preserves_plan_order_in_outcomes(tmp_path: Path) -> None:
+    """Futures complete out-of-order; final outcomes must reflect plan.sources order."""
+    sdir = tmp_path / "Sessions"
+    # 4 sources — mtime order: s03 newest, s00 oldest. build_plan returns
+    # newest-first: [s03, s02, s01, s00].
+    sources = [
+        _make_session(sdir, f"s{i:02d}.md", mtime=time.time() - i * 10)
+        for i in range(4)
+    ]
+    plan = build_plan(tmp_path, limit=4)
+    expected_order = [p.name for p in plan.sources]
+    ledger = tmp_path / "mined.tsv"
+
+    # Variable delays so completion order diverges from submission order
+    delays = {"s03.md": 0.15, "s02.md": 0.01, "s01.md": 0.10, "s00.md": 0.05}
+    import threading
+    write_lock = threading.Lock()
+
+    def runner(cmd):
+        slash = cmd[-1]
+        session = Path(slash.split(" ", 2)[1])
+        time.sleep(delays.get(session.name, 0.01))
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with write_lock:
+            _write_ledger_row(ledger, session, plan.skill_palace, 1, now)
+        return RunnerResult(
+            exit_code=0,
+            stdout=json.dumps({"result": "OK", "usage": {"input_tokens": 100}}),
+        )
+
+    result = run_pilot(plan, runner=runner, ledger_path=ledger, parallel=3)
+    assert [o.session.name for o in result.outcomes] == expected_order
+
+
+def test_run_pilot_sequential_when_parallel_1(tmp_path: Path) -> None:
+    """parallel=1 (default) must keep strict submission-order execution."""
+    sdir = tmp_path / "Sessions"
+    _make_session(sdir, "s01.md", mtime=time.time() - 10)
+    _make_session(sdir, "s02.md", mtime=time.time() - 20)
+
+    plan = build_plan(tmp_path, limit=2)
+    ledger = tmp_path / "mined.tsv"
+    start_order: list[str] = []
+    runner = _make_slow_runner(ledger, plan.skill_palace, delay=0.02,
+                               start_order=start_order)
+
+    run_pilot(plan, runner=runner, ledger_path=ledger, parallel=1)
+    # Sequential = plan.sources order (newest first): s01 before s02
+    assert start_order == ["s01.md", "s02.md"]
+
+
+def test_run_pilot_progress_callback_fires_per_source(tmp_path: Path) -> None:
+    """on_progress must be invoked once per completed source with running counts."""
+    sdir = tmp_path / "Sessions"
+    _make_session(sdir, "a.md", mtime=time.time() - 10)
+    _make_session(sdir, "b.md", mtime=time.time() - 20)
+    _make_session(sdir, "c.md", mtime=time.time() - 30)
+
+    plan = build_plan(tmp_path, limit=3)
+    ledger = tmp_path / "mined.tsv"
+    runner = _make_fake_runner(
+        ledger_path=ledger, palace=plan.skill_palace, drawers_per_session=5
+    )
+
+    events: list[dict] = []
+
+    def on_progress(ev):
+        events.append(ev)
+
+    result = run_pilot(plan, runner=runner, ledger_path=ledger, on_progress=on_progress)
+
+    assert len(events) == 3
+    assert [e["index"] for e in events] == [1, 2, 3]
+    assert all(e["total"] == 3 for e in events)
+    assert events[-1]["ok_count"] == 3
+    assert events[-1]["parallel"] == 1
+    assert result.ok_count == 3
+
+
+def test_run_pilot_progress_callback_skipped_for_resumed_entries(tmp_path: Path) -> None:
+    """Resumed ledger rows shouldn't fire progress events — nothing ran."""
+    sdir = tmp_path / "Sessions"
+    s1 = _make_session(sdir, "already.md", mtime=time.time() - 10)
+    _make_session(sdir, "fresh.md", mtime=time.time() - 20)
+
+    plan = build_plan(tmp_path, limit=2)
+    ledger = tmp_path / "mined.tsv"
+    _write_ledger_row(ledger, s1, plan.skill_palace, 3, "2026-04-19T09:00:00Z")
+
+    runner = _make_fake_runner(ledger_path=ledger, palace=plan.skill_palace)
+    events: list[dict] = []
+    run_pilot(plan, runner=runner, ledger_path=ledger, on_progress=events.append)
+
+    # Only "fresh.md" actually ran; "already.md" was replayed silently.
+    assert len(events) == 1
+    assert events[0]["source"].name == "fresh.md"
+
+
+def test_run_pilot_rejects_parallel_zero(tmp_path: Path) -> None:
+    sdir = tmp_path / "Sessions"
+    _make_session(sdir, "s.md")
+    plan = build_plan(tmp_path, limit=1)
+    with pytest.raises(PilotError, match="parallel must be >= 1"):
+        run_pilot(plan, parallel=0)
+
+
 def test_count_drawers_for_source_matches_normalized_paths(tmp_path: Path) -> None:
     palace = tmp_path / "P"
     session = tmp_path / "Sessions" / "s.md"

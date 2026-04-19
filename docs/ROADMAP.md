@@ -818,8 +818,21 @@ Rerank skill-recall'ın içinde eridi; contradiction v0.5 hygiene'a ertelendi.
       sources)` helper'ı pilot.py'da — resolution order'ı (Sessions,
       Topics, yaml mining_sources) korur. 3 yeni test (limit=0=all,
       negative limit reject, source_breakdown). Full suite 531 pass.
-- [ ] **4.2.14 Parallel-3 execution** *(~1.5h)* — ThreadPoolExecutor +
-      filelock ledger lock + `--no-parallel` fallback. Progress output.
+- [x] **4.2.14 Parallel execution + monitor-friendly progress** *(2026-04-19)* —
+      `run_pilot(..., parallel=N, on_progress=cb)` artık ThreadPoolExecutor
+      üzerinden N-way concurrent `claude --print` koşuyor. Outcomes
+      plan-order'da toplanıyor (tamamlanma sırası non-deterministic).
+      Thread-safe: `threading.Lock` aggregation için; ledger append
+      O_APPEND atomicity'sine güveniyor (skill'in subprocess-level
+      write'ı <PIPE_BUF, POSIX + Windows NTFS append atomik). CLI
+      `--parallel N` (default 1; 3 full-mine için önerilen) +
+      `on_progress` callback'i Monitor tool'a uygun format basar:
+      `[N/M] OK/SKIP/ERROR filename` her dosya bitince; her 10 dosyada
+      bir `Progress: N/M done · OK=X SKIP=Y ERROR=Z · elapsed · ETA`.
+      ETA elapsed/completed throughput'undan türetilir — parallel hızlanmayı
+      otomatik yansıtır. 7 yeni test (cap concurrency, preserve order,
+      sequential=1 strict order, progress fires, resumed silent, reject
+      parallel=0).
 - [ ] **4.2.15 Full skill-mine run** *(~2.5h paralel-3 gerçek iş)* —
       ledger wipe → recycle Mnemos-pilot → 114-source mine → compare →
       accept skill. Kasamd kullanım deneyimi smoke.
