@@ -714,9 +714,16 @@ def _run_pilot_llm(vault_path: Path, args: argparse.Namespace) -> None:
     print(f"  Sessions:       {plan.session_count} (limit={plan.limit})")
     print(f"  Script palace:  {plan.script_palace}")
     print(f"  Skill palace:   {plan.skill_palace}")
+    # Empirical per-session latency from 2026-04-19 kasamd pilot: ~260s
+    # sequential (long sessions, multi-drawer write + LLM reasoning). Spec
+    # originally estimated 25s which was 10x off. See docs/pilots/
+    # 2026-04-19-v0.4-phase1-real-vault-pilot.md Finding 1.
+    est_total_sec = plan.session_count * 260
+    est_min = est_total_sec // 60
     print(
-        f"  Estimated time: ~{plan.session_count * 25}s sequential "
-        f"(one `claude --print` per session, ~25s each)"
+        f"  Estimated time: ~{est_min} min sequential "
+        f"(~4 min per session at `claude --print` + skill write cycle; "
+        f"paralel-3 v0.4.1'de gelecek)"
     )
     print()
 

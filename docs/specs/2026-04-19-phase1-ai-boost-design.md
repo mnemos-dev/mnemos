@@ -187,12 +187,15 @@ CONTRIBUTING'deki architectural-line'a eklenir.
 4. **Skill-mine bacağı:**
    - Her session için `claude --print --dangerously-skip-permissions
      --output-format json "/mnemos-mine-llm <session.md> <Mnemos-pilot>"`
-   - Paralel 3'lü (refine-hook paterni, `filelock` advisory)
+   - **v0.4.0-alpha: sequential** (MVP). Paralel-3 v0.4.1'de gelecek.
    - Subprocess env'inde `ANTHROPIC_API_KEY` stripped → subscription auth
    - Her çağrının `usage` alanı JSON'dan parse edilir:
      `{input_tokens, output_tokens, cache_read_input_tokens,
        cache_creation_input_tokens}`
    - Token sayaçları aggregated
+   - **Latency realism:** Per-session wall-clock ~3-5 dk (2026-04-19
+     kasamd pilot). 100 session sequential ~7h, paralel-3 ile ~2.5h.
+     Spec'in eski "25s/session" tahmini 10x off çıktı (pilot Finding 1).
 
 5. **Skill-mined drawer'ları index'le:**
    - `mnemos mine Mnemos-pilot/ --palace-root Mnemos-pilot` — mevcut

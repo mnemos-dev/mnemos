@@ -772,10 +772,12 @@ Rerank skill-recall'ın içinde eridi; contradiction v0.5 hygiene'a ertelendi.
         skill-mined drawer'lar ChromaDB/sqlite-vec'e yazılmıyor; accept
         skill WARNING ile surface ediyor ama arama stale. Frontmatter-
         authoritative indexing (classification tekrar koşmaz).
-  - [ ] **4.2.10 Latency realism + parallel-3** *(~1h, Finding 1)* —
-        spec `25s/session` öngördü, gerçek `~4 min/session`. Spec + CLI
-        estimate güncelle; sequential'ı paralel-3'e geç (spec'in orijinal
-        tasarımı, MVP'de sequential shipped).
+  - [~] **4.2.10 Latency realism + parallel-3** *(~1h, Finding 1)* —
+        spec `25s/session` öngördü, gerçek `~4 min/session`.
+        Docs kısmı *(2026-04-19)*: spec §4.2.2 step 4 "Latency realism"
+        satırı; CLI `Estimated time` ~4 min/session × N formüle dayanıyor.
+        Parallel-3 implementation v0.4.1-alpha'ya kaldı (threading +
+        `filelock` advisory).
 - [ ] **4.3 Skill-recall** *(~5h)*
   - `skills/mnemos-recall/` — user-invoked `/mnemos-recall <query>`,
     vector top-50 → LLM judge → curated 300-500 kelime context
