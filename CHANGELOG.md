@@ -2,6 +2,31 @@
 
 All notable changes to Mnemos are documented here.
 
+## [0.3.3] — 2026-04-19 — Post-v0.3.2 cleanup
+
+**Goal:** Close four deferred follow-ups flagged during the v0.3.1 and v0.3.2 pilots so the tree is green and user-visible friction is gone before Phase 1 work starts. No new features — only fixes to UX, test-suite reliability, and cross-backend score presentation.
+
+### Fixed
+
+- **`mnemos migrate` dry-run time estimate.** Vaults with fewer than ~130 drawers used to display `~0–0 minutes` because both endpoints of the estimate rounded to zero. New `MigrationPlan.format_estimate()` switches to seconds below the minute threshold (`~2–3 seconds`, `~29–54 seconds`) and floors the lower bound at 1 second so a tiny vault still shows a real number. Units are singular/plural-correct. *(commit `4ba52e4`)*
+- **sqlite-vec score display parity with ChromaDB.** `_l2_to_cosine_sim` is now `_l2_to_score` and uses the linear form `1 - L2 / 2` instead of the cosine form `1 - L2² / 2`. Both are monotonic in L2 distance so ranking is unchanged — the 2026-04-17 LongMemEval parity benchmark (R@5=0.90 on both backends) still holds. The change fixes the pilot-report nit: sqlite-vec scores sat around 0.016 for representative "unrelated" content while ChromaDB's backend showed 0.3–0.7 for the same material. The linear form places both backends in the same visual band so users don't mistake 0.016 for a broken index. *(commit `4ba52e4`)*
+- **Test-suite timeout.** `test_write_without_close_can_lose_hnsw_segments` spawns a subprocess that writes 500 drawers + both backends' schemas — on Python 3.14 + Windows that now exceeds the old 300 s wall. Bumped the subprocess timeout to 600 s and tagged the test `@pytest.mark.slow` so it runs alongside its two already-tagged siblings. *(commit `4ba52e4`)*
+
+### Added
+
+- **`MigrateError` + atomic `mnemos migrate` rollback.** The rebuild step in `migrate()` is wrapped in a `BaseException` guard — if mining on the new backend crashes (or the user Ctrl+C's), the old backend's storage is moved back from its `.bak-<date>/` sibling, `mnemos.yaml` is reverted to the pre-migrate backend, and the partial new-backend storage is deleted. Raises `MigrateError` with a single-line "rolled back — still on `<old>`" message that the CLI surfaces via `sys.exit(2)`. `_backup_mine_log` replaces `_clear_mine_log` so the log comes back with the rollback instead of being lost. *(commit `4ba52e4`)*
+- **Migration lock (`.migrate.lock.flock`).** `migrate()` acquires a `filelock.FileLock` in the palace directory with a 0.1 s non-blocking acquire; a concurrent migrate on the same vault now raises `MigrateError` with a "Another mnemos migrate is already running" message and doesn't touch any files. Lock is advisory / OS-held, so a crashed process releases it automatically — no stale `.flock` file blocks the next run. *(commit `4ba52e4`)*
+- **`[tool.pytest.ini_options]` section in `pyproject.toml`.** Registers the `slow` marker, enables `--strict-markers` so typos fail loudly, and sets default `addopts = "-m 'not slow'"` so `pytest tests/` finishes in ~5 min without flaky long-running subprocesses. Run the full set with `pytest tests/ --override-ini="addopts="` or `pytest -m slow`. *(commit `4ba52e4`)*
+
+### Tests
+
+- **+7 new unit tests** across `tests/test_migrate.py`: four `format_estimate` edge cases (sub-minute seconds mode, sub-second floors at 1, unit flip at the 60 s boundary, large-vault minutes); one rollback-on-rebuild-failure; one rollback-restores-mine-log; one lock-blocks-concurrent. Full suite: **463 passed, 2 skipped, 3 deselected** (the `slow`-tagged durability trio).
+
+### Release
+
+- PyPI: <https://pypi.org/project/mnemos-dev/0.3.3/>
+- GitHub release with assets: <https://github.com/mnemos-dev/mnemos/releases/tag/v0.3.3>
+
 ## [0.3.2] — 2026-04-18 — Palace Hygiene
 
 **Goal:** Clean up nine pipeline bugs that bled into author-vault drawers (wing-name splits, phantom rooms, date-stacked filenames, graph-view ghost nodes, entity/tag pollution) and make `mnemos mine --rebuild` a genuinely atomic, roll-backable operation. The old `--rebuild` was just `mine_log clear + re-mine` — no backup, no index wipe, no rollback. The new one moves `wings/` to `_recycled/wings-<ts>/`, drops + rebuilds both backends' indexes, resets the knowledge graph, verifies the rebuild produced drawers, and restores from backup on any failure.

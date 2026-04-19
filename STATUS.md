@@ -1,7 +1,7 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-18 (v0.3.2 Palace Hygiene released to PyPI + GitHub)
-**Stable PyPI version:** `v0.3.2` · **Next:** `v0.4.0` (AI Boost / Phase 1)
+**Last updated:** 2026-04-19 (v0.3.3 post-cleanup released to PyPI + GitHub)
+**Stable PyPI version:** `v0.3.3` · **Next:** `v0.4.0` (AI Boost / Phase 1)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
 This file is the single-glance answer to: *why does Mnemos exist, what can it
@@ -272,14 +272,39 @@ gap.
   <https://github.com/mnemos-dev/mnemos/releases/tag/v0.3.2>
   (wheel + sdist asset'li). Tag `v0.3.2` pushed.
 
+### Released — v0.3.3 Post-v0.3.2 cleanup (2026-04-19)
+
+- ✅ **Migrate rollback + lock** — `MigrateError` raised on rebuild
+  failure (old backend storage + mine_log + yaml restored atomically,
+  partial new-backend storage wiped). `.migrate.lock.flock` advisory
+  lock prevents concurrent migrates on the same vault. Lock is
+  OS-held so crashed processes don't leave stale lock files.
+- ✅ **Dry-run estimate readable on tiny vaults** — `~0–0 minutes` →
+  `~2–3 seconds` via `MigrationPlan.format_estimate()`, with seconds
+  floor at 1 so single-drawer vaults still show a real number.
+- ✅ **sqlite-vec score parity with ChromaDB** — `_l2_to_score` uses
+  linear `1 - L2/2` (was cosine `1 - L2²/2`). Ranking unchanged
+  (monotonic in L2, benchmark recall identical) but surface scores
+  now sit in the 0.3–0.7 band instead of the confusing 0.01–0.02
+  range users saw on sqlite-vec.
+- ✅ **Test suite green in ~5 min** — `@pytest.mark.slow` marker
+  registered in pyproject, durability tests tagged + subprocess
+  timeout bumped to 600 s, default `addopts = "-m 'not slow'"`.
+  Full default run: **463 passed, 2 skipped, 3 deselected**.
+- ✅ **PyPI release v0.3.3** — wheel + sdist published to
+  <https://pypi.org/project/mnemos-dev/0.3.3/>, GitHub release at
+  <https://github.com/mnemos-dev/mnemos/releases/tag/v0.3.3>.
+
 ### Next session starts here
 
-v0.3.2 PyPI + GitHub'da canlı. Pipeline hygiene (wing canonicalization,
-lazy summaries, source-date filenames, H1+wikilink body, entity
-dedup) + atomic `mnemos mine --rebuild` (backup → drop+reinit →
-re-mine → verify → rollback) shipped. kasamd real-vault rebuild
-doğruladı: 683 drawer, 16 wing, `sha256` unchanged. Tüm Claude Code
-geçmişi (122 transcript → 52 OK + 70 SKIP) refine + mine edildi.
+v0.3.3 PyPI + GitHub'da canlı. v0.3.1 ve v0.3.2 pilotlarından kalan
+dört deferred follow-up (migrate rollback+lock, dry-run estimate
+edge case, sqlite-vec score display, slow-test deselect) kapandı.
+Pipeline hygiene (wing canonicalization, lazy summaries, source-date
+filenames, H1+wikilink body, entity dedup) + atomic `mnemos mine
+--rebuild` (v0.3.2) ship'lendi. kasamd real-vault rebuild doğruladı:
+683 drawer, 16 wing, `sha256` unchanged. Tüm Claude Code geçmişi
+(122 transcript → 52 OK + 70 SKIP) refine + mine edildi.
 
 **v0.4 (AI Boost / Phase 1) sırada** — ROADMAP §v0.4.0:
 

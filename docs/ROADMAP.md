@@ -4,7 +4,7 @@
 Eski `docs/specs/2026-04-*` ve `docs/plans/2026-04-*` dosyaları historical
 archive; burada çelişki olursa bu dosya geçerlidir.
 
-**Son güncelleme:** 2026-04-18
+**Son güncelleme:** 2026-04-19
 
 ---
 
@@ -16,7 +16,8 @@ archive; burada çelişki olursa bu dosya geçerlidir.
 | v0.2.0 | Full Memory (= Phase 0 Foundation) | ✅ | ✅ |
 | v0.3.0 | First-Run Experience | ✅ | ✅ |
 | v0.3.1 | Backend UX (keşif + migrate + recovery) | ✅ | ✅ |
-| v0.3.2 | Palace Hygiene (pipeline fixes + atomic rebuild) | ✅ | 🟡 pending |
+| v0.3.2 | Palace Hygiene (pipeline fixes + atomic rebuild) | ✅ | ✅ |
+| v0.3.3 | Post-v0.3.2 cleanup (migrate rollback+lock, score parity, slow-tests) | ✅ | ✅ |
 | **v0.4.0** | **AI Boost (= Phase 1)** | **🔄 next** | — |
 | v0.5.0 | Automation (= Phase 2) | ⏸ | — |
 | v0.6.0 | Community & Ecosystem | ⏸ | — |
@@ -692,6 +693,37 @@ rollback yok. Büyük vault'ta kısmi hata data kaybına açık.
 - [x] İki backend de `rebuild_vault` end-to-end test edildi (ChromaDB
       dir backup + sqlite-vec file backup)
 - [x] Gerçek vault rebuild başarılı (C2 — kasamd pilot 683 drawer)
+
+---
+
+## v0.3.3 — Post-v0.3.2 cleanup ✅ *(2026-04-19)*
+
+**Sorun:** v0.3.1 + v0.3.2 pilotlarında CHANGELOG'a "deferred" olarak düşen
+dört ufak madde — bazıları cosmetic (score display, dry-run estimate),
+bazıları user-experience-blocker (migrate rollback yok, concurrent migrate
+koruması yok, durability test 300s timeout'la takılı). Phase 1 öncesi
+tree'yi yeşil bırakmak için tek commit'te kapatıldı.
+
+### Görevler
+
+- [x] **Migrate rollback-on-failure + migration lock** *(commit `4ba52e4`)*
+      `MigrateError`, `.migrate.lock.flock` (filelock, advisory), rebuild
+      fail → backup+yaml+mine_log otomatik restore + partial new-backend
+      cleanup. 3 yeni test (rollback, mine_log restore, lock contention).
+- [x] **Dry-run estimate edge case** *(commit `4ba52e4`)*
+      `MigrationPlan.format_estimate()` — 60s altı saniye modu, 1s floor.
+      4 yeni test (seconds, sub-second floor, minute boundary, large vault).
+- [x] **sqlite-vec score rescale** *(commit `4ba52e4`)*
+      `_l2_to_cosine_sim` → `_l2_to_score`: `1 - L2/2` (linear, monotonic,
+      ChromaDB ile visual band aynı 0.3–0.7). Ranking ve benchmark recall
+      identical — sadece surface display değişti.
+- [x] **Durability test deselect + slow marker** *(commit `4ba52e4`)*
+      `pyproject.toml`'da `[tool.pytest.ini_options]` + `slow` marker
+      register + `--strict-markers` + default `addopts = "-m 'not slow'"`.
+      `test_write_without_close_can_lose_hnsw_segments` tagged + subprocess
+      timeout 300→600s.
+- [x] **PyPI release v0.3.3** — <https://pypi.org/project/mnemos-dev/0.3.3/>,
+      GitHub release at <https://github.com/mnemos-dev/mnemos/releases/tag/v0.3.3>.
 
 ---
 
