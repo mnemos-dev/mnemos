@@ -432,10 +432,18 @@ def default_capture_runner(cmd: Sequence[str]) -> RunnerResult:
 
 
 def _skill_cmd(session: Path, skill_palace: Path) -> list[str]:
+    # --model sonnet pins the latest Sonnet alias (auto-follows Anthropic's
+    # current recommendation). Rationale: mine work is structured reasoning
+    # (INPUT FORMAT DETECTION + 5-hall inference + wing canonicalization) —
+    # Sonnet is the quality/cost sweet spot. Haiku misses TR diacritic +
+    # hall disambiguation nuance; Opus is 3-5x cost with no observed mining
+    # quality lift. Explicit pin = reproducible 2.5h batch runs.
     return [
         CLAUDE_CMD,
         "--print",
         "--dangerously-skip-permissions",
+        "--model",
+        "sonnet",
         "--output-format",
         "json",
         f"/mnemos-mine-llm {session} {skill_palace}",

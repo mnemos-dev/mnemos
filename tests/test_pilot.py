@@ -733,6 +733,17 @@ def test_run_pilot_rejects_parallel_zero(tmp_path: Path) -> None:
         run_pilot(plan, parallel=0)
 
 
+def test_skill_cmd_pins_sonnet_model(tmp_path: Path) -> None:
+    """Mining subprocess must pass --model sonnet for reproducible batch runs."""
+    from mnemos.pilot import _skill_cmd
+
+    cmd = _skill_cmd(tmp_path / "s.md", tmp_path / "palace")
+    assert "--model" in cmd
+    assert cmd[cmd.index("--model") + 1] == "sonnet"
+    # Slash invocation must remain last so fake runners parsing cmd[-1] work
+    assert cmd[-1].startswith("/mnemos-mine-llm ")
+
+
 def test_count_drawers_for_source_matches_normalized_paths(tmp_path: Path) -> None:
     palace = tmp_path / "P"
     session = tmp_path / "Sessions" / "s.md"
