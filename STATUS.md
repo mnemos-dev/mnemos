@@ -1,7 +1,7 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-19 (session-end; v0.4 Phase 1 4.2.1-9 shipped; next session: v0.4.2 full skill-mine prep + run)
-**Stable PyPI version:** `v0.3.3` · **Next:** `v0.4.0` (AI Boost / Phase 1 — v0.4.2 batch queued for next session)
+**Last updated:** 2026-04-20 (v0.4.2-alpha shipped; skill-mine accepted + live in kasamd; next: 4.3 skill-recall)
+**Stable PyPI version:** `v0.3.3` · **Next:** `v0.4.0` (AI Boost / Phase 1 — 4.3 + 4.5 + 4.6 + 4.7 remaining)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
 This file is the single-glance answer to: *why does Mnemos exist, what can it
@@ -340,7 +340,7 @@ gap.
 | `da85a58` | 4.2.10 partial — latency realism docs |
 | `6e00736` | 4.2.9 palace indexer + `mnemos mine --from-palace` (13+2 test) |
 
-**v0.4.2-alpha batch ilerlemesi (bu oturum):**
+**v0.4.2-alpha batch tamam (2026-04-19 → 20):**
 
 | Parça | Durum |
 |---|---|
@@ -348,7 +348,22 @@ gap.
 | 4.2.12 orchestrator multi-source plan | ✅ shipped |
 | 4.2.13 CLI `--pilot-limit 0` no-limit mode | ✅ shipped |
 | 4.2.14 parallel execution + monitor-friendly progress | ✅ shipped |
-| 4.2.15 full skill-mine run (~2.5h paralel-3) | ⏭ pre-mine prep + real run |
+| 4.2.15 full skill-mine run + accept | ✅ **accepted** (skill-mine live) |
+
+**Kasamd canlı durumu (post-accept, 2026-04-20):**
+
+- `Mnemos/` = 572 skill-mine drawer (5-hall dengeli, smart H1, temiz
+  entity). Önceki script-mine palace (725 drawer) `_recycled/Mnemos-2026-04-20/`'de arşivli.
+- `mnemos.yaml: mine_mode: skill`
+- `Mnemos/search.sqlite3` 572 drawer'dan rebuilt (sqlite-vec backend)
+- `mnemos search` smoke testinde "safa clutch" sorgusu skill drawer'ını
+  top-1 döndürdü (`# Safa Clutch T1/T2 Mühendis Revizyonu`)
+- Pilot rapor: `kasamd/docs/pilots/2026-04-19-llm-mine-pilot-3.md` —
+  5-eksen qualitative judgment dolu, 3 sample karşılaştırma delil içeriyor
+- Token bütçesi: **57.3M** subscription quota (one-off, 83.4 dk
+  paralel-3 wall clock). Sonraki mine run'lar yine skill-mine (yeni
+  kaynaklar geldikçe, auto-refine hook bundan sonra skill mode ile
+  mine eder).
 
 **Real-vault pilot 2× validated** (kasamd 3 session, rebuild sonrası fix'li
 re-run): skill-mine drawer kalitesi script-mine'dan açıkça üstün — smart H1,
@@ -357,56 +372,60 @@ Full suite **524 pass / 2 skip / 3 deselect**. Working tree temiz.
 
 ---
 
-### ⏭ SIRADAKİ OTURUM — v0.4.2-alpha full skill-mine
+### ⏭ SIRADAKİ OTURUM — v0.4.0 Phase 1 kalanı
 
-**Tek doğruluk kaynağı:**
-[`docs/plans/2026-04-19-v0.4.2-full-skill-mine-prep.md`](docs/plans/2026-04-19-v0.4.2-full-skill-mine-prep.md)
+v0.4.2-alpha kapandı (skill-mine canlı). Sıradaki parçalar v0.4.0-final
+için:
 
-Özet: mevcut pilot sadece Sessions/ görüyor + sequential + limited.
-External ship öncesi 114 kaynağı (Sessions + Topics + 5 memory dizini)
-tam mine edip accept etmek için 4 commit altyapı gerek. Plan doc
-detaylı sırayı ve acceptance kriterlerini içeriyor.
+- **4.3 Skill-recall** (~5h) — `/mnemos-recall <query>` user skill +
+  `/mnemos-briefing` SessionStart opt-in hook + MCP `recall_mode` yaml
+  dinamik instructions. Pattern: vector top-50 → Claude Sonnet judge →
+  curated 300-500 kelime context. Skill-mine'ın skill-recall kardeşi;
+  rerank burada ediyor (embedding değişmiyor).
+- **4.5 Settings TUI** (~2.5h) — `mnemos settings` numbered menu
+  (backend / mine-mode / recall-mode / hooks / statusline / languages).
+  Fragmanlı komutları tek panel altında topla. i18n TR+EN.
+- **4.6 LongMemEval benchmark** (~3h) — S+S combo (script-mine +
+  script-recall) ölçüm. Hedef Recall@5 ≥ %93. Skill modları kalitatif
+  (pilot raporu) — benchmark sadece baseline.
+- **4.7 PyPI release v0.4.0** — version bump, CHANGELOG, wheel+sdist,
+  GitHub release. 3.10a pre-release wheel inspection paterni tekrarla
+  (skill path'leri package'da mı, --model sonnet hardcode mu vb.).
 
-**4 commit (sırayla, plan doc'ta açık):**
-1. Skill prompt multi-format update (~45 dk) — Type A/B/C/D dosya formları
-2. Orchestrator multi-source plan (~1h) — `_resolve_sources` pattern'ı
-3. CLI `--skill-all` / `--pilot-limit 0` modu (~30 dk)
-4. Parallel-3 execution (~1.5h) — ThreadPoolExecutor + filelock
-
-**Ardından mine run (~2.5h paralel-3):**
-- Ledger wipe (`~/.claude/skills/mnemos-mine-llm/state/mined.tsv`)
-- `mnemos pilot --accept script` ile Mnemos-pilot'u recycle (temiz başlangıç)
-- `mnemos mine --pilot-llm --pilot-limit 0 --yes` background
-- Compare-palaces skill → rapor → accept skill (reindex otomatik)
-
-**Sonra v0.4.0 kalanı:**
-- 4.3 skill-recall (~5h) — `/mnemos-recall` + briefing hook + MCP instructions
-- 4.5 settings TUI (~2.5h) — numbered menu, 8 satır
-- 4.6 LongMemEval benchmark (~3h) — S+S combo, R@5 ≥ %93
-- 4.7 PyPI release v0.4.0
-
-**Opsiyonel v0.4.1** (ship sonrası):
-- Script miner section-header kaçışı fix ("Özet/Sonraki Adımlar" filename)
-- `mnemos mine --raw-only` (4.2.9 follow-up, raw collection separate repopulation)
+**Opsiyonel v0.4.1 polish:**
+- `.gitkeep*` filter zaten `6e8a3e3`'te eklendi → bir sonraki pilot'ta
+  discovery'de hiç çıkmayacak
+- Script miner section-header kaçışı ("Özet/Sonraki Adımlar/Yapılanlar
+  /Alınan Kararlar/See Also" filename'e sızıyor) — script-mine canlı
+  olmasa bile benchmark ve geri dönüş senaryoları için temizlemek iyi
+- `mnemos mine --raw-only` (4.2.9 follow-up)
 
 ---
 
-**🟡 Pending user actions** (session-sonu durumu):
+**🟡 Pending user actions:**
 
-- Social-preview PNG → GitHub Settings (tek tıklık; Phase 1 bunu bloklamıyor)
-- Kasamd state: `Mnemos/` rebuilt (script-mine 718 drawer), `Mnemos-pilot/`
-  37 drawer (pilot-2 kalıntısı). v0.4.2 batch sonrası full skill-mine +
-  accept → `Mnemos/` skill-mine drawer'larla dolacak
-- Ledger: `~/.claude/skills/mnemos-mine-llm/state/mined.tsv` 2 row
-  (pilot-2'de OK recorded). v0.4.2 mine öncesi silinecek.
+- Social-preview PNG → GitHub Settings (tek tıklık; v0.4.0 ship'i
+  bloklamıyor)
+- Skill-mine ledger'ında legacy 2 pilot-2 row'u + corrupted bash-escape
+  row'u kalıntı var (`~/.claude/skills/mnemos-mine-llm/state/mined.tsv`).
+  Harmless (path-match'te tutmazlar) ama one-liner cleanup düşünebiliriz.
+- Mnemos MCP server şu oturum için kill edildi (accept anında graph.json
+  SQLite lock tutuyordu). Bir sonraki Claude Code restart'ında otomatik
+  respawn eder, yeni skill palace'ı + yeni ChromaDB'yi kullanır.
 
-### Practical stats (author's vault, 2026-04-19)
+### Practical stats (author's vault, 2026-04-20)
 
-- 683 drawers across 16 wings, 2-language (TR+EN) regex mining
-- Surface scores now in 0.30–0.70 range on both backends (v0.3.3 score rescale)
+- **572 drawers** across 6 wings (GYP, General, LightRAG-PO-Arsivi,
+  Mnemos, ProcureTrack, Satin-Alma-Otomasyonu), 5-hall dengeli dağılım
+  (decisions:246, events:149, problems:142, preferences:29, emotional:2)
+- Mine mode: **skill** (Claude Sonnet via `/mnemos-mine-llm` subprocess);
+  her yeni session auto-refine hook sonrası skill-mine'a girer
+- Backend: sqlite-vec (`Mnemos/search.sqlite3`), 572 drawer indexed
 - 66 refined session notes in `Sessions/` (52 OK from 122 processed transcripts)
 - Backlog: **0** — all Claude Code JSONL transcripts processed
 - Auto-refine hook processes 3 closed transcripts per new session start
+  (bu hook'un içinde skill-mine tetiklenmesi opsiyonel; şimdilik hook hâlâ
+  regex-mine çağırıyor — Phase 2 automation'da revizyon olacak)
 
 ---
 

@@ -748,7 +748,7 @@ Rerank skill-recall'ın içinde eridi; contradiction v0.5 hygiene'a ertelendi.
   `docs/specs/2026-04-19-phase1-ai-boost-design.md` — skill-first reframe,
   4-kombo mimarisi, pilot orchestrator, settings TUI, v0.5'e ertelenen
   işler.
-- [~] **4.2 Skill-mine + pilot orchestrator** *(~8h kod + post-pilot fixes)*
+- [x] **4.2 Skill-mine + pilot orchestrator** *(2026-04-19 → 20, shipped, live in kasamd)*
   - [x] **4.2.1** `skills/mnemos-mine-llm/` skill + canonical prompt *(commit `c7d6c58`)*
   - [x] **4.2.2** `mnemos/pilot.py` orchestrator + `mnemos mine --pilot-llm` *(commit `e300a2c`, 28+3 test)*
   - [x] **4.2.3** `skills/mnemos-compare-palaces/` skill + prompt *(commit `777d076`)*
@@ -837,9 +837,25 @@ Rerank skill-recall'ın içinde eridi; contradiction v0.5 hygiene'a ertelendi.
       da taşıyor; CLI per-line `... → N drawers · 45k tok` + Progress
       line `... · 842k tok · ...` gösteriyor. `_fmt_tok` compact
       notasyon (k/M).
-- [ ] **4.2.15 Full skill-mine run** *(~2.5h paralel-3 gerçek iş)* —
-      ledger wipe → recycle Mnemos-pilot → 114-source mine → compare →
-      accept skill. Kasamd kullanım deneyimi smoke.
+- [x] **4.2.15 Full skill-mine run** *(2026-04-19 → 20)* — kasamd'da
+      110 kaynak (69 Sessions + 15 Topics + 25 memory + dedup tiebreak)
+      üzerinde paralel-3 mine tamamlandı: 83.4 dk wall clock, 57.3M
+      token, 98 OK / 3 SKIP / 9 ERROR, 571 drawer. ERROR'lar
+      kategorize edildi: 5 Topics stub + 2 `.gitkeep.md` legit-skip
+      (SKIP ledger row'u elle eklendi), 2 Type C memory real-failure
+      retry edildi → 2 OK/2 drawer. `.gitkeep*` discovery filter
+      eklendi (commit `6e8a3e3`). `/mnemos-compare-palaces` skill'i
+      3 sample session'da 5-eksen kıyas yaptı — script vs skill
+      kalitatif delil raporda: script 725 drawer (%69 `facts` catch-all,
+      Türkçe section-header bleed, session-filename entity kirliliği);
+      skill 572 drawer (5-hall dengeli, smart H1, temiz entity, spesifik
+      room'lar). Kullanıcı **accept skill** kararı verdi: Mnemos/ →
+      `_recycled/Mnemos-2026-04-20/`, Mnemos-pilot/ → Mnemos/, yaml
+      `mine_mode: skill`, ChromaDB 572 drawer'dan rebuild. Canlı
+      `mnemos search` skill drawer'larını döndürüyor. Recovery note:
+      ilk accept Windows/OneDrive graph.json SQLite lock'ı yüzünden
+      failed; üç zombie mnemos MCP server (PID 25004/31896/43240)
+      kill edilip leftover Mnemos/ force-remove sonrası başarılı.
 - [ ] **4.3 Skill-recall** *(~5h)*
   - `skills/mnemos-recall/` — user-invoked `/mnemos-recall <query>`,
     vector top-50 → LLM judge → curated 300-500 kelime context
