@@ -327,28 +327,27 @@ gap.
 
 ### Next session starts here
 
-**Bugünkü (2026-04-19) ship edilen — 8 commit, 4.2.1-9 kapalı:**
+**v0.4.2-alpha batch tamam (2026-04-19 → 20, 17 commit):**
 
 | Commit | Parça |
 |---|---|
 | `033a7d4` | Phase 1 design spec (skill-first reframe) |
 | `c7d6c58` | 4.2.1 mnemos-mine-llm skill + canonical prompt |
 | `e300a2c` | 4.2.2 pilot.py orchestrator + CLI (31 test) |
-| `777d076` | 4.2.3 compare-palaces + 4.2.5 accept komutu (13 test) |
-| `b8b3b4c` | 4.2.6 real-vault pilot — kasamd 3 session, 4 finding |
+| `777d076` | 4.2.3 + 4.2.5 compare-palaces skill + accept komutu |
+| `b8b3b4c` | 4.2.6 real-vault pilot (3 session, 4 finding) |
 | `d8cb5c1` | 4.2.7 + 4.2.8 filesystem fallback + pilot-session filter |
-| `da85a58` | 4.2.10 partial — latency realism docs |
-| `6e00736` | 4.2.9 palace indexer + `mnemos mine --from-palace` (13+2 test) |
-
-**v0.4.2-alpha batch tamam (2026-04-19 → 20):**
-
-| Parça | Durum |
-|---|---|
-| 4.2.11 skill prompt multi-format (Type A/B/C/D) | ✅ shipped |
-| 4.2.12 orchestrator multi-source plan | ✅ shipped |
-| 4.2.13 CLI `--pilot-limit 0` no-limit mode | ✅ shipped |
-| 4.2.14 parallel execution + monitor-friendly progress | ✅ shipped |
-| 4.2.15 full skill-mine run + accept | ✅ **accepted** (skill-mine live) |
+| `da85a58` | 4.2.10 latency realism docs |
+| `6e00736` | 4.2.9 palace indexer + `mnemos mine --from-palace` |
+| `5ef2dac` | 4.2.11 skill prompt multi-format (Type A/B/C/D) |
+| `326cc6d` | 4.2.12 orchestrator multi-source plan |
+| `a28eb31` | 4.2.13 `--pilot-limit 0` + CLI source breakdown |
+| `ad31ff2` | 4.2.14 parallel execution + monitor-friendly progress |
+| `d8b233d` | per-source token visibility in progress events |
+| `0c55366` | `--model sonnet` pin for skill subprocess |
+| `be4a17e` | cumulative token alongside per-source in progress lines |
+| `6e8a3e3` | `.gitkeep.md` filter in `_discover_sources` |
+| `dbe13da` | 4.2.15 docs — skill-mine accepted, live in kasamd |
 
 **Kasamd canlı durumu (post-accept, 2026-04-20):**
 
@@ -356,19 +355,14 @@ gap.
   entity). Önceki script-mine palace (725 drawer) `_recycled/Mnemos-2026-04-20/`'de arşivli.
 - `mnemos.yaml: mine_mode: skill`
 - `Mnemos/search.sqlite3` 572 drawer'dan rebuilt (sqlite-vec backend)
-- `mnemos search` smoke testinde "safa clutch" sorgusu skill drawer'ını
-  top-1 döndürdü (`# Safa Clutch T1/T2 Mühendis Revizyonu`)
+- `mnemos search` smoke: "safa clutch" → skill drawer top-1
+  (`# Safa Clutch T1/T2 Mühendis Revizyonu`)
 - Pilot rapor: `kasamd/docs/pilots/2026-04-19-llm-mine-pilot-3.md` —
-  5-eksen qualitative judgment dolu, 3 sample karşılaştırma delil içeriyor
+  5-eksen qualitative judgment dolu
 - Token bütçesi: **57.3M** subscription quota (one-off, 83.4 dk
-  paralel-3 wall clock). Sonraki mine run'lar yine skill-mine (yeni
-  kaynaklar geldikçe, auto-refine hook bundan sonra skill mode ile
-  mine eder).
+  paralel-3 wall clock)
 
-**Real-vault pilot 2× validated** (kasamd 3 session, rebuild sonrası fix'li
-re-run): skill-mine drawer kalitesi script-mine'dan açıkça üstün — smart H1,
-5-hall compliance, entity person/project ayrımı, temiz semantik slug.
-Full suite **524 pass / 2 skip / 3 deselect**. Working tree temiz.
+Full suite **538 pass / 2 skip / 3 deselect**. Working tree temiz.
 
 ---
 

@@ -40,3 +40,7 @@ mnemos/graph.json
 
 # Benchmark data (huge — download locally, not in repo)
 benchmarks/*/data/
+
+# Pilot run logs (2.5h batch runs; local debugging artifact)
+.mnemos-pilot.log
+.mnemos-pilot-*.log
