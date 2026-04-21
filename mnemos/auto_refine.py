@@ -419,6 +419,29 @@ def _is_subagent_jsonl(path: Path) -> bool:
     return "subagents" in path.parts
 
 
+def _read_mine_mode(vault: Path) -> str:
+    """Return ``mine_mode`` from ``<vault>/mnemos.yaml``; default ``script``.
+
+    Why: the hook's regex ``mnemos mine`` call must not clobber a skill-mined
+    palace. When a user has accepted a skill-mine batch, ``mnemos.yaml`` flips
+    to ``mine_mode: skill`` — after that, mining happens via the pilot
+    orchestrator, not this hook. We read the yaml directly (no PyYAML dep) to
+    keep the hook's import surface minimal.
+    """
+    yaml_path = Path(vault) / "mnemos.yaml"
+    if not yaml_path.exists():
+        return "script"
+    try:
+        text = yaml_path.read_text(encoding="utf-8")
+    except OSError:
+        return "script"
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith("mine_mode:"):
+            return s.split(":", 1)[1].strip().strip("'\"")
+    return "script"
+
+
 def _default_runner(cmd: Sequence[str]) -> int:
     """Invoke a subprocess, return exit code.
 
@@ -535,9 +558,13 @@ def _run_locked(
             triggering_session_id=triggering_session_id,
         )
         sessions_dir = Path(vault) / "Sessions"
-        rc = runner([sys.executable, "-m", "mnemos.cli", "--vault", str(vault), "mine", str(sessions_dir)])
-        with log_path.open("a", encoding="utf-8") as fh:
-            fh.write(f"  mine exit={rc}\n")
+        if _read_mine_mode(vault) == "skill":
+            with log_path.open("a", encoding="utf-8") as fh:
+                fh.write("  mine skipped (mine_mode=skill)\n")
+        else:
+            rc = runner([sys.executable, "-m", "mnemos.cli", "--vault", str(vault), "mine", str(sessions_dir)])
+            with log_path.open("a", encoding="utf-8") as fh:
+                fh.write(f"  mine exit={rc}\n")
 
     if reminder_active:
         state = pending_load(vault)

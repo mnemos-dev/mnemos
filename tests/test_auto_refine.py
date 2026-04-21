@@ -445,6 +445,69 @@ def test_run_still_mines_when_picked_nonempty(tmp_path):
     assert any("mine" in c for c in calls), f"mine must still run when picked is non-empty; got {calls}"
 
 
+def test_run_skips_mine_when_mine_mode_skill(tmp_path):
+    """When mnemos.yaml declares mine_mode: skill, the hook's regex mine must not fire.
+
+    Why: after the user accepts a skill-mined palace (`mnemos mine --pilot-llm`
+    → `mnemos accept`), mnemos.yaml flips to mine_mode: skill. If the hook keeps
+    calling regex `mnemos mine`, it lays script-mined drawers next to the skill
+    palace (distinct IDs — no overwrite, but a hybrid palace). 2026-04-21 pilot:
+    accept produced 572 skill drawers, two subsequent SessionStart fires added
+    535 regex drawers on top. Guard: read mine_mode inline and skip the mine
+    call; refinement still runs.
+    """
+    from mnemos.auto_refine import run
+
+    projects = tmp_path / "projects"
+    a = _write_jsonl(projects, "a.jsonl", 1_000_000)
+    ledger = tmp_path / "ledger.tsv"
+    ledger.touch()
+    (tmp_path / "mnemos.yaml").write_text("mine_mode: skill\n", encoding="utf-8")
+
+    calls: list[list[str]] = []
+
+    def recording_runner(cmd):
+        calls.append([str(c) for c in cmd])
+        return 0
+
+    run(
+        vault=tmp_path,
+        projects_dir=projects,
+        ledger_path=ledger,
+        picked=[a],
+        reminder_active=False,
+        started_at="2026-04-16T10:00:00+00:00",
+        runner=recording_runner,
+    )
+
+    assert not any("mine" in c for c in calls), (
+        f"mine must be skipped when mine_mode=skill; got {calls}"
+    )
+    assert any("claude" in c[0] for c in calls if c), (
+        "refine (claude --print) must still run even with mine skipped"
+    )
+    log = (tmp_path / ".mnemos-hook.log").read_text(encoding="utf-8")
+    assert "mine skipped (mine_mode=skill)" in log
+
+
+def test_read_mine_mode_defaults_to_script_when_yaml_missing(tmp_path):
+    from mnemos.auto_refine import _read_mine_mode
+
+    assert _read_mine_mode(tmp_path) == "script"
+
+
+def test_read_mine_mode_parses_yaml_value(tmp_path):
+    from mnemos.auto_refine import _read_mine_mode
+
+    (tmp_path / "mnemos.yaml").write_text(
+        "search_backend: sqlite-vec\nmine_mode: skill\nother: x\n", encoding="utf-8"
+    )
+    assert _read_mine_mode(tmp_path) == "skill"
+
+    (tmp_path / "mnemos.yaml").write_text("mine_mode: 'script'\n", encoding="utf-8")
+    assert _read_mine_mode(tmp_path) == "script"
+
+
 def test_run_writes_last_outcome_ok_when_picked(tmp_path):
     """After a refine round that actually produces ≥1 OK note, idle records outcome=ok.
 
