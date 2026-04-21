@@ -1,6 +1,6 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-20 (v0.4.2-alpha shipped; skill-mine accepted + live in kasamd; next: 4.3 skill-recall)
+**Last updated:** 2026-04-21 (kasamd palace cleanup: 535 hybrid-regex drawer'ı _recycled/'a taşındı, 2 yeni session skill-mine edildi, auto-refine hook'a mine_mode=skill guard'ı eklendi; palace 593 skill drawer; sonraki: 4.3 skill-recall)
 **Stable PyPI version:** `v0.3.3` · **Next:** `v0.4.0` (AI Boost / Phase 1 — 4.3 + 4.5 + 4.6 + 4.7 remaining)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
@@ -349,28 +349,71 @@ gap.
 | `6e8a3e3` | `.gitkeep.md` filter in `_discover_sources` |
 | `dbe13da` | 4.2.15 docs — skill-mine accepted, live in kasamd |
 
-**Kasamd canlı durumu (post-accept, 2026-04-20):**
+**Kasamd canlı durumu (post-accept + 2026-04-21 cleanup):**
 
-- `Mnemos/` = 572 skill-mine drawer (5-hall dengeli, smart H1, temiz
-  entity). Önceki script-mine palace (725 drawer) `_recycled/Mnemos-2026-04-20/`'de arşivli.
+- `Mnemos/` = **593 skill-mine drawer** (572 orijinal accept batch +
+  21 yeni post-accept session drawer'ı). 5-hall dağılımı:
+  decisions 255 / events 156 / problems 148 / preferences 32 /
+  emotional 2. 6 wing. Önceki script-mine palace (725 drawer)
+  `_recycled/Mnemos-2026-04-20/`'de arşivli.
 - `mnemos.yaml: mine_mode: skill`
-- `Mnemos/search.sqlite3` 572 drawer'dan rebuilt (sqlite-vec backend)
-- `mnemos search` smoke: "safa clutch" → skill drawer top-1
-  (`# Safa Clutch T1/T2 Mühendis Revizyonu`)
+- `Mnemos/search.sqlite3` 593 drawer'dan rebuilt (sqlite-vec backend)
+- `mnemos search` smoke: "safa clutch" / "jzg24c deadline anchor" /
+  "v042 alpha accept skill mine" üçü de skill drawer top-1 döndürdü
 - Pilot rapor: `kasamd/docs/pilots/2026-04-19-llm-mine-pilot-3.md` —
   5-eksen qualitative judgment dolu
-- Token bütçesi: **57.3M** subscription quota (one-off, 83.4 dk
-  paralel-3 wall clock)
 
-Full suite **538 pass / 2 skip / 3 deselect**. Working tree temiz.
+**2026-04-21 hybrid-palace temizliği (root cause + düzeltme):**
+- **Sorun:** accept sonrası auto-refine hook SessionStart'ta
+  `mnemos mine Sessions/` (regex) çağırıyordu. ID deterministic olsa
+  da skill-mine smart-H1 filename ≠ regex section-header filename →
+  hiçbir drawer overwrite olmadı, ama 535 regex drawer `facts/` hall
+  ve `alınan-kararlar/yapılanlar/özet/sonraki-adımlar/see-also/
+  sorunlar` section-header filename pattern'iyle skill palace'ın
+  yanında birikti. Frontmatter farkı: skill drawer `source_type:
+  skill-mine` taşıyor, regex drawer bu field'ı taşımıyor →
+  ayrıştırma güvenli.
+- **Fix 1 — hook guard** (`a5042a2`): `mnemos/auto_refine.py`
+  `_read_mine_mode(vault)` inline yaml parse ediyor; yaml'da
+  `mine_mode: skill` ise regex mine çağrısı skip oluyor. Hook
+  sadece refine yapar, mining pilot orchestrator'a bırakılır.
+  4 yeni test, auto_refine suite 65/65 green.
+- **Fix 2 — vault cleanup** (repo commit yok, kasamd-only):
+  535 regex drawer `_recycled/regex-cleanup-2026-04-21/`'e
+  taşındı (silme değil); 101 boş hall/room dir temizlendi;
+  index rebuild `--from-palace` ile yapıldı.
+- **Fix 3 — post-accept iki yeni session skill-mine edildi:**
+  `2026-04-19-mnemos-v042-alpha-skill-mine-accept` (13 drawer) +
+  `2026-04-21-gyp-deadline-anchor-jzg24c-teknik-uygunluk` (8 drawer).
+  Pilot orchestrator `--pilot-limit 0` ile başlatıldı ama ledger
+  path mismatch yüzünden tümünü baştan mine etmeye başladı;
+  hedef 21 drawer üretildikten sonra durduruldu, sadece iki hedef
+  session'ın drawer'ları `Mnemos-pilot/` → `Mnemos/` path-preserving
+  kopyalandı, kalan `Mnemos-pilot/` `_recycled/Mnemos-pilot-2026-04-21-partial/`'e
+  arşivlendi.
+- **Snapshot:** temizlik öncesi `kasamd-Mnemos-backup-2026-04-21-1738.zip`
+  (4.4 MB) vault-root'ta duruyor.
+
+Full suite **542 pass / 2 skip / 3 deselect** (+4 hook guard test). Working tree temiz.
 
 ---
 
 ### ⏭ SIRADAKİ OTURUM — v0.4.0 Phase 1 kalanı
 
-v0.4.2-alpha kapandı (skill-mine canlı). Sıradaki parçalar v0.4.0-final
+v0.4.2-alpha kapandı + hybrid-palace cleanup yapıldı (hook guard
+`a5042a2` + kasamd re-bootstrap 593 drawer). Sıradaki parçalar v0.4.0-final
 için:
 
+- **4.3.A Hook → skill-mine route** (~1–2h, PRE-4.3) —
+  `auto_refine.py` guard şu an sadece regex mine'ı skip ediyor; gerçek
+  yeni drawer'lar hook'tan değil, elle `mnemos mine --pilot-llm`'den
+  geliyor. Kalıcı çözüm: hook `mine_mode: skill` ise pilot orchestrator'a
+  (`--pilot-limit N` son N refined Sessions için) subprocess çağırsın.
+  Detached bg worker, ledger path normalizasyonu (bu seferki partial
+  re-mine sebebi: pilot orchestrator ledger'ı `~/.claude/skills/
+  mnemos-mine-llm/state/mined.tsv`'te ama path formatı eşleşmedi →
+  tüm session'lar "yeni" sayıldı). 4.3 öncesi kapatılmalı yoksa
+  skill-recall demoları karışık palace'ta test edilir.
 - **4.3 Skill-recall** (~5h) — `/mnemos-recall <query>` user skill +
   `/mnemos-briefing` SessionStart opt-in hook + MCP `recall_mode` yaml
   dinamik instructions. Pattern: vector top-50 → Claude Sonnet judge →
@@ -407,15 +450,17 @@ için:
   SQLite lock tutuyordu). Bir sonraki Claude Code restart'ında otomatik
   respawn eder, yeni skill palace'ı + yeni ChromaDB'yi kullanır.
 
-### Practical stats (author's vault, 2026-04-20)
+### Practical stats (author's vault, 2026-04-21)
 
-- **572 drawers** across 6 wings (GYP, General, LightRAG-PO-Arsivi,
-  Mnemos, ProcureTrack, Satin-Alma-Otomasyonu), 5-hall dengeli dağılım
-  (decisions:246, events:149, problems:142, preferences:29, emotional:2)
-- Mine mode: **skill** (Claude Sonnet via `/mnemos-mine-llm` subprocess);
-  her yeni session auto-refine hook sonrası skill-mine'a girer
-- Backend: sqlite-vec (`Mnemos/search.sqlite3`), 572 drawer indexed
-- 66 refined session notes in `Sessions/` (52 OK from 122 processed transcripts)
+- **593 drawers** across 6 wings (GYP, General, LightRAG-PO-Arsivi,
+  Mnemos, ProcureTrack, Satin-Alma-Otomasyonu), 5-hall dağılımı
+  (decisions:255, events:156, problems:148, preferences:32, emotional:2)
+- Mine mode: **skill** (Claude Sonnet via `/mnemos-mine-llm` subprocess).
+  Auto-refine hook artık `mine_mode: skill` olduğunda regex mine
+  çağrısını skip ediyor (`a5042a2`) — 4.3.A mini-task (hook → skill-mine
+  orchestrator route) sonraki oturumda.
+- Backend: sqlite-vec (`Mnemos/search.sqlite3`), 593 drawer indexed
+- 67 refined session notes in `Sessions/` (53 OK from 123 processed transcripts)
 - Backlog: **0** — all Claude Code JSONL transcripts processed
 - Auto-refine hook processes 3 closed transcripts per new session start
   (bu hook'un içinde skill-mine tetiklenmesi opsiyonel; şimdilik hook hâlâ
