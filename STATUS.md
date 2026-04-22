@@ -424,7 +424,30 @@ Full suite **542 pass / 2 skip / 3 deselect** (+4 hook guard test). Working tree
 | `b0f377e` | T7 `mnemos catch-up` CLI subcommand |
 | `<T10>`   | T10 ROADMAP + STATUS (this commit) |
 
-**🟡 Manual smoke pending (kullanıcı aksiyonu):** yeni Claude Code session aç/kapat → bir sonraki session'da hook fire edilecek → `Mnemos/_processing.xlsx` ilk kez oluşmalı → po-556 session drawer'ları Mnemos/'a eklenmeli. Observations STATUS'a eklenecek.
+**✅ Manual smoke run (2026-04-22):**
+- Hook wrapper active-session marker yazıyor ama **spawn ettiği bg
+  subprocess sessizce ölüyor** (Windows `DETACHED_PROCESS + stdout=DEVNULL`
+  kombinasyonu; import/startup error görünmez kalıyor). Ship-blocker
+  değil çünkü manuel `mnemos catch-up` + manuel bg invocation sorunsuz
+  çalışıyor. v0.4.1 P8 olarak tracked.
+- **Manuel bg run başarıyla Phase A mine çalıştırdı:**
+  - `2026-04-21-po-556-deadline-anchor-skill-extract-kaldirildi.md` →
+    **6 drawer** (GYP / Satin-Alma-Otomasyonu/po-olusturma/: 2 decisions,
+    2 events, 1 preferences, 1 problems). Smart H1, absolute-path source,
+    entities temiz (`[Xi'an Yile Technology, po-olusturma]`).
+  - `.gitkeep.md` → 0 drawer (skill SKIP, placeholder — beklenildi).
+  - Süre: ~3 dk (cap 10 altında, her iki item seri koştu).
+- **Palace delta:** 593 → **599 drawer**. 5-hall dağılımı güncel.
+- **Xlsx:** `_processing.xlsx` 170 → 163 row (9 temizlik + 1 Phase A
+  row-sync). Po-556 tek satırda `mined_outcome=OK, drawer_count=6`.
+- **Tespit edilen minor schema bug (P9):** Phase A bir Session md'yi
+  işlediğinde xlsx'e yeni `md` row ekliyor, ama o md'nin arkasındaki
+  JSONL satırı (backfill'den) güncellenmiyor → aynı iş iki row'da
+  görünüyor. Bu smoke'da elle sync ettim; v0.4.1 P9 kalıcı fix.
+- **`if picked:` gate bug (`fdb92d8`):** smoke sırasında ortaya çıktı.
+  T5 testi `picked=[a]` non-empty ile geçiyordu; production'da
+  kasamd backfill sonrası picker sıklıkla `[]` dönünce hook skill
+  pipeline'ı stranded bırakıyordu. Fix + regression test shipped.
 
 **Scope-dışı küçük polish (v0.4.1'e taşındı):**
 - `_pick_unmined_sessions` ve `_pick_unprocessed_jsonls` `.gitkeep*` + `MEMORY.md` filter'ı (zaten `_discover_sources` pilot'ta var, hook picker'ında yok). Kasamd'de şu an `.gitkeep.md` Phase A picker'a düşüyor; skill SKIP ediyor, zararsız ama noise.
