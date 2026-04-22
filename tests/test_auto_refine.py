@@ -1149,3 +1149,105 @@ def test_run_passes_triggering_session_id_through_to_status(tmp_path):
 
     data = json.loads((tmp_path / ".mnemos-hook-status.json").read_text(encoding="utf-8"))
     assert data.get("triggering_session_id") == "my-session-xyz"
+
+
+def test_pick_unprocessed_jsonls_returns_all_under_limit(tmp_path):
+    from mnemos.auto_refine import _pick_unprocessed_jsonls
+
+    projects = tmp_path / "projects"
+    # Create 5 fresh JSONLs, none in ledger
+    old = 1_000_000
+    paths = [_write_jsonl(projects, f"s{i}.jsonl", old + i) for i in range(5)]
+    ledger = tmp_path / "ledger.tsv"
+    ledger.touch()
+
+    picked = _pick_unprocessed_jsonls(
+        projects_dir=projects, ledger_path=ledger, limit=10,
+        exclude=set(), active_paths=set(),
+    )
+    assert len(picked) == 5
+    # mtime desc order — s4 newest
+    assert picked[0].name == "s4.jsonl"
+
+
+def test_pick_unprocessed_jsonls_honors_limit(tmp_path):
+    from mnemos.auto_refine import _pick_unprocessed_jsonls
+
+    projects = tmp_path / "projects"
+    for i in range(7):
+        _write_jsonl(projects, f"s{i}.jsonl", 1_000_000 + i)
+    ledger = tmp_path / "ledger.tsv"
+    ledger.touch()
+
+    picked = _pick_unprocessed_jsonls(
+        projects_dir=projects, ledger_path=ledger, limit=3,
+        exclude=set(), active_paths=set(),
+    )
+    assert len(picked) == 3
+
+
+def test_pick_unmined_sessions_returns_unmined(tmp_path):
+    from mnemos.auto_refine import _pick_unmined_sessions
+
+    vault = tmp_path
+    sessions = vault / "Sessions"
+    sessions.mkdir()
+    (sessions / "2026-04-20-a.md").write_text("x", encoding="utf-8")
+    (sessions / "2026-04-21-b.md").write_text("x", encoding="utf-8")
+    (sessions / "2026-04-22-c.md").write_text("x", encoding="utf-8")
+    # Mine ledger: only b.md processed
+    mine_ledger = tmp_path / "mined.tsv"
+    palace = str(vault / "Mnemos")
+    mine_ledger.write_text(
+        f"{sessions / '2026-04-21-b.md'}\t{palace}\t3\t2026-04-21T10:00:00Z\n",
+        encoding="utf-8",
+    )
+
+    picked = _pick_unmined_sessions(
+        vault=vault, mine_ledger_path=mine_ledger,
+        palace_root=vault / "Mnemos", limit=10,
+    )
+    names = {p.name for p in picked}
+    assert names == {"2026-04-20-a.md", "2026-04-22-c.md"}
+
+
+def test_pick_unmined_sessions_honors_limit(tmp_path):
+    from mnemos.auto_refine import _pick_unmined_sessions
+
+    sessions = tmp_path / "Sessions"
+    sessions.mkdir()
+    for i in range(5):
+        (sessions / f"2026-04-2{i}-s.md").write_text("x", encoding="utf-8")
+    mine_ledger = tmp_path / "mined.tsv"
+    mine_ledger.touch()
+
+    picked = _pick_unmined_sessions(
+        vault=tmp_path, mine_ledger_path=mine_ledger,
+        palace_root=tmp_path / "Mnemos", limit=2,
+    )
+    assert len(picked) == 2
+
+
+def test_latest_session_for_jsonl_returns_path(tmp_path):
+    from mnemos.auto_refine import _latest_session_for_jsonl
+
+    vault = tmp_path
+    (vault / "Sessions").mkdir()
+    ledger = tmp_path / "refine.tsv"
+    jsonl = tmp_path / "proj" / "abc.jsonl"
+    ledger.write_text(
+        f"{jsonl}\tOK\t2026-04-22-abc.md\n",
+        encoding="utf-8",
+    )
+
+    result = _latest_session_for_jsonl(ledger, jsonl, vault)
+    assert result == ("OK", vault / "Sessions" / "2026-04-22-abc.md")
+
+
+def test_latest_session_for_jsonl_missing_returns_none(tmp_path):
+    from mnemos.auto_refine import _latest_session_for_jsonl
+
+    ledger = tmp_path / "refine.tsv"
+    ledger.touch()
+    result = _latest_session_for_jsonl(ledger, tmp_path / "x.jsonl", tmp_path)
+    assert result is None

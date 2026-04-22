@@ -270,6 +270,99 @@ def pick_recent_jsonls(
     return picked
 
 
+def _pick_unprocessed_jsonls(
+    projects_dir: Path,
+    ledger_path: Path,
+    limit: int,
+    exclude: set[str] | None = None,
+    active_paths: set[str] | None = None,
+    min_user_turns: int = MIN_USER_TURNS,
+) -> list[Path]:
+    """Return up to `limit` most-recent unprocessed JSONLs (skill-mine picker).
+
+    Same filtering rules as ``pick_recent_jsonls`` (subagent skip, ledger skip,
+    exclude, min_user_turns, recently-modified skip) but with an explicit
+    ``limit`` instead of the hard-coded n=3. Used by the skill-mine pipeline
+    which may process up to `cap` sources per fire (Spec §4.2).
+    """
+    if not projects_dir.exists() or limit <= 0:
+        return []
+
+    ledger_paths = _read_ledger_paths(ledger_path)
+    excluded = {str(Path(p)) for p in (exclude or set())}
+    excluded |= {str(Path(p)) for p in (active_paths or set())}
+    candidates = sorted(
+        (p for p in projects_dir.rglob("*.jsonl") if not _is_subagent_jsonl(p)),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    picked: list[Path] = []
+    for candidate in candidates:
+        key = str(candidate)
+        if key in ledger_paths or key in excluded:
+            continue
+        if min_user_turns > 0 and _count_user_turns(candidate) < min_user_turns:
+            continue
+        if _is_recently_modified(candidate):
+            continue
+        picked.append(candidate)
+        if len(picked) >= limit:
+            break
+    return picked
+
+
+def _pick_unmined_sessions(
+    vault: Path,
+    mine_ledger_path: Path,
+    palace_root: Path,
+    limit: int,
+) -> list[Path]:
+    """Return up to `limit` Sessions/*.md files NOT recorded as OK in the
+    skill-mine ledger for this palace.
+
+    The mine-llm ledger format (skills/mnemos-mine-llm/SKILL.md §4) is:
+        <input-abs-path>\\t<palace-root>\\t<drawer-count>\\t<ISO-ts|SKIP:reason>
+
+    A session counts as "mined" iff the ledger has a row where:
+    - column 0 == session path
+    - column 1 == palace_root (same palace — different palaces retry)
+    - column 3 is an ISO timestamp (matches r'^\\d{4}-\\d{2}-\\d{2}T').
+    SKIP and ERROR rows re-queue (user may want to retry).
+    """
+    import re
+
+    sessions_dir = Path(vault) / "Sessions"
+    if not sessions_dir.exists() or limit <= 0:
+        return []
+
+    palace_str = str(Path(palace_root))
+    ok_paths: set[str] = set()
+    if mine_ledger_path.exists():
+        ts_re = re.compile(r"^\d{4}-\d{2}-\d{2}T")
+        for line in mine_ledger_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            parts = line.split("\t")
+            if len(parts) < 4:
+                continue
+            if str(Path(parts[1])) != palace_str:
+                continue
+            if ts_re.match(parts[3]):
+                ok_paths.add(str(Path(parts[0])))
+
+    candidates = sorted(
+        sessions_dir.glob("*.md"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    picked: list[Path] = []
+    for c in candidates:
+        if str(c) in ok_paths:
+            continue
+        picked.append(c)
+        if len(picked) >= limit:
+            break
+    return picked
+
+
 def compute_backlog(
     projects_dir: Path,
     ledger_path: Path,
@@ -401,6 +494,31 @@ def _latest_outcome_for_path(ledger_path: Path, target: Path) -> str | None:
             continue
         if str(Path(cols[0].strip())) == target_norm:
             latest = cols[1].strip()
+    return latest
+
+
+def _latest_session_for_jsonl(
+    ledger_path: Path, jsonl: Path, vault: Path,
+) -> tuple[str, Path] | None:
+    """Return (outcome, session_md_abs_path) for the latest ledger row matching `jsonl`.
+
+    Refine ledger format is ``<jsonl>\\t<outcome>\\t<session_md_name>`` where
+    ``session_md_name`` is Sessions/-relative. Returns None if no row matches.
+    Column 3 may be absent on ERROR rows — in that case we return (outcome, None)
+    by collapsing the tuple to None (caller falls back to Sessions/ newest file).
+    """
+    if not ledger_path.exists():
+        return None
+    target = str(Path(jsonl))
+    latest: tuple[str, Path] | None = None
+    for line in ledger_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        parts = line.split("\t")
+        if len(parts) < 3:
+            continue
+        if str(Path(parts[0])) != target:
+            continue
+        session_md = Path(vault) / "Sessions" / parts[2]
+        latest = (parts[1], session_md)
     return latest
 
 
