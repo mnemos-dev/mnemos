@@ -445,17 +445,9 @@ def test_run_still_mines_when_picked_nonempty(tmp_path):
     assert any("mine" in c for c in calls), f"mine must still run when picked is non-empty; got {calls}"
 
 
-def test_run_skips_mine_when_mine_mode_skill(tmp_path):
-    """When mnemos.yaml declares mine_mode: skill, the hook's regex mine must not fire.
-
-    Why: after the user accepts a skill-mined palace (`mnemos mine --pilot-llm`
-    → `mnemos accept`), mnemos.yaml flips to mine_mode: skill. If the hook keeps
-    calling regex `mnemos mine`, it lays script-mined drawers next to the skill
-    palace (distinct IDs — no overwrite, but a hybrid palace). 2026-04-21 pilot:
-    accept produced 572 skill drawers, two subsequent SessionStart fires added
-    535 regex drawers on top. Guard: read mine_mode inline and skip the mine
-    call; refinement still runs.
-    """
+def test_run_routes_to_skill_pipeline_when_mine_mode_skill(tmp_path, monkeypatch):
+    """When mnemos.yaml has mine_mode: skill, hook calls _run_skill_pipeline
+    (not the legacy regex `mnemos mine` subprocess)."""
     from mnemos.auto_refine import run
 
     projects = tmp_path / "projects"
@@ -463,11 +455,27 @@ def test_run_skips_mine_when_mine_mode_skill(tmp_path):
     ledger = tmp_path / "ledger.tsv"
     ledger.touch()
     (tmp_path / "mnemos.yaml").write_text("mine_mode: skill\n", encoding="utf-8")
+    (tmp_path / "Sessions").mkdir()
+    (tmp_path / "Mnemos").mkdir()
+    mine_ledger = tmp_path / "mine_ledger.tsv"
+    mine_ledger.touch()
+    monkeypatch.setenv("MNEMOS_MINE_LEDGER", str(mine_ledger))
 
     calls: list[list[str]] = []
 
     def recording_runner(cmd):
         calls.append([str(c) for c in cmd])
+        # Simulate refine OK to enable Phase B chain
+        if "/mnemos-refine-transcripts" in cmd[-1]:
+            jsonl_path = cmd[-1].split(maxsplit=1)[1]
+            name = Path(jsonl_path).stem + ".md"
+            (tmp_path / "Sessions" / name).write_text("x", encoding="utf-8")
+            with ledger.open("a", encoding="utf-8") as fh:
+                fh.write(f"{jsonl_path}\tOK\t{name}\n")
+        elif "/mnemos-mine-llm" in cmd[-1]:
+            parts = cmd[-1].split()
+            with mine_ledger.open("a", encoding="utf-8") as fh:
+                fh.write(f"{parts[1]}\t{parts[2]}\t2\t2026-04-22T10:00:00Z\n")
         return 0
 
     run(
@@ -476,18 +484,17 @@ def test_run_skips_mine_when_mine_mode_skill(tmp_path):
         ledger_path=ledger,
         picked=[a],
         reminder_active=False,
-        started_at="2026-04-16T10:00:00+00:00",
+        started_at="2026-04-22T10:00:00+00:00",
         runner=recording_runner,
     )
 
-    assert not any("mine" in c for c in calls), (
-        f"mine must be skipped when mine_mode=skill; got {calls}"
-    )
-    assert any("claude" in c[0] for c in calls if c), (
-        "refine (claude --print) must still run even with mine skipped"
-    )
-    log = (tmp_path / ".mnemos-hook.log").read_text(encoding="utf-8")
-    assert "mine skipped (mine_mode=skill)" in log
+    # Legacy regex mine (python -m mnemos.cli ... mine Sessions) must NOT appear.
+    assert not any(
+        "mnemos.cli" in " ".join(c) and "mine" in c for c in calls
+    ), f"legacy regex mine still firing: {calls}"
+    # But /mnemos-refine-transcripts AND /mnemos-mine-llm must appear.
+    assert any("/mnemos-refine-transcripts" in " ".join(c) for c in calls)
+    assert any("/mnemos-mine-llm" in " ".join(c) for c in calls)
 
 
 def test_read_mine_mode_defaults_to_script_when_yaml_missing(tmp_path):

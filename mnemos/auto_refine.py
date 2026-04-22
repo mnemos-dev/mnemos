@@ -21,6 +21,7 @@ DEFAULT_LEDGER_SUFFIX = Path(".claude/skills/mnemos-refine-transcripts/state/pro
 REMINDER_INTERVAL_DAYS = 7
 STATUS_FILENAME = ".mnemos-hook-status.json"
 HOOK_LOG_FILENAME = ".mnemos-hook.log"
+SKILL_PIPELINE_CAP = 10  # Spec §4.2 — fire-toplam cap for skill-mine pipeline.
 HOOK_LOCK_FILENAME = ".mnemos-hook.lock"
 ACTIVE_SESSIONS_DIR = ".mnemos-active-sessions"
 ACTIVE_SESSION_MAX_AGE_SECONDS = 86400
@@ -155,6 +156,24 @@ def resolve_ledger_path() -> Path:
     if override:
         return Path(override)
     return Path.home() / DEFAULT_LEDGER_SUFFIX
+
+
+DEFAULT_MINE_LEDGER_SUFFIX = Path(".claude/skills/mnemos-mine-llm/state/mined.tsv")
+
+
+def resolve_mine_ledger_path() -> Path:
+    """Return the path to the skill-mine-llm ledger (env-overridable).
+
+    Env override: ``MNEMOS_MINE_LEDGER``. Default: ``~/<DEFAULT_MINE_LEDGER_SUFFIX>``.
+    """
+    override = os.environ.get("MNEMOS_MINE_LEDGER")
+    if override:
+        return Path(override)
+    return Path.home() / DEFAULT_MINE_LEDGER_SUFFIX
+
+
+def _resolve_mine_ledger_path() -> Path:
+    return resolve_mine_ledger_path()
 
 
 def _count_user_turns(path: Path, max_lines: int = _USER_TURN_SCAN_LIMIT) -> int:
@@ -854,8 +873,21 @@ def _run_locked(
         )
         sessions_dir = Path(vault) / "Sessions"
         if _read_mine_mode(vault) == "skill":
-            with log_path.open("a", encoding="utf-8") as fh:
-                fh.write("  mine skipped (mine_mode=skill)\n")
+            refine_ledger_path = ledger_path
+            mine_ledger_path = _resolve_mine_ledger_path()
+            backlog_now = compute_backlog(projects_dir, refine_ledger_path)
+            _run_skill_pipeline(
+                vault=vault, projects_dir=projects_dir,
+                refine_ledger_path=refine_ledger_path,
+                mine_ledger_path=mine_ledger_path,
+                runner=runner, cap=SKILL_PIPELINE_CAP,
+                triggering_session_id=triggering_session_id,
+                status_context={
+                    "backlog": backlog_now,
+                    "reminder_active": reminder_active,
+                    "started_at": started_at,
+                },
+            )
         else:
             rc = runner([sys.executable, "-m", "mnemos.cli", "--vault", str(vault), "mine", str(sessions_dir)])
             with log_path.open("a", encoding="utf-8") as fh:
