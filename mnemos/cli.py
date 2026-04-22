@@ -949,6 +949,35 @@ def cmd_migrate(args: argparse.Namespace) -> None:
     _print_migration_result(result, cfg)
 
 
+def cmd_catch_up(args: argparse.Namespace) -> None:
+    """`mnemos catch-up` — run the skill-mine pipeline in foreground for backlog."""
+    from mnemos.catch_up import run_catch_up, CatchUpError
+    from mnemos.auto_refine import resolve_ledger_path, resolve_mine_ledger_path
+
+    vault_path = _resolve_vault(args.vault)
+    _require_vault(vault_path, "catch-up")
+
+    projects_dir = Path(os.environ.get("CLAUDE_PROJECTS_DIR", Path.home() / ".claude" / "projects"))
+
+    try:
+        result = run_catch_up(
+            vault=vault_path,
+            projects_dir=projects_dir,
+            refine_ledger_path=resolve_ledger_path(),
+            mine_ledger_path=resolve_mine_ledger_path(),
+            limit=args.limit,
+            parallel=args.parallel,
+            dry_run=args.dry_run,
+            yes=args.yes,
+        )
+    except CatchUpError as e:
+        print(f"catch-up error: {e}", file=sys.stderr)
+        sys.exit(2)
+
+    print()
+    print(f"Summary: {result.processed} processed · {result.errors} errors · {result.deferred} deferred")
+
+
 def _print_migration_result(result, cfg: "MnemosConfig") -> None:  # type: ignore[name-defined]
     """Render a MigrationResult in a human-readable block."""
     if result.status == "noop":
@@ -1377,6 +1406,20 @@ def main() -> None:
         help="Update yaml + back up old storage but skip the rebuild (advanced; you re-mine manually later).",
     )
     parser_migrate.set_defaults(func=cmd_migrate)
+
+    parser_catchup = subparsers.add_parser(
+        "catch-up",
+        help="Process backlog of unrefined/unmined sources (requires mine_mode: skill)",
+    )
+    parser_catchup.add_argument("--limit", type=int, default=None,
+                                help="Max sources to process (default: unlimited)")
+    parser_catchup.add_argument("--parallel", type=int, default=1,
+                                help="Number of concurrent claude subprocesses (default: 1)")
+    parser_catchup.add_argument("--dry-run", action="store_true",
+                                help="Print plan and exit")
+    parser_catchup.add_argument("--yes", action="store_true",
+                                help="Skip confirmation")
+    parser_catchup.set_defaults(func=cmd_catch_up)
 
     # ------------------------------------------------------------------
     # benchmark
