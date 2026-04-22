@@ -19,6 +19,7 @@ archive; burada çelişki olursa bu dosya geçerlidir.
 | v0.3.2 | Palace Hygiene (pipeline fixes + atomic rebuild) | ✅ | ✅ |
 | v0.3.3 | Post-v0.3.2 cleanup (migrate rollback+lock, score parity, slow-tests) | ✅ | ✅ |
 | **v0.4.0** | **AI Boost / Phase 1 — skill-first (mine + recall + pilot + settings TUI)** | **🔄 spec done** | — |
+| v0.4.1 | Polish batch (picker noise filter, ledger reconcile, source-path discipline, etc.) | ⏸ | — |
 | v0.5.0 | Automation / Phase 2 (+ contradiction hygiene v0.4'ten) | ⏸ | — |
 | v0.6.0 | Community & Ecosystem | ⏸ | — |
 
@@ -877,6 +878,52 @@ Rerank skill-recall'ın içinde eridi; contradiction v0.5 hygiene'a ertelendi.
     orijinal %95 iddiası skill-first yaklaşımla düştü — S+S combo'ya
     rerank gelmiyor. Skill modları kalitatif, pilot raporuyla değerlenir.)
 - [ ] **4.7 PyPI release v0.4.0**
+
+---
+
+## v0.4.1 — Polish batch ⏸ *(opsiyonel, 4.7 sonrası)*
+
+Küçük UX ve tutarlılık düzeltmeleri. Her biri bağımsız, ship'e blok değil. STATUS.md "Opsiyonel v0.4.1 polish" bölümünden türetildi.
+
+### Görevler
+
+- [ ] **4.1.P1 Picker noise filter** *(~20 min)* —
+  `_pick_unmined_sessions` + `_pick_unprocessed_jsonls` `.gitkeep*` +
+  `MEMORY.md` + leading-underscore dosyaları sessiz düşsün
+  (`_discover_sources`'daki aynı filter'ı share et). Kasamd'de `.gitkeep.md`
+  hâlâ Phase A picker'a giriyor.
+- [ ] **4.1.P2 Script miner section-header filename kaçışı** *(~1h)* —
+  script-mine canlı olmasa bile benchmark ve geri dönüş senaryoları için
+  `alınan-kararlar/yapılanlar/özet/sonraki-adımlar/see-also/sorunlar`
+  pattern'ini slug'dan çıkar.
+- [ ] **4.1.P3 `mnemos mine --raw-only`** *(~30 min)* — 4.2.9
+  follow-up; raw collection'ı yeniden indexler mined'a dokunmaz.
+- [ ] **4.1.P4 Ledger/palace reconcile komutu** *(~1.5h)* —
+  `mnemos processing-log repair` (veya `mnemos mine --reconcile-ledger`).
+  Palace `wings/` frontmatter'ını tarar, skill-mine ledger'ına eksik OK
+  satırlarını `count_drawers_for_source` pattern'ıyla backfill eder,
+  `<vault>/Mnemos/_processing.xlsx`'i günceller. 2026-04-22 kasamd
+  bulgusu: palace 593 drawer, ledger accounting 516 → 77 drawer
+  "ledger-skipped; filesystem-recovered" birikimi. Pilot raporu
+  `docs/pilots/2026-04-19-v0.4-phase1-real-vault-pilot.md` Finding 2.
+  Aynı komut `--rebuild` flag'iyle xlsx'i iki ledger'dan sıfırdan da üretebilir.
+- [ ] **4.1.P5 Skill-mine-llm source field absolute-path discipline** *(~30 min)* —
+  `skills/mnemos-mine-llm/SKILL.md` frontmatter şema bölümünde `source:`
+  alanının **daima absolute path** olduğunu vurgula. Canonical prompt'a
+  "input path'i olduğu gibi frontmatter'a kopyala, cwd-relative yapma"
+  talimatı. 2026-04-22 audit: 3 drawer relative path ile yazılmış
+  (`source: memory/user_profile.md`). Test: skill mini-pilot fixture'ı
+  relative-input verince bile frontmatter absolute olmalı.
+- [ ] **4.1.P6 Hook refine-skill ledger-skip fallback** *(~45 min)* —
+  `_run_skill_pipeline` Phase B sonunda `_latest_session_for_jsonl`
+  None dönerse Sessions/ altında newest md dosyasını fallback olarak
+  al (pilot.py'deki `count_drawers_for_source` pattern'ı mantıksal
+  muadili). Spec 4.3.A §8'de planlandı ama implementasyonda kısa
+  yoldan ERROR'a düştük.
+- [ ] **4.1.P7 Legacy corrupt ledger rows cleanup** *(~15 min)* —
+  refine ledger `processed.tsv` satır 128 (`C:\Users<TAB>…`) +
+  UUID-prefix-kesik 4 satır (58/84/94/111) + eski `palace=Mnemos-pilot`
+  satırları. Harmless ama STATUS Pending user actions kapatır.
 
 ---
 

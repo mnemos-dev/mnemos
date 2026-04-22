@@ -427,8 +427,11 @@ Full suite **542 pass / 2 skip / 3 deselect** (+4 hook guard test). Working tree
 **🟡 Manual smoke pending (kullanıcı aksiyonu):** yeni Claude Code session aç/kapat → bir sonraki session'da hook fire edilecek → `Mnemos/_processing.xlsx` ilk kez oluşmalı → po-556 session drawer'ları Mnemos/'a eklenmeli. Observations STATUS'a eklenecek.
 
 **Scope-dışı küçük polish (v0.4.1'e taşındı):**
-- `_pick_unmined_sessions` ve `_pick_unprocessed_jsonls` `.gitkeep*` + `MEMORY.md` filter'ı (zaten `_discover_sources` pilot'ta var, hook picker'ında yok).
-- `mnemos processing-log --rebuild` komutu (xlsx'i iki ledger'dan sıfırdan üret).
+- `_pick_unmined_sessions` ve `_pick_unprocessed_jsonls` `.gitkeep*` + `MEMORY.md` filter'ı (zaten `_discover_sources` pilot'ta var, hook picker'ında yok). Kasamd'de şu an `.gitkeep.md` Phase A picker'a düşüyor; skill SKIP ediyor, zararsız ama noise.
+- `mnemos processing-log --rebuild` komutu (xlsx'i iki ledger'dan sıfırdan üret). Ship edildiğinde yeni kullanıcının xlsx'i natural doğar (YAGNI); sadece kasamd/brownfield kurtarma senaryosu için.
+- **Ledger/palace reconcile komutu** (`mnemos processing-log repair` veya benzeri). 2026-04-22 kasamd analizinde tespit: wings'te **593 gerçek drawer** var ama skill-mine ledger sadece **516 drawer**'ı accounting içinde (`palace=Mnemos` satırları, sum of column 2). 77 drawer palace'ta fiziksel olarak var ama ledger'a yazılmamış — pilot raporu Finding 2'deki "ledger-skipped; recovered from filesystem" pattern'ının birikmesi. Repair komutu palace frontmatter'ını tarayıp eksik OK satırlarını ledger'a + xlsx'e backfill eder (`count_drawers_for_source` pattern'ı pilot.py'da zaten var).
+- **Skill-mine-llm source field path discipline** — SKILL.md'ye "drawer frontmatter'daki `source:` alanı daima absolute path" notu. 2026-04-22 audit'te 3 drawer relative path ile yazılmış (`source: memory/user_profile.md`). Ledger'a düzgün absolute path yaz (pilot runtime'ı cwd-relative değil, skill subprocess cwd farklı olabilir).
+- **Legacy corrupt ledger rows cleanup** — refine ledger satır 128 (`C:\Users<TAB>ugrademirors\.claude\...`) + 4 UUID-prefix-kesik satır (satır 58/84/94/111) + eski `palace=Mnemos-pilot` satırları. Hook path-match'te tutmaz, xlsx backfill absolute-path filter'ı ile de temiz; yine de one-liner cleanup STATUS'un Pending user actions maddesini kapatır.
 
 ---
 
@@ -454,11 +457,38 @@ Sıradaki parçalar v0.4.0-final için:
 
 **Opsiyonel v0.4.1 polish:**
 - `.gitkeep*` filter zaten `6e8a3e3`'te eklendi → bir sonraki pilot'ta
-  discovery'de hiç çıkmayacak
+  discovery'de hiç çıkmayacak. **Picker'lar hâlâ kapsamıyor** —
+  `_pick_unmined_sessions` + `_pick_unprocessed_jsonls` için de aynı
+  filter (hook / catch-up akışında `.gitkeep.md` ve `MEMORY.md` sessiz
+  düşsün). 2026-04-22 dry-run'ında kasamd'de Phase A'ya `.gitkeep.md`
+  girdi.
 - Script miner section-header kaçışı ("Özet/Sonraki Adımlar/Yapılanlar
   /Alınan Kararlar/See Also" filename'e sızıyor) — script-mine canlı
   olmasa bile benchmark ve geri dönüş senaryoları için temizlemek iyi
 - `mnemos mine --raw-only` (4.2.9 follow-up)
+- **Ledger/palace reconcile komutu** — `mnemos processing-log repair`
+  veya `mnemos mine --reconcile-ledger`. Palace frontmatter'ını tarar,
+  skill-mine ledger'ına eksik OK satırlarını filesystem fallback'tan
+  backfill eder, `_processing.xlsx`'i günceller. 2026-04-22 kasamd
+  bulgusu: palace'ta 593 drawer, ledger accounting 516 (77 gap =
+  pilot raporu Finding 2 "ledger-skipped; recovered from filesystem"
+  birikmesi). `mnemos processing-log --rebuild` ile birlikte aynı
+  modülde (`mnemos/processing_log.py` command surface genişletmesi).
+- **Skill-mine-llm source field absolute-path discipline** —
+  `skills/mnemos-mine-llm/SKILL.md` frontmatter şema bölümünde
+  `source:` alanının **daima absolute path** olduğunu vurgula + canonical
+  prompt'a input path'i kaybetmeden kopyalama talimatı. 2026-04-22 audit:
+  3 drawer relative path ile yazılmış (`source: memory/user_profile.md`).
+- **Legacy corrupt ledger rows cleanup** — refine ledger satır 128
+  (`C:\Users<TAB>ugrademirors\.claude\...`) + 4 UUID-prefix-kesik satır
+  + eski `palace=Mnemos-pilot` satırları. Harmless, ama STATUS'taki
+  Pending user actions maddesini kapatır.
+- **Hook ledger-skip koruması** — `_run_skill_pipeline` Phase B
+  sonunda refine skill ledger'ı `OK` yazmadıysa ama `Sessions/`'ta
+  yeni md oluştuysa filesystem fallback çağır (pilot.py pattern).
+  Plan'da Spec §8'de bu durum "Refine OK ama skill ledger'da session
+  path bulunamıyor → filesystem fallback" olarak not edilmişti ama
+  implementation'da `_latest_session_for_jsonl is None → ERROR` oluyor.
 
 ---
 
