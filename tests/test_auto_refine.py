@@ -445,6 +445,58 @@ def test_run_still_mines_when_picked_nonempty(tmp_path):
     assert any("mine" in c for c in calls), f"mine must still run when picked is non-empty; got {calls}"
 
 
+def test_run_fires_skill_pipeline_when_picked_empty(tmp_path, monkeypatch):
+    """Regression for 2026-04-22 incident: `if picked:` gate stranded
+    Phase A (unmined Sessions) whenever the refine-picker returned empty
+    (e.g. all unprocessed JSONLs belonged to live sessions). Skill mode
+    must enter the pipeline regardless of picked."""
+    from mnemos.auto_refine import run
+
+    vault = tmp_path
+    (vault / "mnemos.yaml").write_text("mine_mode: skill\n", encoding="utf-8")
+    (vault / "Sessions").mkdir()
+    (vault / "Mnemos").mkdir()
+    # One unmined Session md → Phase A will pick it
+    session_md = vault / "Sessions" / "2026-04-22-standalone.md"
+    session_md.write_text("x", encoding="utf-8")
+
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    refine_ledger = tmp_path / "refine.tsv"
+    refine_ledger.touch()
+    mine_ledger = tmp_path / "mine_ledger.tsv"
+    mine_ledger.touch()
+    monkeypatch.setenv("MNEMOS_MINE_LEDGER", str(mine_ledger))
+
+    calls: list[list[str]] = []
+
+    def recording_runner(cmd):
+        calls.append([str(c) for c in cmd])
+        if "/mnemos-mine-llm" in cmd[-1]:
+            parts = cmd[-1].split()
+            with mine_ledger.open("a", encoding="utf-8") as fh:
+                fh.write(f"{parts[1]}\t{parts[2]}\t4\t2026-04-22T17:00:00Z\n")
+        return 0
+
+    run(
+        vault=vault,
+        projects_dir=projects,
+        ledger_path=refine_ledger,
+        picked=[],  # empty — gate under test
+        reminder_active=False,
+        started_at="2026-04-22T17:00:00+00:00",
+        runner=recording_runner,
+    )
+
+    # Phase A must have fired for the standalone Session md.
+    mine_calls = [c for c in calls if any("/mnemos-mine-llm" in s for s in c)]
+    assert len(mine_calls) == 1, (
+        f"Phase A mine must fire even when picked=[]; got calls={calls}"
+    )
+    # Assert the target is our Session md.
+    assert "2026-04-22-standalone.md" in " ".join(mine_calls[0])
+
+
 def test_run_routes_to_skill_pipeline_when_mine_mode_skill(tmp_path, monkeypatch):
     """When mnemos.yaml has mine_mode: skill, hook calls _run_skill_pipeline
     (not the legacy regex `mnemos mine` subprocess)."""

@@ -864,7 +864,33 @@ def _run_locked(
         # the skill didn't reach a decision (crash, timeout) and nothing was
         # added to the vault.
 
-    if picked:
+    # Skill mode: pipeline must run even when picked is empty, because
+    # Phase A (unmined Sessions) is independent of the refine-picker and
+    # only discovered inside _run_skill_pipeline. Gating on `picked` would
+    # strand Phase A work whenever the only unprocessed JSONLs happen to be
+    # the user's live sessions (active-PID exclude).
+    if _read_mine_mode(vault) == "skill":
+        refine_ledger_path = ledger_path
+        mine_ledger_path = _resolve_mine_ledger_path()
+        backlog_now = compute_backlog(projects_dir, refine_ledger_path)
+        write_status(
+            vault, "mining", total, total, backlog_now, reminder_active, started_at,
+            last_ok=ok_count, last_skip=skip_count,
+            triggering_session_id=triggering_session_id,
+        )
+        _run_skill_pipeline(
+            vault=vault, projects_dir=projects_dir,
+            refine_ledger_path=refine_ledger_path,
+            mine_ledger_path=mine_ledger_path,
+            runner=runner, cap=SKILL_PIPELINE_CAP,
+            triggering_session_id=triggering_session_id,
+            status_context={
+                "backlog": backlog_now,
+                "reminder_active": reminder_active,
+                "started_at": started_at,
+            },
+        )
+    elif picked:
         backlog = compute_backlog(projects_dir, ledger_path)
         write_status(
             vault, "mining", total, total, backlog, reminder_active, started_at,
@@ -872,26 +898,9 @@ def _run_locked(
             triggering_session_id=triggering_session_id,
         )
         sessions_dir = Path(vault) / "Sessions"
-        if _read_mine_mode(vault) == "skill":
-            refine_ledger_path = ledger_path
-            mine_ledger_path = _resolve_mine_ledger_path()
-            backlog_now = compute_backlog(projects_dir, refine_ledger_path)
-            _run_skill_pipeline(
-                vault=vault, projects_dir=projects_dir,
-                refine_ledger_path=refine_ledger_path,
-                mine_ledger_path=mine_ledger_path,
-                runner=runner, cap=SKILL_PIPELINE_CAP,
-                triggering_session_id=triggering_session_id,
-                status_context={
-                    "backlog": backlog_now,
-                    "reminder_active": reminder_active,
-                    "started_at": started_at,
-                },
-            )
-        else:
-            rc = runner([sys.executable, "-m", "mnemos.cli", "--vault", str(vault), "mine", str(sessions_dir)])
-            with log_path.open("a", encoding="utf-8") as fh:
-                fh.write(f"  mine exit={rc}\n")
+        rc = runner([sys.executable, "-m", "mnemos.cli", "--vault", str(vault), "mine", str(sessions_dir)])
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(f"  mine exit={rc}\n")
 
     if reminder_active:
         state = pending_load(vault)
