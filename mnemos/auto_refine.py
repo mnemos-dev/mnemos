@@ -619,6 +619,183 @@ def run(
         return
 
 
+def _run_skill_pipeline(
+    *,
+    vault: Path,
+    projects_dir: Path,
+    refine_ledger_path: Path,
+    mine_ledger_path: Path,
+    runner: Runner,
+    cap: int = 10,
+    active_paths: set[str] | None = None,
+    exclude: set[str] | None = None,
+    triggering_session_id: str = "",
+    on_phase: Callable[[str, int, int, Path], None] | None = None,
+    status_context: dict | None = None,
+) -> None:
+    """Skill-mine pipeline (Spec §4.3): two phases, A+B total ≤ `cap`.
+
+    Phase A: unmined Sessions → /mnemos-mine-llm (priority, refine already done).
+    Phase B: unrefined JSONLs → /mnemos-refine-transcripts then /mnemos-mine-llm
+    chain per source (worker is sequential within one source).
+
+    `on_phase` is an optional progress callback invoked before each subprocess
+    with (phase_label, current_index, total_in_phase, source_path). Used by
+    catch-up for foreground progress bars.
+
+    `status_context` optionally carries ``backlog`` / ``reminder_active`` /
+    ``started_at`` so the pipeline can call ``write_status`` for hook
+    statusline updates. When None (typical for catch-up), statusline writes
+    are skipped — catch-up prints to stdout instead.
+    """
+    from mnemos import processing_log as plog
+
+    palace_root = Path(vault) / "Mnemos"
+    palace_root.mkdir(parents=True, exist_ok=True)
+
+    log_path = Path(vault) / HOOK_LOG_FILENAME
+
+    def _status(phase_label: str, current: int, total: int) -> None:
+        if status_context is None:
+            return
+        write_status(
+            vault, phase_label, current, total,
+            status_context.get("backlog", 0),
+            status_context.get("reminder_active", False),
+            status_context.get("started_at", _now_iso()),
+            triggering_session_id=triggering_session_id or None,
+        )
+
+    # Phase A
+    unmined = _pick_unmined_sessions(
+        vault=vault, mine_ledger_path=mine_ledger_path,
+        palace_root=palace_root, limit=cap,
+    )
+    total_fire = len(unmined)  # will grow when Phase B sizes itself
+    for i, session_md in enumerate(unmined, start=1):
+        plog.upsert_row(vault, source_type="md", path=session_md,
+                        mined_outcome="PENDING")
+        _status("mining", i, total_fire)
+        if on_phase:
+            on_phase("A-mine", i, len(unmined), session_md)
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(f"[{_now_iso()}] phase=A mine {session_md}\n")
+        rc = runner([
+            "claude", "--print", "--dangerously-skip-permissions",
+            f"/mnemos-mine-llm {session_md} {palace_root}",
+        ])
+        outcome, drawer_count, tokens = _read_mine_outcome(
+            mine_ledger_path, session_md, palace_root,
+        )
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(f"  exit={rc}  drawers={drawer_count}\n")
+        plog.upsert_row(
+            vault, source_type="md", path=session_md,
+            mined_at=_now_iso() if outcome == "OK" else None,
+            mined_outcome=outcome,
+            drawer_count=drawer_count, tokens=tokens,
+        )
+
+    # Phase B (capacity remaining)
+    remaining = cap - len(unmined)
+    if remaining <= 0:
+        return
+
+    unrefined = _pick_unprocessed_jsonls(
+        projects_dir=projects_dir, ledger_path=refine_ledger_path,
+        limit=remaining, exclude=exclude or set(),
+        active_paths=active_paths or set(),
+    )
+    total_fire = len(unmined) + len(unrefined)
+    for i, jsonl in enumerate(unrefined, start=1):
+        # Fire position counts Phase A items first.
+        fire_pos = len(unmined) + i
+        plog.upsert_row(vault, source_type="jsonl", path=jsonl,
+                        refine_outcome="PENDING")
+        _status("refining", fire_pos, total_fire)
+        if on_phase:
+            on_phase("B-refine", i, len(unrefined), jsonl)
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(f"[{_now_iso()}] phase=B refine {jsonl}\n")
+        rc_r = runner([
+            "claude", "--print", "--dangerously-skip-permissions",
+            f"/mnemos-refine-transcripts {jsonl}",
+        ])
+        refine_result = _latest_session_for_jsonl(refine_ledger_path, jsonl, vault)
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(f"  exit={rc_r}\n")
+        if refine_result is None or refine_result[0] != "OK":
+            outcome = refine_result[0] if refine_result else "ERROR"
+            plog.upsert_row(vault, source_type="jsonl", path=jsonl,
+                            refined_at=_now_iso() if outcome == "OK" else None,
+                            refine_outcome=outcome)
+            continue
+        _ok, session_md = refine_result
+        plog.upsert_row(vault, source_type="jsonl", path=jsonl,
+                        refined_at=_now_iso(), refine_outcome="OK",
+                        mined_outcome="PENDING")
+        _status("mining", fire_pos, total_fire)
+        if on_phase:
+            on_phase("B-mine", i, len(unrefined), jsonl)
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(f"[{_now_iso()}] phase=B mine {session_md}\n")
+        rc_m = runner([
+            "claude", "--print", "--dangerously-skip-permissions",
+            f"/mnemos-mine-llm {session_md} {palace_root}",
+        ])
+        outcome, drawer_count, tokens = _read_mine_outcome(
+            mine_ledger_path, session_md, palace_root,
+        )
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(f"  exit={rc_m}  drawers={drawer_count}\n")
+        plog.upsert_row(vault, source_type="jsonl", path=jsonl,
+                        mined_at=_now_iso() if outcome == "OK" else None,
+                        mined_outcome=outcome,
+                        drawer_count=drawer_count, tokens=tokens)
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _read_mine_outcome(
+    mine_ledger_path: Path, session_md: Path, palace_root: Path,
+) -> tuple[str, int, int]:
+    """Read the latest mine-llm ledger row for (session_md, palace_root).
+
+    Returns (outcome, drawer_count, tokens). outcome is "OK" if column 3 is an
+    ISO timestamp, "SKIP" if column 3 starts with "SKIP:", else "ERROR".
+    drawer_count from column 2; tokens is 0 (skill-mine ledger does not record
+    token usage — tokens column in xlsx stays empty for now, reserved for a
+    later skill upgrade).
+    """
+    import re
+
+    if not mine_ledger_path.exists():
+        return ("ERROR", 0, 0)
+    palace_str = str(Path(palace_root))
+    target = str(Path(session_md))
+    latest: tuple[str, int, int] | None = None
+    ts_re = re.compile(r"^\d{4}-\d{2}-\d{2}T")
+    for line in mine_ledger_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        parts = line.split("\t")
+        if len(parts) < 4:
+            continue
+        if str(Path(parts[0])) != target or str(Path(parts[1])) != palace_str:
+            continue
+        try:
+            drawers = int(parts[2])
+        except ValueError:
+            drawers = 0
+        if ts_re.match(parts[3]):
+            latest = ("OK", drawers, 0)
+        elif parts[3].startswith("SKIP"):
+            latest = ("SKIP", drawers, 0)
+        else:
+            latest = ("ERROR", drawers, 0)
+    return latest if latest is not None else ("ERROR", 0, 0)
+
+
 def _run_locked(
     *,
     vault: Path,

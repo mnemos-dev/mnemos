@@ -1251,3 +1251,141 @@ def test_latest_session_for_jsonl_missing_returns_none(tmp_path):
     ledger.touch()
     result = _latest_session_for_jsonl(ledger, tmp_path / "x.jsonl", tmp_path)
     assert result is None
+
+
+def test_run_skill_pipeline_phase_a_only(tmp_path, monkeypatch):
+    """When there are unmined Sessions but no unrefined JSONLs, only Phase A runs."""
+    from mnemos.auto_refine import _run_skill_pipeline
+
+    vault = tmp_path
+    (vault / "Sessions").mkdir()
+    (vault / "Mnemos").mkdir()
+    # Two Sessions, neither in mine ledger
+    (vault / "Sessions" / "2026-04-21-a.md").write_text("x", encoding="utf-8")
+    (vault / "Sessions" / "2026-04-22-b.md").write_text("x", encoding="utf-8")
+    mine_ledger = tmp_path / "mined.tsv"
+    mine_ledger.touch()
+    refine_ledger = tmp_path / "refine.tsv"
+    refine_ledger.touch()
+    projects = tmp_path / "projects"
+    projects.mkdir()
+
+    calls: list[list[str]] = []
+
+    def fake_runner(cmd):
+        calls.append([str(c) for c in cmd])
+        # Simulate mine OK — append to mine_ledger
+        if "/mnemos-mine-llm" in cmd[-1]:
+            parts = cmd[-1].split()
+            session_path = parts[1]
+            palace = parts[2]
+            with mine_ledger.open("a", encoding="utf-8") as fh:
+                fh.write(f"{session_path}\t{palace}\t3\t2026-04-22T10:00:00Z\n")
+        return 0
+
+    _run_skill_pipeline(
+        vault=vault, projects_dir=projects,
+        refine_ledger_path=refine_ledger, mine_ledger_path=mine_ledger,
+        runner=fake_runner, cap=10,
+    )
+
+    # Two /mnemos-mine-llm calls, no /mnemos-refine-transcripts
+    mine_calls = [c for c in calls if any("/mnemos-mine-llm" in s for s in c)]
+    refine_calls = [c for c in calls if any("/mnemos-refine-transcripts" in s for s in c)]
+    assert len(mine_calls) == 2
+    assert refine_calls == []
+
+
+def test_run_skill_pipeline_phase_b_chain(tmp_path):
+    """One unrefined JSONL → refine + mine calls in order; xlsx has one row."""
+    from mnemos.auto_refine import _run_skill_pipeline
+    from mnemos.processing_log import read_rows
+
+    vault = tmp_path
+    (vault / "Sessions").mkdir()
+    (vault / "Mnemos").mkdir()
+    mine_ledger = tmp_path / "mined.tsv"
+    mine_ledger.touch()
+    refine_ledger = tmp_path / "refine.tsv"
+    refine_ledger.touch()
+    projects = tmp_path / "projects"
+    jsonl = _write_jsonl(projects, "session-X.jsonl", 1_500_000)
+
+    def fake_runner(cmd):
+        # cmd[-1] is "/mnemos-refine-transcripts <path>" or
+        # "/mnemos-mine-llm <session> <palace>"
+        if "/mnemos-refine-transcripts" in cmd[-1]:
+            # Write refine ledger OK row with session_md name
+            session_md_name = "2026-04-22-session-x.md"
+            (vault / "Sessions" / session_md_name).write_text("x", encoding="utf-8")
+            with refine_ledger.open("a", encoding="utf-8") as fh:
+                fh.write(f"{jsonl}\tOK\t{session_md_name}\n")
+        elif "/mnemos-mine-llm" in cmd[-1]:
+            session_path = cmd[-1].split()[1]
+            palace = cmd[-1].split()[2]
+            with mine_ledger.open("a", encoding="utf-8") as fh:
+                fh.write(f"{session_path}\t{palace}\t5\t2026-04-22T10:00:00Z\n")
+        return 0
+
+    _run_skill_pipeline(
+        vault=vault, projects_dir=projects,
+        refine_ledger_path=refine_ledger, mine_ledger_path=mine_ledger,
+        runner=fake_runner, cap=10,
+    )
+
+    rows = read_rows(vault)
+    # One row for the JSONL — refine_outcome OK, mined_outcome OK, 5 drawers.
+    jsonl_rows = [r for r in rows if r["source_type"] == "jsonl"]
+    assert len(jsonl_rows) == 1
+    r = jsonl_rows[0]
+    assert r["refine_outcome"] == "OK"
+    assert r["mined_outcome"] == "OK"
+    assert r["drawer_count"] == 5
+
+
+def test_run_skill_pipeline_cap_allocation(tmp_path):
+    """Phase A fills cap first; remaining slots go to Phase B."""
+    from mnemos.auto_refine import _run_skill_pipeline
+
+    vault = tmp_path
+    (vault / "Sessions").mkdir()
+    (vault / "Mnemos").mkdir()
+    # 7 unmined Sessions + 15 unrefined JSONLs + cap=10 ⇒ 7 Phase A + 3 Phase B.
+    for i in range(7):
+        (vault / "Sessions" / f"2026-04-1{i}-s.md").write_text("x", encoding="utf-8")
+    mine_ledger = tmp_path / "mined.tsv"
+    mine_ledger.touch()
+    refine_ledger = tmp_path / "refine.tsv"
+    refine_ledger.touch()
+    projects = tmp_path / "projects"
+    for i in range(15):
+        _write_jsonl(projects, f"s{i}.jsonl", 1_000_000 + i)
+
+    calls: list[str] = []
+
+    def fake_runner(cmd):
+        calls.append(cmd[-1])
+        if "/mnemos-refine-transcripts" in cmd[-1]:
+            jsonl_path = cmd[-1].split(maxsplit=1)[1]
+            name = Path(jsonl_path).stem + ".md"
+            (vault / "Sessions" / name).write_text("x", encoding="utf-8")
+            with refine_ledger.open("a", encoding="utf-8") as fh:
+                fh.write(f"{jsonl_path}\tOK\t{name}\n")
+        elif "/mnemos-mine-llm" in cmd[-1]:
+            parts = cmd[-1].split()
+            with mine_ledger.open("a", encoding="utf-8") as fh:
+                fh.write(f"{parts[1]}\t{parts[2]}\t1\t2026-04-22T10:00:00Z\n")
+        return 0
+
+    _run_skill_pipeline(
+        vault=vault, projects_dir=projects,
+        refine_ledger_path=refine_ledger, mine_ledger_path=mine_ledger,
+        runner=lambda c: fake_runner(c), cap=10,
+    )
+
+    # Phase A = 7 mine calls; Phase B = 3 JSONL × (1 refine + 1 mine) = 6 calls.
+    # Total: 7 + 6 = 13 subprocess invocations.
+    refine_calls = [c for c in calls if "/mnemos-refine-transcripts" in c]
+    mine_calls = [c for c in calls if "/mnemos-mine-llm" in c]
+    assert len(refine_calls) == 3
+    assert len(mine_calls) == 7 + 3  # A + B
