@@ -856,6 +856,7 @@ Rerank skill-recall'ın içinde eridi; contradiction v0.5 hygiene'a ertelendi.
       ilk accept Windows/OneDrive graph.json SQLite lock'ı yüzünden
       failed; üç zombie mnemos MCP server (PID 25004/31896/43240)
       kill edilip leftover Mnemos/ force-remove sonrası başarılı.
+- [x] **4.3.A Hook → skill-mine route + catch-up** — hook routes to `/mnemos-mine-llm` when `mine_mode: skill` (two-phase queue A+B, cap 10/fire), new `mnemos catch-up [--limit N] [--parallel N] [--dry-run]` command, `<vault>/Mnemos/_processing.xlsx` native-Excel audit trail (openpyxl + filelock). Spec `docs/specs/2026-04-22-4.3.A-hook-skill-mine-route-design.md`, plan `docs/plans/2026-04-22-v0.4-task-4.3.A-hook-skill-mine-route.md`. 10 tasks shipped across commits `8a8783a` … `b0f377e` on 2026-04-22 (561 tests pass, +19 new).
 - [ ] **4.3 Skill-recall** *(~5h)*
   - `skills/mnemos-recall/` — user-invoked `/mnemos-recall <query>`,
     vector top-50 → LLM judge → curated 300-500 kelime context

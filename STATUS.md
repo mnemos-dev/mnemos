@@ -1,6 +1,6 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-21 (kasamd palace cleanup: 535 hybrid-regex drawer'ı _recycled/'a taşındı, 2 yeni session skill-mine edildi, auto-refine hook'a mine_mode=skill guard'ı eklendi; palace 593 skill drawer; sonraki: 4.3 skill-recall)
+**Last updated:** 2026-04-22 (4.3.A shipped: hook artık `/mnemos-mine-llm` çağırıyor, `mnemos catch-up` komutu, `_processing.xlsx` audit; 561 test pass +19 new; sonraki: 4.3 skill-recall)
 **Stable PyPI version:** `v0.3.3` · **Next:** `v0.4.0` (AI Boost / Phase 1 — 4.3 + 4.5 + 4.6 + 4.7 remaining)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
@@ -396,24 +396,47 @@ gap.
 
 Full suite **542 pass / 2 skip / 3 deselect** (+4 hook guard test). Working tree temiz.
 
+### Released — 4.3.A Hook → skill-mine route + catch-up (2026-04-22)
+
+- ✅ **Hook routes to skill-mine when `mine_mode: skill`** — `auto_refine.py`'ın skill-mode guard'ı skip'ten route'a çevrildi. Yeni `_run_skill_pipeline` iki-fazlı queue çalıştırır:
+  - **Phase A** (priority): unmined Sessions → `/mnemos-mine-llm` (refine zaten yapılmış, sadece mine kaldı)
+  - **Phase B** (main): unrefined JSONLs → worker başına zincir `/mnemos-refine-transcripts` sonra `/mnemos-mine-llm` (refine ledger'ından session_md path'i okunur)
+  - Fire-toplam cap **10** (A önce yer doldurur, remainder B'ye)
+  - Her subprocess `claude --print --dangerously-skip-permissions` (hook non-interactive)
+- ✅ **`mnemos catch-up [--limit N] [--parallel N] [--dry-run] [--yes]`** — foreground bulk processor. `mine_mode: skill` zorunlu, `CatchUpError` aksi halde. `--parallel N` shard-based worker pool (ThreadPoolExecutor). Warning output eğer N > 1.
+- ✅ **`<vault>/Mnemos/_processing.xlsx`** — native Excel audit trail. `openpyxl` + `filelock` concurrent-safe. 9 kolon: `source_type, path, refined_at, refine_outcome, mined_at, mined_outcome, drawer_count, tokens, notes`. Obsidian `_` prefix ile gizli, Windows Explorer'da çift-tık → Excel.
+- ✅ **Hook log `phase=A` / `phase=B` prefix** — post-hoc debug için.
+- ✅ **Yeni dependency** — `openpyxl>=3.1` (pure Python, yaygın).
+- ✅ **Kasamd ledger backfill** — 593 skill drawer source'larını `~/.claude/skills/mnemos-mine-llm/state/mined.tsv`'e `palace=kasamd/Mnemos` olarak yazdı (103 unique source). Hook bundan sonra bu session'ları atlar; Mnemos-pilot palace'a yazılan eski ledger satırları zararsız kalır. Backfill sonrası dry-run: Phase A = 2 (gerçek unmined po-556 + `.gitkeep.md` noise).
+
+**Yeni tests (+19):** 5 processing_log, 6 picker/ledger helper, 3 pipeline (A/B/cap), 1 routing (replaced old skip test), 3 catch_up, 2 CLI catch-up. Full suite **561 pass / 2 skip / 3 deselect**.
+
+**Commits (2026-04-22, chronological):**
+
+| Commit | Parça |
+|---|---|
+| `8a8783a` | T1 `openpyxl>=3.1` dependency |
+| `a66e65e` | T2 `mnemos/processing_log.py` (xlsx upsert + filelock) |
+| `ff01230` | T3 picker + ledger helpers in `auto_refine.py` |
+| `b0e8bdd` | T4 `_run_skill_pipeline` two-phase scheduler |
+| `0f291be` | T5 `_run_locked` routing to skill pipeline |
+| `79490c3` | T6 `mnemos/catch_up.py` foreground processor |
+| `b0f377e` | T7 `mnemos catch-up` CLI subcommand |
+| `<T10>`   | T10 ROADMAP + STATUS (this commit) |
+
+**🟡 Manual smoke pending (kullanıcı aksiyonu):** yeni Claude Code session aç/kapat → bir sonraki session'da hook fire edilecek → `Mnemos/_processing.xlsx` ilk kez oluşmalı → po-556 session drawer'ları Mnemos/'a eklenmeli. Observations STATUS'a eklenecek.
+
+**Scope-dışı küçük polish (v0.4.1'e taşındı):**
+- `_pick_unmined_sessions` ve `_pick_unprocessed_jsonls` `.gitkeep*` + `MEMORY.md` filter'ı (zaten `_discover_sources` pilot'ta var, hook picker'ında yok).
+- `mnemos processing-log --rebuild` komutu (xlsx'i iki ledger'dan sıfırdan üret).
+
 ---
 
 ### ⏭ SIRADAKİ OTURUM — v0.4.0 Phase 1 kalanı
 
-v0.4.2-alpha kapandı + hybrid-palace cleanup yapıldı (hook guard
-`a5042a2` + kasamd re-bootstrap 593 drawer). Sıradaki parçalar v0.4.0-final
-için:
+v0.4.2-alpha kapandı + hybrid-palace cleanup + **4.3.A shipped (2026-04-22)**.
+Sıradaki parçalar v0.4.0-final için:
 
-- **4.3.A Hook → skill-mine route** (~1–2h, PRE-4.3) —
-  `auto_refine.py` guard şu an sadece regex mine'ı skip ediyor; gerçek
-  yeni drawer'lar hook'tan değil, elle `mnemos mine --pilot-llm`'den
-  geliyor. Kalıcı çözüm: hook `mine_mode: skill` ise pilot orchestrator'a
-  (`--pilot-limit N` son N refined Sessions için) subprocess çağırsın.
-  Detached bg worker, ledger path normalizasyonu (bu seferki partial
-  re-mine sebebi: pilot orchestrator ledger'ı `~/.claude/skills/
-  mnemos-mine-llm/state/mined.tsv`'te ama path formatı eşleşmedi →
-  tüm session'lar "yeni" sayıldı). 4.3 öncesi kapatılmalı yoksa
-  skill-recall demoları karışık palace'ta test edilir.
 - **4.3 Skill-recall** (~5h) — `/mnemos-recall <query>` user skill +
   `/mnemos-briefing` SessionStart opt-in hook + MCP `recall_mode` yaml
   dinamik instructions. Pattern: vector top-50 → Claude Sonnet judge →
@@ -450,15 +473,15 @@ için:
   SQLite lock tutuyordu). Bir sonraki Claude Code restart'ında otomatik
   respawn eder, yeni skill palace'ı + yeni ChromaDB'yi kullanır.
 
-### Practical stats (author's vault, 2026-04-21)
+### Practical stats (author's vault, 2026-04-22)
 
 - **593 drawers** across 6 wings (GYP, General, LightRAG-PO-Arsivi,
   Mnemos, ProcureTrack, Satin-Alma-Otomasyonu), 5-hall dağılımı
   (decisions:255, events:156, problems:148, preferences:32, emotional:2)
-- Mine mode: **skill** (Claude Sonnet via `/mnemos-mine-llm` subprocess).
-  Auto-refine hook artık `mine_mode: skill` olduğunda regex mine
-  çağrısını skip ediyor (`a5042a2`) — 4.3.A mini-task (hook → skill-mine
-  orchestrator route) sonraki oturumda.
+- Mine mode: **skill** — auto-refine hook artık `mine_mode: skill` olduğunda
+  `_run_skill_pipeline`'a route oluyor (`0f291be` + T4 scheduler). Kasamd
+  skill-mine ledger backfilled (103 unique source), ilk fire'da sadece
+  gerçek unmined (po-556) işlenecek.
 - Backend: sqlite-vec (`Mnemos/search.sqlite3`), 593 drawer indexed
 - 67 refined session notes in `Sessions/` (53 OK from 123 processed transcripts)
 - Backlog: **0** — all Claude Code JSONL transcripts processed
