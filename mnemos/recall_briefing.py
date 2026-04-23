@@ -628,8 +628,12 @@ def _lookup_session_md_in_ledger(ledger: Path, jsonl: Path) -> str | None:
 import sys
 
 
-def _resolve_vault() -> Path | None:
-    """Resolve vault from env or cwd. Return None if unresolvable."""
+def _resolve_vault(explicit: str | None = None) -> Path | None:
+    """Resolve vault from explicit arg, env, or cwd upward walk. Return None if unresolvable."""
+    if explicit:
+        p = Path(explicit)
+        if p.exists():
+            return p
     v = os.environ.get("MNEMOS_VAULT")
     if v:
         p = Path(v)
@@ -642,8 +646,24 @@ def _resolve_vault() -> Path | None:
     return None
 
 
-def main() -> int:
+def _parse_args(argv: list[str] | None) -> str | None:
+    """Return --vault value from argv if present, else None. Never fails."""
+    import argparse
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--vault", default=None)
+    try:
+        ns, _ = parser.parse_known_args(argv)
+    except SystemExit:
+        return None
+    return ns.vault
+
+
+def main(argv: list[str] | None = None) -> int:
     """Parse hook stdin JSON, run decision tree, emit additionalContext JSON on stdout."""
+    if argv is None:
+        argv = sys.argv[1:]
+    explicit_vault = _parse_args(argv)
+
     try:
         raw = sys.stdin.read()
         data = json.loads(raw) if raw.strip() else {}
@@ -656,7 +676,7 @@ def main() -> int:
         transcript_path=data.get("transcript_path", ""),
     )
 
-    vault = _resolve_vault()
+    vault = _resolve_vault(explicit_vault)
     if vault is None:
         return 0
 
@@ -688,6 +708,7 @@ def main() -> int:
 # ---------------------------------------------------------------------------
 
 RECALL_HOOK_TIMEOUT_MS = 600_000  # 10 minutes for catch-up worst case
+RECALL_HOOK_MARKER = "mnemos-recall-briefing"
 SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
 
 
@@ -713,37 +734,69 @@ def _save_settings(path: Path, data: dict) -> None:
     os.replace(tmp, path)
 
 
-def _recall_entry() -> dict:
+def _recall_entry(vault: Path) -> dict:
+    """Build a Claude Code SessionStart hook group entry.
+
+    Claude Code expects each SessionStart list item to be a {matcher, hooks}
+    object with a nested hooks list. We stamp `_managed_by` for idempotent
+    detection on reinstall/uninstall.
+    """
+    # Forward-slash vault path on Windows survives Claude Code's hook
+    # dispatcher (which eats \P, \m, \s, \a escapes); mirrors auto_refine.
+    if os.name == "nt":
+        vault_arg = str(vault).replace("\\", "/")
+        full_cmd = f"python -m mnemos.recall_briefing --vault {vault_arg}"
+    else:
+        full_cmd = f'python -m mnemos.recall_briefing --vault "{vault}"'
     return {
-        "type": "command",
-        "command": "python -m mnemos.recall_briefing",
-        "timeout": RECALL_HOOK_TIMEOUT_MS,
+        "matcher": "",
+        "_managed_by": RECALL_HOOK_MARKER,
+        "hooks": [{
+            "type": "command",
+            "command": full_cmd,
+            "timeout": RECALL_HOOK_TIMEOUT_MS,
+        }],
     }
 
 
+def _is_recall_entry(entry: dict) -> bool:
+    """Detect the recall-briefing hook group by marker or legacy command sniff."""
+    if entry.get("_managed_by") == RECALL_HOOK_MARKER:
+        return True
+    # Legacy flat layout (pre-nested-schema) or custom manual edits
+    if "recall_briefing" in (entry.get("command") or ""):
+        return True
+    for h in entry.get("hooks", []) or []:
+        if "recall_briefing" in (h.get("command") or ""):
+            return True
+    return False
+
+
 def install_recall_hook(vault: Path, uninstall: bool = False) -> HookInstallResult:
-    """Add/remove the recall-briefing SessionStart hook entry in settings.json."""
+    """Add/remove the recall-briefing SessionStart hook entry in settings.json.
+
+    Hook group schema (matches Claude Code + auto_refine convention):
+        {"matcher": "", "_managed_by": RECALL_HOOK_MARKER,
+         "hooks": [{"type": "command", "command": ..., "timeout": ...}]}
+    """
     data = _load_settings(SETTINGS_PATH)
     data.setdefault("hooks", {})
     data["hooks"].setdefault("SessionStart", [])
 
     entries = data["hooks"]["SessionStart"]
 
-    def is_recall(e: dict) -> bool:
-        return "recall_briefing" in (e.get("command") or "")
-
     if uninstall:
         before = len(entries)
-        data["hooks"]["SessionStart"] = [e for e in entries if not is_recall(e)]
+        data["hooks"]["SessionStart"] = [e for e in entries if not _is_recall_entry(e)]
         _save_settings(SETTINGS_PATH, data)
         status = "uninstalled" if before != len(data["hooks"]["SessionStart"]) else "not-present"
         return HookInstallResult(status=status, settings_path=SETTINGS_PATH)
 
     # Install
-    if any(is_recall(e) for e in entries):
+    if any(_is_recall_entry(e) for e in entries):
         return HookInstallResult(status="already-installed", settings_path=SETTINGS_PATH)
 
-    entries.append(_recall_entry())
+    entries.append(_recall_entry(vault))
     _save_settings(SETTINGS_PATH, data)
     return HookInstallResult(status="installed", settings_path=SETTINGS_PATH)
 
