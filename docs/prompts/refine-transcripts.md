@@ -86,8 +86,10 @@ JSONL'in satırlarında her mesajda `"cwd":"C:\\..."` field'ı bulunur
 - Yanlış: `cwd: /c/Users/...` (POSIX form — etme)
 - Yanlış: `cwd: ./farcry` (relative — etme)
 
-JSONL'de `"cwd"` field'ı yoksa (eski Claude Code versiyonu, nadir) field'ı
-tamamen atla — briefing hook cwd'siz session'ları sessizce filter'lar.
+JSONL'de `"cwd"` field'ı yoksa (eski Claude Code versiyonu, nadir) `cwd:`
+satırını **hiç yazma** (boş `cwd: ` de yazma — satırı tamamen bırak).
+Frontmatter `date`, `project`, `tags`, `duration` ile devam etsin —
+briefing hook cwd'siz session'ları sessizce filter'lar.
 
 ## SKIP KRİTERLERİ (dosya yazma, sadece atla)
 
