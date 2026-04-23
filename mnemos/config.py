@@ -85,6 +85,10 @@ class MnemosConfig:
     # Search backend: "chromadb" (default) or "sqlite-vec"
     search_backend: str = "chromadb"
 
+    # Recall mode: "script" (AI auto-calls mnemos_search) or "skill"
+    # (SessionStart briefing hook injects context; AI doesn't auto-search).
+    recall_mode: str = "script"
+
     # ---------------------------------------------------------------------------
     # Derived path properties
     # ---------------------------------------------------------------------------
@@ -169,6 +173,7 @@ def load_config(vault_path: Optional[str] = None) -> MnemosConfig:
         "graph_path",
         "mine_log_path",
         "search_backend",
+        "recall_mode",
     ):
         if scalar in raw:
             setattr(cfg, scalar, raw[scalar])
