@@ -26,6 +26,7 @@ Dosya slug kuralı: küçük harf, tire ayıracı, maksimum 60 karakter, Türkç
 ---
 date: YYYY-MM-DD
 project: <Wing — aşağıdaki mapping'e göre>
+cwd: <absolute Windows path, transcript'in kaynaklandığı çalışma dizini>
 tags: [session-log, <2-6 alakalı teknik tag, küçük harf>]
 duration: <~Xs / ~Xm / ~Xh — kaba tahmin, transcript uzunluğundan>
 ---
@@ -74,6 +75,19 @@ Transcript path'inin içindeki project klasör ismine göre:
 | Yukarıdaki hiçbirine uymuyor | `General` |
 
 **Override:** Transcript içeriği path'le çelişiyorsa (örn. ProcureTrack path ama tamamen LinkedIn post'u konuşulmuş), içeriğe göre karar ver. Bunu açıkça belirt — çıktının başına `<!-- wing overridden: path suggested ProcureTrack, content is LinkedIn -->` yorumu ekleme ama frontmatter'a doğru wing'i yaz.
+
+## CWD FIELD
+
+JSONL'in satırlarında her mesajda `"cwd":"C:\\..."` field'ı bulunur
+(Claude Code her turn'de kaydeder). İlk non-metadata satırdaki değeri
+çıkar, Windows absolute path olarak yaz:
+
+- Doğru: `cwd: C:\Users\tugrademirors\OneDrive\Masaüstü\farcry`
+- Yanlış: `cwd: /c/Users/...` (POSIX form — etme)
+- Yanlış: `cwd: ./farcry` (relative — etme)
+
+JSONL'de `"cwd"` field'ı yoksa (eski Claude Code versiyonu, nadir) field'ı
+tamamen atla — briefing hook cwd'siz session'ları sessizce filter'lar.
 
 ## SKIP KRİTERLERİ (dosya yazma, sadece atla)
 
