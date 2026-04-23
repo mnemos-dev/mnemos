@@ -231,9 +231,18 @@ DEFAULT_CLAUDE_PROJECTS = Path.home() / ".claude/projects"
 
 
 def load_refine_ledger_jsonls(ledger: Path) -> set[str]:
-    """Return set of JSONL abs paths with OK status in the refine ledger.
+    """Return set of JSONL abs paths the refine skill has already processed.
 
-    Ledger format: <jsonl>\\t<status>\\t<session_md> (3 cols, tab-separated).
+    Ledger format: <jsonl>\\t<status>\\t<session_md_or_reason> (3 cols,
+    tab-separated). Status is OK (refine succeeded → session_md written)
+    or SKIP (skill decided transcript is noise / too-short).
+
+    Both OK and SKIP count as "processed" for pending-discovery purposes.
+    Without SKIP inclusion, a noise JSONL (1-turn debug session, bash
+    escape collision, etc.) keeps reappearing as pending on every hook
+    fire: SUB-B2 sync-refines → skill returns SKIP → ledger grows, JSONL
+    stays pending → repeat on next session start. The user pays minutes
+    of sync-refine latency every single time for zero briefing value.
     """
     out: set[str] = set()
     if not ledger.exists():
@@ -244,7 +253,7 @@ def load_refine_ledger_jsonls(ledger: Path) -> set[str]:
                 parts = raw.rstrip("\r\n").split("\t")
                 if len(parts) < 3:
                     continue
-                if parts[1] == "OK":
+                if parts[1] in ("OK", "SKIP"):
                     out.add(parts[0])
     except OSError:
         pass

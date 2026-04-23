@@ -214,19 +214,28 @@ from mnemos.recall_briefing import (
 )
 
 
-def test_load_refine_ledger_jsonls_extracts_ok_jsonl_paths(tmp_path: Path) -> None:
+def test_load_refine_ledger_jsonls_treats_ok_and_skip_as_processed(tmp_path: Path) -> None:
+    """Both OK (refine succeeded → session_md) and SKIP (skill decided this
+    transcript is noise/too-short) count as processed. Without SKIP support,
+    a JSONL the skill refuses to refine cycles forever: SUB-B2 refines →
+    skill returns SKIP → next hook fire still sees JSONL pending → refines
+    → SKIP → … so the user eats the sync-refine latency on every session
+    start for that cwd.
+    """
     ledger = tmp_path / "processed.tsv"
-    # Real ledger format: <jsonl>\tOK\t<session_md> (3 cols, no timestamp)
+    # Real ledger format: <jsonl>\t<status>\t<session_md_or_reason> (3 cols)
     ledger.write_text(
         "C:\\proj\\a.jsonl\tOK\t2026-04-01.md\n"
-        "C:\\proj\\b.jsonl\tSKIP\tnone\n"
+        "C:\\proj\\b.jsonl\tSKIP\tnoise-1-turn\n"
         "C:\\proj\\c.jsonl\tOK\t2026-04-02.md\n",
         encoding="utf-8",
     )
     jsonls = load_refine_ledger_jsonls(ledger)
     assert "C:\\proj\\a.jsonl" in jsonls
     assert "C:\\proj\\c.jsonl" in jsonls
-    assert "C:\\proj\\b.jsonl" not in jsonls  # SKIP excluded
+    # SKIP rows must also be treated as processed — otherwise the noise
+    # JSONL gets re-refined on every session start, re-SKIPped, forever
+    assert "C:\\proj\\b.jsonl" in jsonls
 
 
 def test_find_unrefined_jsonls_for_cwd_returns_unprocessed(tmp_path: Path) -> None:

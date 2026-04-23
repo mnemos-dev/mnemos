@@ -1,6 +1,6 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-23 (4.3 first ship shipped + post-ship **6** critical fixes: fork-bomb env guard + Windows console flags + SUB-B2 pending cap + non-ASCII cwd recall bug [slug algo + stdin UTF-8 + bg-spawn cache] + stdout cp1252 crash + **fork-bomb noise pollution** [`MIN_USER_TURNS` filter → SUB-B2 ignores 1-turn fork-bomb debris]; ledgers dedup'd; hook re-installed with fixes; **637 test pass +10 new** (baseline 627); sonraki: 4.3.1 `/mnemos-recall` explicit skill + 4.5 settings TUI + 4.6 benchmark + 4.7 PyPI v0.4.0)
+**Last updated:** 2026-04-23 (4.3 first ship shipped + post-ship **7** critical fixes: fork-bomb env guard + Windows console flags + SUB-B2 pending cap + non-ASCII cwd recall bug [slug algo + stdin UTF-8 + bg-spawn cache] + stdout cp1252 crash + fork-bomb noise pollution + **SKIP ledger filter** [refine ledger SKIP rows now count as processed → noise JSONLs don't cycle forever]; ledgers dedup'd + corrupt rows purged; hook re-installed with fixes; **637 test pass +10 new** (baseline 627); sonraki: 4.3.1 `/mnemos-recall` explicit skill + 4.5 settings TUI + 4.6 benchmark + 4.7 PyPI v0.4.0)
 **Stable PyPI version:** `v0.3.3` · **Next:** `v0.4.0` (AI Boost / Phase 1 — 4.3.1 + 4.5 + 4.6 + 4.7 remaining)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
@@ -440,6 +440,30 @@ iki SessionStart entry: auto-refine + recall-briefing).
   (13:37:50, 82KB) + sonraki fix-test session'ları korundu. Sonuç:
   134 → 18 JSONL. Pending backlog artık 0'a yakın, farcry SUB-B1
   fresh-path inject anında çalışır.
+
+- **Post-fix follow-up: SKIP ledger rows cycled forever (RC6)** — fork-bomb
+  silme sonrası kalan 1 pending JSONL (`5c4bda3f`, bugünkü 3-turn noise
+  test session'ı) refine skill tarafından işlendi ve `SKIP` kararı verildi
+  (`sonucsuz-3-turn-ne-yapiyoruz-is-yok`). Ama `load_refine_ledger_jsonls`
+  yalnızca `OK` satırlarını "processed" sayıyordu → SKIP'li JSONL'lar her
+  hook fire'da pending listesine geri geliyordu → SUB-B2 sync refine →
+  skill yine SKIP → sonsuz döngü. Kullanıcı her session açılışında aynı
+  noise için 90-120 saniye blocking eder.
+
+  Fix: `load_refine_ledger_jsonls` artık `OK` veya `SKIP` statülü satırları
+  processed kabul ediyor. Test: `test_load_refine_ledger_jsonls_treats_ok_and_skip_as_processed`
+  (eski `..._extracts_ok_jsonl_paths` yanlış semantiği lock'luyordu;
+  inversionla değiştirildi).
+
+  Full suite **637 pass / 2 skip** (mevcut test count, sadece semantic
+  düzeltildi).
+
+  **Operational cleanup:** refine ledger (`~/.claude/skills/mnemos-refine-transcripts/state/processed.tsv`)
+  20 corrupt satırdan temizlendi — hepsi shell escape kazası (bash `\t`
+  tab-expansion, `\2`/`\x05`/`\x08` vb. hex byte'lar). Backup
+  `processed.tsv.bak-20260423-221108`. Sonuç: **farcry pending = 0**,
+  SUB-B1 fresh-path anında inject edecek; cache 21:03'te üretilen fresh
+  hali (staleness diff=0).
 
 **Operational cleanup (commit'siz, runtime):**
 - Runaway pipeline tree-kill (recall_briefing pid 23064 + auto_refine_bg
