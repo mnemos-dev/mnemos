@@ -84,3 +84,87 @@ def test_save_state_writes_atomic(tmp_path: Path) -> None:
     tmp_file = tmp_path / (STATE_FILENAME + ".tmp")
     assert not tmp_file.exists()
     assert (tmp_path / STATE_FILENAME).exists()
+
+
+# --- helper tests ---
+
+from mnemos.recall_briefing import (
+    read_recall_mode,
+    cache_path_for,
+    read_cache_body,
+    write_cache,
+    count_refined_sessions_for_cwd,
+)
+
+
+def test_read_recall_mode_default_script(tmp_path: Path) -> None:
+    assert read_recall_mode(tmp_path) == "script"
+
+
+def test_read_recall_mode_skill(tmp_path: Path) -> None:
+    (tmp_path / "mnemos.yaml").write_text(
+        "palace_root: Mnemos\nrecall_mode: skill\n",
+        encoding="utf-8",
+    )
+    assert read_recall_mode(tmp_path) == "skill"
+
+
+def test_cache_path_for_returns_cache_dir(tmp_path: Path) -> None:
+    p = cache_path_for(tmp_path, "C--Projects-farcry")
+    assert p.parent.name == ".mnemos-briefings"
+    assert p.name == "C--Projects-farcry.md"
+
+
+def test_read_cache_body_strips_frontmatter(tmp_path: Path) -> None:
+    cache = tmp_path / ".mnemos-briefings" / "slug.md"
+    cache.parent.mkdir()
+    cache.write_text(
+        "---\ncwd: C:\\x\ngenerated_at: 2026-04-23\nsession_count_used: 3\n---\n"
+        "\n**Aktif durum:** Body content here.\n",
+        encoding="utf-8",
+    )
+    body = read_cache_body(cache)
+    assert "**Aktif durum:**" in body
+    assert "session_count_used" not in body
+
+
+def test_write_cache_round_trip(tmp_path: Path) -> None:
+    cache = tmp_path / ".mnemos-briefings" / "slug.md"
+    write_cache(
+        cache,
+        body="**Aktif durum:** x\n",
+        cwd="C:\\Projects\\farcry",
+        session_count=5,
+        drawer_count=12,
+    )
+    assert cache.exists()
+    text = cache.read_text(encoding="utf-8")
+    assert text.startswith("---\n")
+    assert "cwd: C:\\Projects\\farcry" in text
+    assert "session_count_used: 5" in text
+    assert "**Aktif durum:**" in text
+
+
+def test_count_refined_sessions_for_cwd(tmp_path: Path) -> None:
+    sessions = tmp_path / "Sessions"
+    sessions.mkdir()
+    (sessions / "2026-04-01-a.md").write_text(
+        "---\ndate: 2026-04-01\ncwd: C:\\Projects\\farcry\n---\nbody\n",
+        encoding="utf-8",
+    )
+    (sessions / "2026-04-02-b.md").write_text(
+        "---\ndate: 2026-04-02\ncwd: C:\\Projects\\farcry\n---\nbody\n",
+        encoding="utf-8",
+    )
+    (sessions / "2026-04-03-c.md").write_text(
+        "---\ndate: 2026-04-03\ncwd: C:\\Other\n---\nbody\n",
+        encoding="utf-8",
+    )
+    # Session without cwd frontmatter — excluded
+    (sessions / "2026-04-04-d.md").write_text(
+        "---\ndate: 2026-04-04\n---\nbody\n",
+        encoding="utf-8",
+    )
+
+    count = count_refined_sessions_for_cwd(tmp_path, "C:\\Projects\\farcry")
+    assert count == 2
