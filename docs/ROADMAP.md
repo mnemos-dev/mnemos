@@ -859,21 +859,36 @@ Rerank skill-recall'ın içinde eridi; contradiction v0.5 hygiene'a ertelendi.
       kill edilip leftover Mnemos/ force-remove sonrası başarılı.
 - [x] **4.3.A Hook → skill-mine route + catch-up** — hook routes to `/mnemos-mine-llm` when `mine_mode: skill` (two-phase queue A+B, cap 10/fire), new `mnemos catch-up [--limit N] [--parallel N] [--dry-run]` command, `<vault>/Mnemos/_processing.xlsx` native-Excel audit trail (openpyxl + filelock). Spec `docs/specs/2026-04-22-4.3.A-hook-skill-mine-route-design.md`, plan `docs/plans/2026-04-22-v0.4-task-4.3.A-hook-skill-mine-route.md`. 10 tasks shipped across commits `8a8783a` … `b0f377e` on 2026-04-22 (561 tests pass, +19 new).
 - [~] **4.3 Skill-recall** *(~5h, split to two ships)* — *(başladı 2026-04-23)*
-  - **First ship (4.3 first ship, ~4h):** cwd-aware auto-briefing + MCP
-    recall_mode. Spec: [`docs/specs/2026-04-23-v0.4-task-4.3-first-ship-design.md`](specs/2026-04-23-v0.4-task-4.3-first-ship-design.md).
-    - `mnemos/recall_briefing.py` + `skills/mnemos-briefing/` — path checker
-      SessionStart hook, cwd-scope narrative synthesis (evolution-aware,
-      çelişen kararlar "revize" bölümünde), blocking catch-up sequence
-      prior-session-unrefined senaryosu için, statusline progress
-    - `mnemos/server.py` dinamik `instructions` (`recall_mode: script`
-      default / `skill` briefing-first)
-    - `docs/prompts/refine-transcripts.md` + `skills/mnemos-refine-transcripts/
-      SKILL.md` — frontmatter'a `cwd:` field
-    - `scripts/backfill_cwd_frontmatter.py` — mevcut 67 session'ın
-      cwd frontmatter'ını doldur (one-off)
-    - `mnemos install-recall-hook` + `init` integration
-  - **Second ship (4.3.1, ~2h):** `/mnemos-recall <query>` explicit user
-    skill — cross-context edge case, ayrı brainstorm + spec
+  - [x] **4.3 first ship** *(2026-04-23, 18 tasks, commits `365da49`…`5943d2f`)* —
+    cwd-aware auto-briefing + MCP recall_mode.
+    Spec: [`docs/specs/2026-04-23-v0.4-task-4.3-first-ship-design.md`](specs/2026-04-23-v0.4-task-4.3-first-ship-design.md).
+    Plan: [`docs/plans/2026-04-23-v0.4-task-4.3-first-ship.md`](plans/2026-04-23-v0.4-task-4.3-first-ship.md).
+    - `mnemos/recall_briefing.py` (~780 satır) — path checker SessionStart
+      hook wrapper: CASE A first-visit fast path, SUB-B1 return-visit +
+      staleness threshold (session_count diff ≥ 3 → sync regen), SUB-B2
+      blocking catch-up (filelock + sync refine → mine → brief),
+      statusline progress per phase, 37 tests.
+    - `skills/mnemos-briefing/` — cwd-scope narrative synthesis skill
+      (evolution-aware, "Revize/iptal edilen kararlar" bölümü çelişki
+      tespiti için).
+    - `mnemos/server.py` dinamik `build_instructions(cfg)` —
+      `recall_mode: script` default / `skill` briefing-first.
+    - `mnemos/config.py` — `recall_mode` yaml field.
+    - `docs/prompts/refine-transcripts.md` — frontmatter'a `cwd:` field
+      + CWD FIELD extraction instructions.
+    - `scripts/backfill_cwd_frontmatter.py` — one-off migration; kasamd'de
+      40 session cwd'li (20 JSONL arşivlenmiş).
+    - `mnemos install-recall-hook` CLI (nested `matcher/_managed_by/hooks`
+      schema, 600000ms timeout) + `init` integration with TR+EN i18n.
+    - **Test delta:** +61 (9 backfill, 4 config, 5 mcp instructions,
+      37 recall_briefing, 5 install-recall-hook, +1 statusline edge).
+      Full suite **623 pass** / 2 skip / 3 deselect.
+    - **Pending user smoke:** SUB-B2 blocking catch-up scenario (farcry-
+      style cwd, 1. session kapatıldıktan hemen sonra 2. session'da
+      sync refine+mine+brief) — manuel Claude Code oturumu gerektirir.
+      First-visit fast path offline smoke PASS (state.json kaydı doğru).
+  - [ ] **4.3.1 second ship** — `/mnemos-recall <query>` explicit user
+    skill (~2h), cross-context edge case, ayrı brainstorm + spec
 - [ ] **4.4 ~~Contradiction detection~~ → v0.5'e ertelendi** (spec §2)
 - [ ] **4.5 `mnemos settings` TUI** *(~2.5h)*
   - `mnemos/settings_tui.py` — numbered menu, 8 satır: backend, mine-mode,

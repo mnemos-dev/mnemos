@@ -1,7 +1,7 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-22 (4.3.A shipped: hook artık `/mnemos-mine-llm` çağırıyor, `mnemos catch-up` komutu, `_processing.xlsx` audit; 561 test pass +19 new; sonraki: 4.3 skill-recall)
-**Stable PyPI version:** `v0.3.3` · **Next:** `v0.4.0` (AI Boost / Phase 1 — 4.3 + 4.5 + 4.6 + 4.7 remaining)
+**Last updated:** 2026-04-23 (4.3 first ship shipped: cwd-aware auto-briefing hook + MCP recall_mode; 623 test pass +61 new; sonraki: 4.3.1 `/mnemos-recall` explicit skill + 4.5 settings TUI + 4.6 benchmark + 4.7 PyPI v0.4.0)
+**Stable PyPI version:** `v0.3.3` · **Next:** `v0.4.0` (AI Boost / Phase 1 — 4.3.1 + 4.5 + 4.6 + 4.7 remaining)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
 This file is the single-glance answer to: *why does Mnemos exist, what can it
@@ -327,6 +327,19 @@ gap.
 
 ### Next session starts here
 
+**4.3 first ship kapandı (2026-04-23, 18 task, 22 commit):** cwd-aware
+auto-briefing hook canlı, MCP recall_mode swap'i hazır, kasamd backfill
+apply'lı. Sıradaki: 4.3.1 explicit `/mnemos-recall` skill (cross-context
+edge case), 4.5 settings TUI, 4.6 benchmark, 4.7 PyPI v0.4.0 release.
+
+🟡 **Pending user smoke:** farcry-style same-cwd rapid-reopen scenario
+(1. session kapat → 5 dk sonra 2. session aç → SUB-B2 blocking catch-up
+tetiklenmeli). Offline mechanism smoke PASS (first-visit state, slug
+normalization, subprocess runners mocked); canlı catch-up real Claude
+Code oturumu gerektirir.
+
+### Previous — 4.3.A session notes
+
 **v0.4.2-alpha batch tamam (2026-04-19 → 20, 17 commit):**
 
 | Commit | Parça |
@@ -456,18 +469,106 @@ Full suite **542 pass / 2 skip / 3 deselect** (+4 hook guard test). Working tree
 - **Skill-mine-llm source field path discipline** — SKILL.md'ye "drawer frontmatter'daki `source:` alanı daima absolute path" notu. 2026-04-22 audit'te 3 drawer relative path ile yazılmış (`source: memory/user_profile.md`). Ledger'a düzgün absolute path yaz (pilot runtime'ı cwd-relative değil, skill subprocess cwd farklı olabilir).
 - **Legacy corrupt ledger rows cleanup** — refine ledger satır 128 (`C:\Users<TAB>ugrademirors\.claude\...`) + 4 UUID-prefix-kesik satır (satır 58/84/94/111) + eski `palace=Mnemos-pilot` satırları. Hook path-match'te tutmaz, xlsx backfill absolute-path filter'ı ile de temiz; yine de one-liner cleanup STATUS'un Pending user actions maddesini kapatır.
 
+### Released — 4.3 first ship: cwd-aware auto-briefing (2026-04-23)
+
+**Why this ships:** Mnemos'un "hafıza kaydet" tarafı dolu (593 skill-mined
+drawer), ama "hafıza hatırla" tarafı yoktu. Kullanıcı cwd'ye özgü context'e
+ancak explicit `mnemos_search` çağrısıyla erişiyordu — AI kendiliğinden
+"geçen sefer burada X konuşmuştuk" demiyor. Bu ship otomatik cwd-briefing'i
+SessionStart hook'u ile enjekte eder; kullanıcı hiçbir komut yazmadan
+Claude ilk turn'den itibaren cwd bağlamıyla gelir.
+
+- ✅ **`cwd:` frontmatter in Sessions/.md** — refine prompt + SKILL.md
+  extract `"cwd"` from JSONL's first message, write absolute Windows path
+  to `<Sessions-md>.frontmatter.cwd`. `scripts/backfill_cwd_frontmatter.py`
+  populated kasamd's existing 40 sessions (20 others skipped: JSONL archived);
+  commits `365da49`, `87e9fba`, `05dcfb0`.
+- ✅ **`mnemos/recall_briefing.py` (~780 lines) — path-checker SessionStart
+  hook wrapper**:
+  - `<vault>/.mnemos-cwd-state.json` tracks visits per cwd-slug (atomic JSON
+    load/save via tmp+os.replace)
+  - **CASE A first-visit:** record state, exit silent (no briefing spawn;
+    no prior data to brief from)
+  - **SUB-B1 return-visit, no pending JSONLs:** inject cache if present;
+    staleness check via `session_count_used` frontmatter — M − N ≥ 3 triggers
+    SYNC regen
+  - **SUB-B2 return-visit, unrefined JSONLs for this cwd:** BLOCKING catch-up
+    under `.mnemos-catch-up.flock` (10s timeout) — sync refine each pending
+    → read resulting session_md from ledger → sync mine → sync brief, then
+    inject. `.mnemos-hook-status.json` writes per-phase (refining N/M →
+    mining N/M → briefing) so statusline shows live progress.
+  - All skill subprocess calls: `claude --print --dangerously-skip-permissions
+    --model sonnet /<skill> <arg>` (subscription auth, API key stripped).
+  - Hook timeout: 600000ms (10 min upper bound for pathological catch-up).
+  - 37 tests covering every branch (first-visit, cache fresh/stale, bg spawn,
+    blocking sequence, refine-failure-skip-mine, subprocess mocking).
+- ✅ **`skills/mnemos-briefing/` — evolution-aware narrative synthesis skill**:
+  reads Sessions/.md filtered by cwd frontmatter + associated Mnemos drawers,
+  synthesizes 200-400 word briefing with explicit "Revize/iptal edilen
+  kararlar" section so decisions revised across sessions surface visibly.
+  Contradiction detection embedded in prompt — no separate scanner needed.
+  Token budget ≤60K input (last 10 sessions + first 2 baseline for long
+  histories). Junction'ed into `~/.claude/skills/` alongside refine/mine/compare.
+- ✅ **`mnemos/server.py build_instructions(cfg)` pure function** —
+  `recall_mode: script` (default) preserves existing "AI auto-calls
+  mnemos_search" behavior. `recall_mode: skill` tells AI "briefing already
+  injected; don't auto-call on every turn; but user-explicit asks still
+  override". Backwards-compatible — unaware users see no change.
+- ✅ **`mnemos install-recall-hook` CLI** — nested Claude Code hook schema
+  `{matcher, _managed_by: "mnemos-recall-briefing", hooks: [{type, command,
+  timeout}]}`, 600000ms timeout, forward-slash vault path on Windows (Claude
+  Code hook dispatcher quirk). Idempotent install, targeted uninstall leaves
+  auto-refine entry untouched. `mnemos init` prompts for it after the
+  auto-refine + statusline prompts (TR+EN i18n).
+- ✅ **Test delta:** +61 new tests (9 backfill + 4 config + 5 MCP instructions
+  + 37 recall_briefing + 5 install-recall-hook + 1 statusline edge).
+  Full suite **623 pass / 2 skip / 3 deselect** (from 562 baseline on 2026-04-23).
+- ✅ **Kasamd live:** `mine_mode: skill` + `recall_mode: skill`, install-recall-hook
+  run (2 SessionStart entries: auto-refine + recall-briefing both pointing
+  to kasamd via forward-slash path). First-visit offline smoke PASS (state.json
+  correct); backfill applied to 40 existing sessions.
+
+**Commits (2026-04-23, chronological):**
+
+| Commit | Parça |
+|---|---|
+| `4b08630` | Design spec (17 sections) |
+| `f159e5d` | Spec post-review amendments (statusline progress, staleness threshold) |
+| `429f169` | ROADMAP 4.3 `[ ]` → `[~]` |
+| `f6500a3` | Implementation plan (18 tasks, TDD per task) |
+| `365da49`, `39c83b5` | T1 refine prompt cwd field + clarification |
+| `87e9fba`, `fda2cd2`, `05dcfb0` | T2-T3 backfill script + ledger format fix + kasamd apply |
+| `11f0dd1` | T4 config `recall_mode` yaml field |
+| `98aad3e` | T5 `build_instructions(cfg)` |
+| `f185f34` | T6 briefing skill SKILL.md + prompt.md |
+| `c641089` | T7 recall_briefing scaffold (slug + state) |
+| `d6eb524` | T8 helpers (mode/cache/session counter) |
+| `20c564b` | T9 unrefined JSONL discovery |
+| `5b70770` | T10 statusline status writes |
+| `7b38de1` | T11 subprocess runners |
+| `f1070c1` | T12 handle_session_start CASE A + SUB-B1 |
+| `2a743b9` | T13 SUB-B2 blocking catch-up |
+| `3a902c6` | T14 main() hook entry |
+| `ea3537b`, `59948f6` | T15 install-recall-hook CLI + schema fix |
+| `5943d2f` | T15b init integration + i18n |
+
+🟡 **Pending user smoke:** SUB-B2 catch-up (farcry-style reopen within minutes)
+ — requires real Claude Code session + prior-session JSONL. Install verified,
+first-visit mechanism offline-validated; blocking catch-up needs interactive
+session to exercise the refine→mine→brief chain. Offline mechanism smoke
+(first_visit state recording, cwd_to_slug normalization, cache I/O,
+subprocess runners mock) all green.
+
 ---
 
 ### ⏭ SIRADAKİ OTURUM — v0.4.0 Phase 1 kalanı
 
-v0.4.2-alpha kapandı + hybrid-palace cleanup + **4.3.A shipped (2026-04-22)**.
-Sıradaki parçalar v0.4.0-final için:
+4.3 first ship kapandı (2026-04-23). Sıradaki parçalar v0.4.0-final için:
 
-- **4.3 Skill-recall** (~5h) — `/mnemos-recall <query>` user skill +
-  `/mnemos-briefing` SessionStart opt-in hook + MCP `recall_mode` yaml
-  dinamik instructions. Pattern: vector top-50 → Claude Sonnet judge →
-  curated 300-500 kelime context. Skill-mine'ın skill-recall kardeşi;
-  rerank burada ediyor (embedding değişmiyor).
+- **4.3.1 Explicit `/mnemos-recall <query>` skill** (~2h, second ship) —
+  cross-context edge case: farcry cwd'sinde çalışıyorum ama GYP satın alma
+  hatırlatması istiyorum. Brainstorm + spec + plan ayrı, v0.4.1 polish'ine
+  birleşmeden önce kendi ship'inde.
 - **4.5 Settings TUI** (~2.5h) — `mnemos settings` numbered menu
   (backend / mine-mode / recall-mode / hooks / statusline / languages).
   Fragmanlı komutları tek panel altında topla. i18n TR+EN.
