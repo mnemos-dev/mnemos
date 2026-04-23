@@ -258,6 +258,9 @@ def cmd_init(args: argparse.Namespace) -> None:
     # --- Statusline: offer to wire up the progress snippet ---
     _install_statusline_prompt(lang=lang, vault=Path(cfg.vault_path))
 
+    # --- Recall-briefing hook: offer to install + flip recall_mode to skill ---
+    _install_recall_hook_prompt(lang=lang, vault=Path(cfg.vault_path))
+
     # --- MCP connection instructions ---
     print(
         "\n=== MCP Connection ===\n"
@@ -650,6 +653,38 @@ def _install_statusline_prompt(lang: str = "en", vault: Path = Path(".")) -> Non
         print(t("statusline_install_already", lang))
     else:
         print(t("statusline_install_done", lang))
+
+
+def _install_recall_hook_prompt(lang: str = "en", vault: Path = Path(".")) -> None:
+    """Phase 5 extra — offer to install the recall-briefing SessionStart hook.
+
+    On accept, installs the hook into ~/.claude/settings.json AND flips
+    `recall_mode: skill` in the vault's mnemos.yaml so the MCP instructions
+    and the hook activate together.
+    """
+    from mnemos.i18n import t
+    from mnemos.recall_briefing import install_recall_hook
+
+    answer = input(t("recall_hook_install_prompt", lang) + " ").strip().lower()
+    yes_answers = {"", "y", "yes", "e", "evet"}
+    if answer not in yes_answers:
+        print(t("recall_hook_install_declined", lang))
+        return
+
+    result = install_recall_hook(vault=vault, uninstall=False)
+    print(f"  {result.status}: {result.settings_path}")
+
+    # Flip recall_mode in mnemos.yaml to "skill" if not already set.
+    yaml_path = vault / "mnemos.yaml"
+    if yaml_path.exists():
+        text = yaml_path.read_text(encoding="utf-8")
+        if not any(line.strip().startswith("recall_mode:") for line in text.splitlines()):
+            if not text.endswith("\n"):
+                text += "\n"
+            text += "recall_mode: skill\n"
+            yaml_path.write_text(text, encoding="utf-8")
+
+    print(t("recall_hook_install_done", lang))
 
 
 # ---------------------------------------------------------------------------

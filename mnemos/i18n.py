@@ -229,6 +229,19 @@ _STRINGS: Dict[str, Dict[str, str]] = {
         "en": "Skipped. Install later with: mnemos install-statusline",
         "tr": "Atlandı. Daha sonra kurmak için: mnemos install-statusline",
     },
+    # ---------------- Recall-briefing hook install (v0.4 task 15b) ----------------
+    "recall_hook_install_prompt": {
+        "en": "Install recall-briefing hook? This auto-generates per-cwd memory briefings on SessionStart. (Y/n)",
+        "tr": "Recall-briefing hook'u kurulsun mu? Her SessionStart'ta cwd-bazlı hatıra özeti üretir. (Y/n)",
+    },
+    "recall_hook_install_done": {
+        "en": "Recall-briefing hook installed. recall_mode set to 'skill' in mnemos.yaml.",
+        "tr": "Recall-briefing hook kuruldu. mnemos.yaml'da recall_mode 'skill' olarak ayarlandı.",
+    },
+    "recall_hook_install_declined": {
+        "en": "Skipped recall-briefing hook. You can install later with: mnemos install-recall-hook",
+        "tr": "Recall-briefing hook atlandı. Sonra kurmak için: mnemos install-recall-hook",
+    },
 }
 
 
