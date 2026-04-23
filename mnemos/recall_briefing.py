@@ -683,5 +683,70 @@ def main() -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# install-recall-hook — settings.json management
+# ---------------------------------------------------------------------------
+
+RECALL_HOOK_TIMEOUT_MS = 600_000  # 10 minutes for catch-up worst case
+SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
+
+
+@dataclass
+class HookInstallResult:
+    status: str  # "installed" | "already-installed" | "uninstalled" | "not-present"
+    settings_path: Path
+
+
+def _load_settings(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_settings(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _recall_entry() -> dict:
+    return {
+        "type": "command",
+        "command": "python -m mnemos.recall_briefing",
+        "timeout": RECALL_HOOK_TIMEOUT_MS,
+    }
+
+
+def install_recall_hook(vault: Path, uninstall: bool = False) -> HookInstallResult:
+    """Add/remove the recall-briefing SessionStart hook entry in settings.json."""
+    data = _load_settings(SETTINGS_PATH)
+    data.setdefault("hooks", {})
+    data["hooks"].setdefault("SessionStart", [])
+
+    entries = data["hooks"]["SessionStart"]
+
+    def is_recall(e: dict) -> bool:
+        return "recall_briefing" in (e.get("command") or "")
+
+    if uninstall:
+        before = len(entries)
+        data["hooks"]["SessionStart"] = [e for e in entries if not is_recall(e)]
+        _save_settings(SETTINGS_PATH, data)
+        status = "uninstalled" if before != len(data["hooks"]["SessionStart"]) else "not-present"
+        return HookInstallResult(status=status, settings_path=SETTINGS_PATH)
+
+    # Install
+    if any(is_recall(e) for e in entries):
+        return HookInstallResult(status="already-installed", settings_path=SETTINGS_PATH)
+
+    entries.append(_recall_entry())
+    _save_settings(SETTINGS_PATH, data)
+    return HookInstallResult(status="installed", settings_path=SETTINGS_PATH)
+
+
 if __name__ == "__main__":
     sys.exit(main())

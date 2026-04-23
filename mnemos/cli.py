@@ -1078,6 +1078,18 @@ def cmd_install_hook(args: argparse.Namespace) -> None:
         print(f"backup: {result.backup_path}")
 
 
+def cmd_install_recall_hook(args: argparse.Namespace) -> None:
+    """Install or uninstall the SessionStart recall-briefing hook."""
+    from mnemos.recall_briefing import install_recall_hook
+
+    vault_path = _resolve_vault(args.vault)
+    if not vault_path:
+        vault_path = str(Path.cwd())
+
+    result = install_recall_hook(vault=Path(vault_path), uninstall=args.uninstall)
+    print(f"{result.status}: {result.settings_path}")
+
+
 def cmd_install_statusline(args: argparse.Namespace) -> None:
     """Install or uninstall the mnemos statusline snippet."""
     from mnemos.install_statusline import install_statusline
@@ -1371,6 +1383,17 @@ def main() -> None:
     )
     parser_install_hook.add_argument("--uninstall", action="store_true")
     parser_install_hook.set_defaults(func=cmd_install_hook)
+
+    # ------------------------------------------------------------------
+    # install-recall-hook
+    # ------------------------------------------------------------------
+    parser_install_recall_hook = subparsers.add_parser(
+        "install-recall-hook",
+        help="Install the SessionStart recall-briefing hook in ~/.claude/settings.json",
+    )
+    parser_install_recall_hook.add_argument("--vault")
+    parser_install_recall_hook.add_argument("--uninstall", action="store_true")
+    parser_install_recall_hook.set_defaults(func=cmd_install_recall_hook)
 
     # ------------------------------------------------------------------
     # install-statusline
