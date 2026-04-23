@@ -178,3 +178,53 @@ def count_refined_sessions_for_cwd(vault: Path, cwd: str) -> int:
                     count += 1
                 break
     return count
+
+
+# ---------------------------------------------------------------------------
+# Refine ledger + unrefined JSONL discovery
+# ---------------------------------------------------------------------------
+
+DEFAULT_REFINE_LEDGER = Path.home() / ".claude/skills/mnemos-refine-transcripts/state/processed.tsv"
+DEFAULT_CLAUDE_PROJECTS = Path.home() / ".claude/projects"
+
+
+def load_refine_ledger_jsonls(ledger: Path) -> set[str]:
+    """Return set of JSONL abs paths with OK status in the refine ledger.
+
+    Ledger format: <jsonl>\\t<status>\\t<session_md> (3 cols, tab-separated).
+    """
+    out: set[str] = set()
+    if not ledger.exists():
+        return out
+    try:
+        with ledger.open("r", encoding="utf-8", errors="replace") as fh:
+            for raw in fh:
+                parts = raw.rstrip("\r\n").split("\t")
+                if len(parts) < 3:
+                    continue
+                if parts[1] == "OK":
+                    out.add(parts[0])
+    except OSError:
+        pass
+    return out
+
+
+def find_unrefined_jsonls_for_cwd(
+    cwd_slug: str,
+    projects_root: Path,
+    ledger: Path,
+) -> list[Path]:
+    """List .jsonl files in ~/.claude/projects/<slug>/ NOT in refine ledger.
+
+    Sorted by mtime (oldest first). The caller should also skip any JSONL
+    whose PID marker indicates a live session.
+    """
+    proj_dir = projects_root / cwd_slug
+    if not proj_dir.exists():
+        return []
+    processed = load_refine_ledger_jsonls(ledger)
+    candidates: list[Path] = []
+    for jsonl in proj_dir.glob("*.jsonl"):
+        if str(jsonl) not in processed:
+            candidates.append(jsonl)
+    return sorted(candidates, key=lambda p: p.stat().st_mtime)

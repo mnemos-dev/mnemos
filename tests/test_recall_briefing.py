@@ -168,3 +168,60 @@ def test_count_refined_sessions_for_cwd(tmp_path: Path) -> None:
 
     count = count_refined_sessions_for_cwd(tmp_path, "C:\\Projects\\farcry")
     assert count == 2
+
+
+# --- unrefined JSONL discovery tests ---
+
+from mnemos.recall_briefing import (
+    find_unrefined_jsonls_for_cwd,
+    load_refine_ledger_jsonls,
+)
+
+
+def test_load_refine_ledger_jsonls_extracts_ok_jsonl_paths(tmp_path: Path) -> None:
+    ledger = tmp_path / "processed.tsv"
+    # Real ledger format: <jsonl>\tOK\t<session_md> (3 cols, no timestamp)
+    ledger.write_text(
+        "C:\\proj\\a.jsonl\tOK\t2026-04-01.md\n"
+        "C:\\proj\\b.jsonl\tSKIP\tnone\n"
+        "C:\\proj\\c.jsonl\tOK\t2026-04-02.md\n",
+        encoding="utf-8",
+    )
+    jsonls = load_refine_ledger_jsonls(ledger)
+    assert "C:\\proj\\a.jsonl" in jsonls
+    assert "C:\\proj\\c.jsonl" in jsonls
+    assert "C:\\proj\\b.jsonl" not in jsonls  # SKIP excluded
+
+
+def test_find_unrefined_jsonls_for_cwd_returns_unprocessed(tmp_path: Path) -> None:
+    proj_root = tmp_path / ".claude" / "projects" / "C--Projects-farcry"
+    proj_root.mkdir(parents=True)
+    jsonl_old = proj_root / "uuid-old.jsonl"
+    jsonl_new = proj_root / "uuid-new.jsonl"
+    jsonl_old.write_text("{}\n", encoding="utf-8")
+    jsonl_new.write_text("{}\n", encoding="utf-8")
+
+    ledger = tmp_path / "processed.tsv"
+    ledger.write_text(
+        f"{jsonl_old}\tOK\t2026-04-01.md\n",
+        encoding="utf-8",
+    )
+
+    result = find_unrefined_jsonls_for_cwd(
+        cwd_slug="C--Projects-farcry",
+        projects_root=tmp_path / ".claude" / "projects",
+        ledger=ledger,
+    )
+    assert jsonl_new in result
+    assert jsonl_old not in result
+
+
+def test_find_unrefined_jsonls_missing_project_dir_returns_empty(tmp_path: Path) -> None:
+    ledger = tmp_path / "processed.tsv"
+    ledger.write_text("", encoding="utf-8")
+    result = find_unrefined_jsonls_for_cwd(
+        cwd_slug="C--nowhere",
+        projects_root=tmp_path,
+        ledger=ledger,
+    )
+    assert result == []
