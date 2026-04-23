@@ -585,3 +585,62 @@ def test_sub_b2_refine_fails_skips_mine(tmp_path: Path) -> None:
     assert mine_called[0] is False
     # Briefing still runs on whatever was already in cache / prior sessions
     assert result.outcome in {"sub_b2_catch_up_done", "sub_b2_partial"}
+
+
+# --- main entry ---
+
+import io
+
+from mnemos.recall_briefing import main
+
+
+def test_main_parses_hook_input_and_emits_context(tmp_path: Path, capsys, monkeypatch) -> None:
+    (tmp_path / "mnemos.yaml").write_text("recall_mode: skill\n", encoding="utf-8")
+    (tmp_path / "Sessions").mkdir()
+
+    slug = cwd_to_slug("C:\\Projects\\farcry")
+    state = CwdState()
+    state.cwds[slug] = {"cwd": "C:\\Projects\\farcry", "first_seen": 0.0, "last_seen": 0.0, "visit_count": 1}
+    save_state(tmp_path, state)
+
+    cache_p = cache_path_for(tmp_path, slug)
+    write_cache(cache_p, body="**Aktif durum:** hi\n", cwd="C:\\Projects\\farcry", session_count=0, drawer_count=0)
+
+    hook_input = json.dumps({
+        "cwd": "C:\\Projects\\farcry",
+        "source": "startup",
+        "transcript_path": "/unrelated/path.jsonl",
+    })
+    monkeypatch.setattr("sys.stdin", io.StringIO(hook_input))
+    monkeypatch.setenv("MNEMOS_VAULT", str(tmp_path))
+
+    rc = main()
+    assert rc == 0
+
+    captured = capsys.readouterr()
+    out = json.loads(captured.out)
+    assert "hookSpecificOutput" in out
+    assert out["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+    assert "**Aktif durum:** hi" in out["hookSpecificOutput"]["additionalContext"]
+
+
+def test_main_first_visit_emits_no_context(tmp_path: Path, capsys, monkeypatch) -> None:
+    (tmp_path / "mnemos.yaml").write_text("recall_mode: skill\n", encoding="utf-8")
+
+    hook_input = json.dumps({
+        "cwd": "C:\\new-cwd-never-seen",
+        "source": "startup",
+        "transcript_path": "/x.jsonl",
+    })
+    monkeypatch.setattr("sys.stdin", io.StringIO(hook_input))
+    monkeypatch.setenv("MNEMOS_VAULT", str(tmp_path))
+
+    rc = main()
+    assert rc == 0
+
+    # First visit → no additionalContext emitted
+    captured = capsys.readouterr()
+    if captured.out.strip():
+        out = json.loads(captured.out)
+        if "hookSpecificOutput" in out:
+            assert out["hookSpecificOutput"].get("additionalContext", "") == ""

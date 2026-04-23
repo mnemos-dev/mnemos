@@ -619,3 +619,69 @@ def _lookup_session_md_in_ledger(ledger: Path, jsonl: Path) -> str | None:
         if parts[1] == "OK" and parts[0] == target:
             return parts[2]
     return None
+
+
+# ---------------------------------------------------------------------------
+# Main entry — called by Claude Code SessionStart hook
+# ---------------------------------------------------------------------------
+
+import sys
+
+
+def _resolve_vault() -> Path | None:
+    """Resolve vault from env or cwd. Return None if unresolvable."""
+    v = os.environ.get("MNEMOS_VAULT")
+    if v:
+        p = Path(v)
+        if p.exists():
+            return p
+    cwd = Path.cwd()
+    for parent in [cwd] + list(cwd.parents):
+        if (parent / "mnemos.yaml").exists():
+            return parent
+    return None
+
+
+def main() -> int:
+    """Parse hook stdin JSON, run decision tree, emit additionalContext JSON on stdout."""
+    try:
+        raw = sys.stdin.read()
+        data = json.loads(raw) if raw.strip() else {}
+    except json.JSONDecodeError:
+        return 0
+
+    inp = SessionStartInput(
+        cwd=data.get("cwd", ""),
+        source=data.get("source", ""),
+        transcript_path=data.get("transcript_path", ""),
+    )
+
+    vault = _resolve_vault()
+    if vault is None:
+        return 0
+
+    try:
+        result = handle_session_start(
+            inp,
+            vault=vault,
+            projects_root=DEFAULT_CLAUDE_PROJECTS,
+            ledger=DEFAULT_REFINE_LEDGER,
+        )
+    except Exception:
+        # Never let the hook crash Claude Code
+        return 0
+
+    if result.injected_context:
+        out = {
+            "hookSpecificOutput": {
+                "hookEventName": "SessionStart",
+                "additionalContext": result.injected_context,
+            }
+        }
+        print(json.dumps(out, ensure_ascii=False))
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
