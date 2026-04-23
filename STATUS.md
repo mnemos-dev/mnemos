@@ -484,29 +484,13 @@ iki SessionStart entry: auto-refine + recall-briefing).
 - Mine ledger: 144 satır, 144 unique source (hiç dubli yok)
 - Hook install'lu, fix'li, test edildi (627 pass)
 
-🟡 **Pending user smoke (non-ASCII fix sonrası):** fix uygulandı, state
-temizlendi. Smoke planı (farcry cwd'sinde 1. session zaten refine+mine
-edilmiş, sadece recall bozuktu):
-
-1. **Cache'i hemen üret (opsiyonel, UX shortcut):**
-   ```
-   python -m mnemos.recall_briefing --brief-and-cache \
-     --cwd "C:\Users\tugrademirors\OneDrive\Masaüstü\farcry" \
-     --vault "C:\Users\tugrademirors\OneDrive\Masaüstü\kasamd"
-   ```
-   → `kasamd/.mnemos-briefings/C--Users-tugrademirors-OneDrive-Masa-st--farcry.md`
-   oluşmalı, 200-400 kelime briefing + "Revize/iptal edilen kararlar"
-   bölümü.
-2. **Farcry klasöründe Claude Code oturumu aç.** İlk gerçek visit
-   CASE A silent (tasarım). Kapat.
-3. **Tekrar aç.** Return-visit SUB-B1 fresh cache → briefing inject
-   edilmeli (Claude ilk turn'den itibaren farcry bağlamıyla gelir).
-4. **Alternatif yol:** 1. adımı atla, direkt 3 kez aç-kapat. 2. visit
-   SUB-B1 no-cache → bg_spawn cache üretir → 3. visit'te fresh inject.
-
-Güvenlik: Task Manager'da 3+ python.exe/claude.exe subprocess veya ≥2 dk
-bekleme olursa harici terminal'den `mnemos install-recall-hook --uninstall`
-ile kapat.
+✅ **Smoke doğrulandı (2026-04-23 akşam):** farcry cwd'sinde Claude Code
+oturumu açıldı, recall hook SUB-B1 fresh-path ile anında briefing inject
+etti ("Selam! 🐔 farcry/ klasörü hâlâ boş — Shimeji tarzı masaüstü tavuk
+projesi için bıraktığımız yerden devam edebiliriz. Bekleyen kararlar:
+1. Davranış listesi onayı... 2. Dosyaları gagalama... 3. Gıdaklama ses
+efekti... 4. Teknoloji seçimi..."). İlk smoke'ta 4 dk gecikme vardı (SUB-B2
+catch-up fork-bomb backlog yüzünden); 6 post-ship fix sonrası anında inject.
 
 Sıradaki roadmap işi: 4.3.1 explicit `/mnemos-recall` skill (cross-context
 edge case), 4.5 settings TUI, 4.6 benchmark, 4.7 PyPI v0.4.0 release.
@@ -725,12 +709,10 @@ Claude ilk turn'den itibaren cwd bağlamıyla gelir.
 | `ea3537b`, `59948f6` | T15 install-recall-hook CLI + schema fix |
 | `5943d2f` | T15b init integration + i18n |
 
-🟡 **Pending user smoke:** SUB-B2 catch-up (farcry-style reopen within minutes)
- — requires real Claude Code session + prior-session JSONL. Install verified,
-first-visit mechanism offline-validated; blocking catch-up needs interactive
-session to exercise the refine→mine→brief chain. Offline mechanism smoke
-(first_visit state recording, cwd_to_slug normalization, cache I/O,
-subprocess runners mock) all green.
+✅ **Smoke doğrulandı (2026-04-23):** farcry cwd'sinde gerçek Claude Code
+oturumunda recall hook fire etti, 6 post-ship fix sonrası SUB-B1 fresh-path
+anında briefing inject ediyor. Detaylar yukarıdaki "Post-ship emergency
+fix'ler" + "Smoke doğrulandı" bloklarında.
 
 ---
 
