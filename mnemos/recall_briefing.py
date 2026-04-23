@@ -280,3 +280,105 @@ def write_status(
     tmp_path = vault / (STATUS_FILENAME + ".tmp")
     tmp_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
     os.replace(tmp_path, path)
+
+
+# ---------------------------------------------------------------------------
+# Subprocess runners for skill invocations
+# ---------------------------------------------------------------------------
+
+import tempfile
+
+
+@dataclass
+class RefineResult:
+    ok: bool
+    jsonl: Path
+
+
+@dataclass
+class MineResult:
+    ok: bool
+    session_md: Path
+
+
+@dataclass
+class BriefResult:
+    ok: bool
+    body: str
+
+
+def _default_runner(cmd) -> int:
+    """Invoke claude subprocess; strip ANTHROPIC_API_KEY so subscription is used."""
+    import subprocess
+    kwargs: dict = {}
+    if os.name == "nt":
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    env = os.environ.copy()
+    env.pop("ANTHROPIC_API_KEY", None)
+    kwargs["env"] = env
+    try:
+        return subprocess.call(list(cmd), **kwargs)
+    except (FileNotFoundError, OSError):
+        return 1
+
+
+def _default_runner_stdout(cmd, stdout_path=None) -> int:
+    """Like _default_runner but redirects stdout to the given file path."""
+    import subprocess
+    kwargs: dict = {}
+    if os.name == "nt":
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    env = os.environ.copy()
+    env.pop("ANTHROPIC_API_KEY", None)
+    kwargs["env"] = env
+    try:
+        if stdout_path is not None:
+            with open(stdout_path, "w", encoding="utf-8") as fh:
+                return subprocess.call(list(cmd), stdout=fh, **kwargs)
+        return subprocess.call(list(cmd), **kwargs)
+    except (FileNotFoundError, OSError):
+        return 1
+
+
+def _build_skill_cmd(skill: str, arg: str) -> list[str]:
+    """Build: claude --print --dangerously-skip-permissions --model sonnet "/<skill> <arg>" """
+    return [
+        "claude",
+        "--print",
+        "--dangerously-skip-permissions",
+        "--model", "sonnet",
+        f"/{skill} {arg}",
+    ]
+
+
+def run_refine_sync(jsonl: Path, runner=None) -> RefineResult:
+    runner = runner or _default_runner
+    cmd = _build_skill_cmd("mnemos-refine-transcripts", str(jsonl))
+    rc = runner(cmd)
+    return RefineResult(ok=(rc == 0), jsonl=jsonl)
+
+
+def run_mine_sync(session_md: Path, runner=None) -> MineResult:
+    runner = runner or _default_runner
+    cmd = _build_skill_cmd("mnemos-mine-llm", str(session_md))
+    rc = runner(cmd)
+    return MineResult(ok=(rc == 0), session_md=session_md)
+
+
+def run_brief_sync(cwd: str, runner=None) -> BriefResult:
+    runner = runner or _default_runner_stdout
+    cmd = _build_skill_cmd("mnemos-briefing", cwd)
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8")
+    tmp_path = tmp.name
+    tmp.close()
+    try:
+        rc = runner(cmd, stdout_path=tmp_path)
+        if rc != 0:
+            return BriefResult(ok=False, body="")
+        body = Path(tmp_path).read_text(encoding="utf-8")
+        return BriefResult(ok=True, body=body)
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass

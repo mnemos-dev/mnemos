@@ -268,3 +268,65 @@ def test_write_status_preserves_existing_fields(tmp_path: Path) -> None:
 
 def test_read_status_missing_returns_empty(tmp_path: Path) -> None:
     assert read_status(tmp_path) == {}
+
+
+# --- subprocess runner tests ---
+
+from mnemos.recall_briefing import (
+    run_refine_sync,
+    run_mine_sync,
+    run_brief_sync,
+    RefineResult,
+    MineResult,
+    BriefResult,
+)
+
+
+def test_run_refine_sync_invokes_claude_with_skill(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+
+    def fake_runner(cmd):
+        calls.append(list(cmd))
+        return 0
+
+    jsonl = tmp_path / "x.jsonl"
+    jsonl.write_text("{}\n", encoding="utf-8")
+    result = run_refine_sync(jsonl, runner=fake_runner)
+    assert result.ok is True
+    assert len(calls) == 1
+    cmd = calls[0]
+    assert cmd[0] == "claude"
+    assert "--print" in cmd
+    assert "--dangerously-skip-permissions" in cmd
+    assert any(str(jsonl) in arg for arg in cmd)
+    assert any("mnemos-refine-transcripts" in arg for arg in cmd)
+
+
+def test_run_refine_sync_nonzero_exit_fails(tmp_path: Path) -> None:
+    jsonl = tmp_path / "x.jsonl"
+    jsonl.write_text("{}\n", encoding="utf-8")
+    result = run_refine_sync(jsonl, runner=lambda cmd: 2)
+    assert result.ok is False
+
+
+def test_run_mine_sync_invokes_claude_with_session_md(tmp_path: Path) -> None:
+    session_md = tmp_path / "2026-04-01-foo.md"
+    session_md.write_text("---\n---\nbody\n", encoding="utf-8")
+    captured: list[list[str]] = []
+    result = run_mine_sync(session_md, runner=lambda cmd: captured.append(list(cmd)) or 0)
+    assert result.ok is True
+    assert any("mnemos-mine-llm" in a for a in captured[0])
+
+
+def test_run_brief_sync_captures_stdout(tmp_path: Path) -> None:
+    def fake_runner_with_output(cmd, stdout_path=None):
+        if stdout_path is not None:
+            Path(stdout_path).write_text("**Aktif durum:** test briefing body.\n", encoding="utf-8")
+        return 0
+
+    result = run_brief_sync(
+        cwd="C:\\Projects\\farcry",
+        runner=fake_runner_with_output,
+    )
+    assert result.ok is True
+    assert "**Aktif durum:**" in result.body
