@@ -1,6 +1,6 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-23 (4.3 first ship shipped + post-ship **4** critical fixes: fork-bomb env guard + Windows console flags + SUB-B2 pending cap + **non-ASCII cwd recall bug** [slug algo + stdin UTF-8 + bg-spawn cache]; ledgers dedup'd; hook re-installed with fixes; **634 test pass +7 new** (baseline 627); sonraki: 4.3.1 `/mnemos-recall` explicit skill + 4.5 settings TUI + 4.6 benchmark + 4.7 PyPI v0.4.0)
+**Last updated:** 2026-04-23 (4.3 first ship shipped + post-ship **5** critical fixes: fork-bomb env guard + Windows console flags + SUB-B2 pending cap + non-ASCII cwd recall bug [slug algo + stdin UTF-8 + bg-spawn cache] + **stdout cp1252 crash** [Turkish briefing body `ş` UnicodeEncodeError → hook exit 1 → Claude Code dropped additionalContext]; ledgers dedup'd; hook re-installed with fixes; **635 test pass +8 new** (baseline 627); sonraki: 4.3.1 `/mnemos-recall` explicit skill + 4.5 settings TUI + 4.6 benchmark + 4.7 PyPI v0.4.0)
 **Stable PyPI version:** `v0.3.3` · **Next:** `v0.4.0` (AI Boost / Phase 1 — 4.3.1 + 4.5 + 4.6 + 4.7 remaining)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
@@ -385,6 +385,30 @@ iki SessionStart entry: auto-refine + recall-briefing).
   Unicode-preserve slug entry'si (`...Masaüstü-farcry`) silindi
   (`cwds.pop`), yalnızca `C--Projeler-mnemos` kaldı. Fix sonrası asla
   yeniden yazılmayacak slug.
+
+- **Post-fix follow-up: stdout cp1252 crash (RC4)** — farcry smoke testi
+  sırasında çıktı. SUB-B2 catch-up başarıyla tamamlanıyor (cache
+  güncelleniyor, hook-status `last_outcome=ok`), ama briefing Claude'a
+  ulaşmıyordu. Diagnosis: Windows Python default `sys.stdout` cp1252
+  kodeki kullanıyor; briefing body'deki Türkçe `ş` (`ş`) cp1252'de
+  yok → `print(json.dumps(out, ensure_ascii=False))` satırı
+  UnicodeEncodeError atar → hook exit 1 → **Claude Code `additionalContext`'i
+  sessizce reddeder**. Kullanıcı sadece generic bir Claude session görür
+  (kendi MCP `mnemos_search` çağrılarıyla manuel context bulabilir ama
+  otomatik briefing gelmez).
+
+  Fix: `main()` hook mode'da `sys.stdout.reconfigure(encoding="utf-8",
+  errors="replace")` — stdin reconfigure'un yanına stdout için de aynı
+  pattern. Try/except ile sarılı (StringIO test double'larını bozmuyor).
+  Test: `test_main_stdout_handles_turkish_body_without_crash` — Türkçe
+  `ş`/`ğ`/`ü` içeren cache body cp1252 stdout'a emit edilirken
+  UnicodeEncodeError atmaz, UTF-8 byte'ları (\xc5\x9f) raw output'ta
+  görülür.
+
+  **Sonuç:** fix sonrası test 634 → 635 pass. Farcry retry (aynı cache
+  hâlâ fresh, state visit_count=2 → return-visit) SUB-B1 fresh-path
+  inject yapacak — Claude ilk turn'den itibaren tavuk pet bağlamı ile
+  gelir.
 
 **Operational cleanup (commit'siz, runtime):**
 - Runaway pipeline tree-kill (recall_briefing pid 23064 + auto_refine_bg

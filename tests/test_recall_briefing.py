@@ -802,6 +802,56 @@ def test_nt_no_window_flags_combines_no_window_and_detached() -> None:
 
 # --- RC2: stdin UTF-8 decode (Windows cp1252 mojibake fix) ---
 
+def test_main_stdout_handles_turkish_body_without_crash(tmp_path: Path, monkeypatch) -> None:
+    """When injecting a Turkish briefing body, main() must not crash on the
+    final print(). Windows default stdout is cp1252 — Turkish chars like
+    ş/ğ/ü are NOT representable in cp1252 and cause UnicodeEncodeError on
+    print(), which makes the hook exit 1 and causes Claude Code to silently
+    drop the additionalContext. main() must reconfigure stdout to UTF-8.
+    """
+    (tmp_path / "mnemos.yaml").write_text("recall_mode: skill\n", encoding="utf-8")
+    (tmp_path / "Sessions").mkdir()
+
+    slug = cwd_to_slug("C:\\Projects\\test")
+    state = CwdState()
+    state.cwds[slug] = {"cwd": "C:\\Projects\\test", "first_seen": 0.0, "last_seen": 0.0, "visit_count": 1}
+    save_state(tmp_path, state)
+
+    # Cache body contains the exact Turkish char combinations from a real
+    # brief: ş (ş), ğ (ğ), ü (ü). cp1252 maps none of these.
+    turkish_body = (
+        "**Aktif durum:** farcry klasörü boş; proje sıfırdan başlayacak. "
+        "Davranış listesi ve teknoloji seçimi kullanıcı yanıtını bekliyor.\n"
+    )
+    cache = cache_path_for(tmp_path, slug)
+    write_cache(cache, body=turkish_body, cwd="C:\\Projects\\test",
+                session_count=0, drawer_count=0)
+
+    hook_input = json.dumps({
+        "cwd": "C:\\Projects\\test",
+        "source": "startup",
+        "transcript_path": "/unrelated/live.jsonl",
+    })
+    monkeypatch.setattr("sys.stdin", io.StringIO(hook_input))
+    monkeypatch.setenv("MNEMOS_VAULT", str(tmp_path))
+
+    # Replace stdout with a cp1252 writer — what Windows gives by default
+    fake_out = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", newline="")
+    monkeypatch.setattr("sys.stdout", fake_out)
+
+    # Must not raise UnicodeEncodeError
+    rc = main()
+    assert rc == 0
+
+    fake_out.flush()
+    raw = fake_out.buffer.getvalue()
+    # After the fix the body is emitted as UTF-8 bytes — the Turkish "ş"
+    # byte pattern (\xc5\x9f) should be visible
+    assert b"\xc5\x9f" in raw or b"\xc4\x9f" in raw or b"\xc3\xbc" in raw, (
+        f"No UTF-8 Turkish byte sequence in stdout; got {raw[:200]!r}"
+    )
+
+
 def test_main_decodes_utf8_stdin_without_mojibake(tmp_path: Path, monkeypatch, capsys) -> None:
     """Claude Code sends SessionStart payload as UTF-8 JSON on stdin.
     Windows Python defaults stdin to cp1252 — UTF-8 'ü' (C3 BC) becomes 'Ã¼'.

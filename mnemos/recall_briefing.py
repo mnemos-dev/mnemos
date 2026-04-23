@@ -789,13 +789,22 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         return 0
 
-    # Hook mode. Windows Python opens stdin in cp1252 by default; Claude Code
-    # sends UTF-8 JSON, so non-ASCII cwd chars (Turkish ü, German ä, Japanese
-    # etc.) arrive as mojibake without this reconfigure. Guarded by a broad
-    # except because test doubles and some shells provide stdin objects that
-    # don't implement reconfigure().
+    # Hook mode. Windows Python opens stdin/stdout in cp1252 by default;
+    # Claude Code sends UTF-8 JSON on stdin, and the briefing body we emit
+    # on stdout often contains Turkish/non-ASCII chars that cp1252 CANNOT
+    # represent (ş/ğ, 日本語, etc). Without these reconfigures:
+    #   - stdin: 'ü' (UTF-8 C3 BC) surfaces as mojibake 'Ã¼'
+    #   - stdout: print(json.dumps(body)) raises UnicodeEncodeError → hook
+    #     exits 1 → Claude Code silently drops additionalContext (user gets
+    #     no briefing despite successful SUB-B2 catch-up).
+    # Guarded by broad except because test doubles (StringIO) and some
+    # shells provide streams that don't implement reconfigure().
     try:
         sys.stdin.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError, ValueError):
+        pass
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except (AttributeError, OSError, ValueError):
         pass
 
