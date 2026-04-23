@@ -479,3 +479,109 @@ def test_recall_mode_not_skill_exits(tmp_path: Path) -> None:
         brief_runner=lambda cmd, stdout_path=None: 0,
     )
     assert result.outcome == "skipped_mode"
+
+
+# --- SUB-B2 blocking catch-up ---
+
+def test_sub_b2_refines_and_mines_each_pending(tmp_path: Path) -> None:
+    """Pending JSONL → refine → read session_md from ledger → mine → brief."""
+    (tmp_path / "mnemos.yaml").write_text("recall_mode: skill\n", encoding="utf-8")
+    sessions = tmp_path / "Sessions"
+    sessions.mkdir()
+
+    slug = cwd_to_slug("C:\\Projects\\farcry")
+    state = CwdState()
+    state.cwds[slug] = {"cwd": "C:\\Projects\\farcry", "first_seen": 0.0, "last_seen": 0.0, "visit_count": 1}
+    save_state(tmp_path, state)
+
+    proj_root = tmp_path / ".claude" / "projects" / slug
+    proj_root.mkdir(parents=True)
+    pending_jsonl = proj_root / "pending-uuid.jsonl"
+    pending_jsonl.write_text("{}\n", encoding="utf-8")
+
+    ledger = tmp_path / "processed.tsv"
+    ledger.write_text("", encoding="utf-8")
+
+    calls: list[str] = []
+
+    def subprocess_runner(cmd):
+        joined = " ".join(str(c) for c in cmd)
+        calls.append(joined)
+        # Simulate refine success: append OK row to ledger, create session_md
+        if "mnemos-refine-transcripts" in joined:
+            sname = "2026-04-01-test.md"
+            (sessions / sname).write_text(
+                "---\ncwd: C:\\Projects\\farcry\n---\nbody\n", encoding="utf-8"
+            )
+            with ledger.open("a", encoding="utf-8") as fh:
+                fh.write(f"{pending_jsonl}\tOK\t{sname}\n")
+        return 0
+
+    def brief_runner(cmd, stdout_path=None):
+        if stdout_path is not None:
+            Path(stdout_path).write_text("**Aktif durum:** caught up\n", encoding="utf-8")
+        return 0
+
+    inp = SessionStartInput(
+        cwd="C:\\Projects\\farcry",
+        source="startup",
+        transcript_path="unrelated-live-session.jsonl",
+    )
+
+    result = handle_session_start(
+        inp,
+        vault=tmp_path,
+        projects_root=tmp_path / ".claude" / "projects",
+        ledger=ledger,
+        subprocess_runner=subprocess_runner,
+        brief_runner=brief_runner,
+    )
+    assert result.outcome == "sub_b2_catch_up_done"
+    assert "**Aktif durum:** caught up" in result.injected_context
+
+    # Refine + mine + brief all invoked
+    assert any("mnemos-refine-transcripts" in c for c in calls)
+    assert any("mnemos-mine-llm" in c for c in calls)
+
+
+def test_sub_b2_refine_fails_skips_mine(tmp_path: Path) -> None:
+    (tmp_path / "mnemos.yaml").write_text("recall_mode: skill\n", encoding="utf-8")
+    (tmp_path / "Sessions").mkdir()
+    slug = cwd_to_slug("C:\\x")
+    state = CwdState()
+    state.cwds[slug] = {"cwd": "C:\\x", "first_seen": 0.0, "last_seen": 0.0, "visit_count": 1}
+    save_state(tmp_path, state)
+
+    proj_root = tmp_path / ".claude" / "projects" / slug
+    proj_root.mkdir(parents=True)
+    pending = proj_root / "p.jsonl"
+    pending.write_text("{}\n", encoding="utf-8")
+
+    ledger = tmp_path / "processed.tsv"
+    ledger.write_text("", encoding="utf-8")
+
+    mine_called = [False]
+
+    def subprocess_runner(cmd):
+        if any("mnemos-mine-llm" in str(c) for c in cmd):
+            mine_called[0] = True
+        return 2  # refine fails
+
+    def brief_runner(cmd, stdout_path=None):
+        if stdout_path is not None:
+            Path(stdout_path).write_text("**Aktif durum:** no sessions\n", encoding="utf-8")
+        return 0
+
+    inp = SessionStartInput(cwd="C:\\x", source="startup", transcript_path="y")
+    result = handle_session_start(
+        inp,
+        vault=tmp_path,
+        projects_root=tmp_path / ".claude" / "projects",
+        ledger=ledger,
+        subprocess_runner=subprocess_runner,
+        brief_runner=brief_runner,
+    )
+    # Refine failed → mine should not run
+    assert mine_called[0] is False
+    # Briefing still runs on whatever was already in cache / prior sessions
+    assert result.outcome in {"sub_b2_catch_up_done", "sub_b2_partial"}

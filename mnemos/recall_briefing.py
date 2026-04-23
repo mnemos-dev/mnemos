@@ -555,6 +555,67 @@ def _run_sub_b2(
     subprocess_runner,
     brief_runner,
 ) -> HandleOutcome:
-    """Placeholder — SUB-B2 blocking catch-up implemented in Task 13."""
+    """Blocking catch-up: refine each pending JSONL → mine resulting session_md → brief."""
+    from filelock import FileLock, Timeout
+
+    slug = cwd_to_slug(inp.cwd)
+    total = len(pending)
+    lock = FileLock(str(vault / CATCH_UP_LOCK), timeout=10)
+
+    try:
+        with lock:
+            for i, jsonl in enumerate(pending, start=1):
+                write_status(vault, phase="refining", current=i, total=total, cwd_slug=slug, sub_phase="catch-up")
+                rres = run_refine_sync(jsonl, runner=subprocess_runner)
+                if not rres.ok:
+                    continue
+
+                # Read session_md from updated ledger
+                session_md_name = _lookup_session_md_in_ledger(ledger, jsonl)
+                if not session_md_name:
+                    continue
+                session_md = vault / "Sessions" / session_md_name
+                if not session_md.exists():
+                    continue
+
+                write_status(vault, phase="mining", current=i, total=total, cwd_slug=slug, sub_phase="catch-up")
+                run_mine_sync(session_md, runner=subprocess_runner)
+
+            # Briefing (always attempt, even if some refines failed)
+            write_status(vault, phase="briefing", cwd_slug=slug, sub_phase="catch-up")
+            bres = run_brief_sync(inp.cwd, runner=brief_runner)
+    except Timeout:
+        save_state(vault, state)
+        return HandleOutcome(outcome="sub_b2_lock_timeout")
+
+    write_status(vault, phase="idle", last_outcome="ok" if bres.ok else "error")
     save_state(vault, state)
-    return HandleOutcome(outcome="sub_b2_pending_stub")
+
+    if bres.ok and bres.body:
+        cache_p = cache_path_for(vault, slug)
+        current_n = count_refined_sessions_for_cwd(vault, inp.cwd)
+        write_cache(cache_p, body=bres.body, cwd=inp.cwd, session_count=current_n, drawer_count=0)
+        return HandleOutcome(outcome="sub_b2_catch_up_done", injected_context=bres.body)
+
+    return HandleOutcome(outcome="sub_b2_partial")
+
+
+def _lookup_session_md_in_ledger(ledger: Path, jsonl: Path) -> str | None:
+    """Return session_md filename for a JSONL's OK row in the ledger, or None.
+
+    Ledger format: <jsonl>\\tOK\\t<session_md>. Newest row wins if duplicate.
+    """
+    if not ledger.exists():
+        return None
+    try:
+        text = ledger.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    target = str(jsonl)
+    for line in reversed(text.splitlines()):
+        parts = line.split("\t")
+        if len(parts) < 3:
+            continue
+        if parts[1] == "OK" and parts[0] == target:
+            return parts[2]
+    return None
