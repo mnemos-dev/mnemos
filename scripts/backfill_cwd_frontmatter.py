@@ -62,16 +62,20 @@ def extract_cwd_from_jsonl(path: Path) -> Optional[str]:
 
 
 def parse_ledger(ledger: Path) -> List[LedgerRow]:
-    """Return OK rows from refine ledger TSV."""
+    """Return OK rows from refine ledger TSV.
+
+    Format: <jsonl_abs_path>\\t<status>\\t<session_md_filename>
+    Only OK rows with a non-empty session_md are returned.
+    """
     rows: List[LedgerRow] = []
     if not ledger.exists():
         return rows
     with ledger.open("r", encoding="utf-8", errors="replace") as fh:
         for raw in fh:
-            parts = raw.rstrip("\n").split("\t")
-            if len(parts) < 4:
+            parts = raw.rstrip("\r\n").split("\t")
+            if len(parts) < 3:
                 continue
-            _ts, status, jsonl, session_md = parts[0], parts[1], parts[2], parts[3]
+            jsonl, status, session_md = parts[0], parts[1], parts[2]
             if status != "OK":
                 continue
             if not session_md or session_md == "none":

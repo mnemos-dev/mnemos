@@ -46,10 +46,11 @@ def test_extract_cwd_from_jsonl_missing_file_returns_none(tmp_path: Path) -> Non
 
 def test_parse_ledger_returns_ok_rows(tmp_path: Path) -> None:
     ledger = tmp_path / "processed.tsv"
+    # Real format: <jsonl>\t<status>\t<session_md>  (3 cols, no timestamp)
     ledger.write_text(
-        "ts1\tOK\tC:\\proj\\a.jsonl\t2026-04-01-foo.md\n"
-        "ts2\tSKIP\tC:\\proj\\b.jsonl\tnone\n"
-        "ts3\tOK\tC:\\proj\\c.jsonl\t2026-04-02-bar.md\n",
+        "C:\\proj\\a.jsonl\tOK\t2026-04-01-foo.md\n"
+        "C:\\proj\\b.jsonl\tSKIP\tnone\n"
+        "C:\\proj\\c.jsonl\tOK\t2026-04-02-bar.md\n",
         encoding="utf-8",
     )
     rows = parse_ledger(ledger)
@@ -119,8 +120,8 @@ def test_run_backfill_end_to_end(tmp_path: Path) -> None:
     _write_jsonl(jsonl_a, [{"cwd": "C:\\Projects\\gyp"}])
     _write_jsonl(jsonl_b, [{"cwd": "C:\\Projects\\gyp"}])
     ledger.write_text(
-        f"ts1\tOK\t{jsonl_a}\t2026-04-01-foo.md\n"
-        f"ts2\tOK\t{jsonl_b}\t2026-04-02-bar.md\n",
+        f"{jsonl_a}\tOK\t2026-04-01-foo.md\n"
+        f"{jsonl_b}\tOK\t2026-04-02-bar.md\n",
         encoding="utf-8",
     )
 
@@ -147,7 +148,7 @@ def test_run_backfill_jsonl_missing(tmp_path: Path) -> None:
 
     ledger = tmp_path / "processed.tsv"
     ledger.write_text(
-        "ts1\tOK\tC:\\does-not-exist.jsonl\t2026-04-01-foo.md\n",
+        "C:\\does-not-exist.jsonl\tOK\t2026-04-01-foo.md\n",
         encoding="utf-8",
     )
 
@@ -171,7 +172,7 @@ def test_run_backfill_dry_run_does_not_write(tmp_path: Path) -> None:
     jsonl = tmp_path / "a.jsonl"
     _write_jsonl(jsonl, [{"cwd": "C:\\Projects\\gyp"}])
     ledger.write_text(
-        f"ts1\tOK\t{jsonl}\t2026-04-01-foo.md\n",
+        f"{jsonl}\tOK\t2026-04-01-foo.md\n",
         encoding="utf-8",
     )
 
