@@ -1,6 +1,6 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-23 (4.3 first ship shipped + post-ship 3 critical fixes: fork-bomb env guard + Windows console flags + SUB-B2 pending cap; ledgers dedup'd; hook re-installed with fixes; 627 test pass +65 new; sonraki: 4.3.1 `/mnemos-recall` explicit skill + 4.5 settings TUI + 4.6 benchmark + 4.7 PyPI v0.4.0)
+**Last updated:** 2026-04-23 (4.3 first ship shipped + post-ship **4** critical fixes: fork-bomb env guard + Windows console flags + SUB-B2 pending cap + **non-ASCII cwd recall bug** [slug algo + stdin UTF-8 + bg-spawn cache]; ledgers dedup'd; hook re-installed with fixes; **634 test pass +7 new** (baseline 627); sonraki: 4.3.1 `/mnemos-recall` explicit skill + 4.5 settings TUI + 4.6 benchmark + 4.7 PyPI v0.4.0)
 **Stable PyPI version:** `v0.3.3` · **Next:** `v0.4.0` (AI Boost / Phase 1 — 4.3.1 + 4.5 + 4.6 + 4.7 remaining)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
@@ -348,6 +348,43 @@ iki SessionStart entry: auto-refine + recall-briefing).
   catch-up kapsız çalışıyordu; mnemos gibi geçmişi ağır cwd'de 337 pending
   JSONL'u seri refine+mine'a soktu, 2.5 saatlik blocking iş. Cap: son 3
   JSONL sync işlenir, gerisi auto_refine async cadansına.
+- **Non-ASCII cwd recall bug — üç bağımlı root cause, tek commit:**
+  throwaway farcry (Türkçe `Masaüstü` içeren) cwd'sinde kullanıcı 4 visit
+  boyunca briefing alamadı rağmen refine+mine başarılıydı. Root cause'lar:
+  - **RC1 slug algoritması** — `cwd_to_slug` `[^\w-]` flag `re.UNICODE`
+    kullanıyordu → `ü`/`ğ`/`ä`/`語` gibi karakterler korunuyordu. Claude
+    Code kendi `~/.claude/projects/<slug>/` adlandırmasında non-ASCII
+    harfleri `-`'ye çeviriyor. Mismatch → `find_unrefined_jsonls_for_cwd`
+    yanlış klasöre bakar → pending=[] → **SUB-B2 gate hiç tetiklenmez**.
+    Fix: pattern `[^A-Za-z0-9_-]` (flag-independent). `Masaüstü\farcry`
+    artık `Masa-st--farcry` üretiyor (gerçek CC slug'ıyla aynı).
+  - **RC2 cp1252 stdin mojibake** — Windows Python `sys.stdin` default
+    cp1252 kodeki kullanıyor; Claude Code UTF-8 JSON gönderiyor. `ü`
+    (C3 BC) → `Ã¼` mojibake. State JSON bozuk yazılıyor + briefing
+    skill mojibake cwd ile çağrılınca Sessions/.md'lerin temiz UTF-8
+    frontmatter'ı ile eşleşmiyor. Fix: `main()` içinde
+    `sys.stdin.reconfigure(encoding="utf-8", errors="replace")`
+    re-entry guard'ın hemen altında, stdin read'den önce. Try/except
+    ile sarılı (StringIO fake'leri bozmuyor).
+  - **RC3 bg_spawn cache üretmiyordu** — eski `_spawn_bg_brief` paterni
+    `claude --print /mnemos-briefing <cwd>` subprocess'ini
+    `stdout=DEVNULL` ile başlatıyordu — briefing body kaybolup gidiyordu,
+    cache hiçbir zaman yaratılmıyordu, SUB-B1 no-cache path sonsuz
+    döngüde kalıyordu. Fix: yeni `brief_and_cache(cwd, vault)` fonksiyonu
+    + `main()` içinde `--brief-and-cache` subcommand + `_spawn_bg_brief`
+    artık `python -m mnemos.recall_briefing --brief-and-cache --cwd X
+    --vault Y` çağırıyor. Child process body'yi alır, frontmatter
+    ekleyip `.mnemos-briefings/<slug>.md`'ye yazar.
+
+  **Test delta:** +7 yeni test (3 slug non-ASCII, 1 stdin UTF-8,
+  2 brief_and_cache, 1 subcommand mode). Eski
+  `test_slug_unicode_preserved_via_word_class` silindi (bug'ı
+  lock'luyordu). Full suite **634 pass / 2 skip / 3 deselect**.
+
+  **Operational cleanup:** kasamd `.mnemos-cwd-state.json`'dan eski
+  Unicode-preserve slug entry'si (`...Masaüstü-farcry`) silindi
+  (`cwds.pop`), yalnızca `C--Projeler-mnemos` kaldı. Fix sonrası asla
+  yeniden yazılmayacak slug.
 
 **Operational cleanup (commit'siz, runtime):**
 - Runaway pipeline tree-kill (recall_briefing pid 23064 + auto_refine_bg
@@ -368,10 +405,27 @@ iki SessionStart entry: auto-refine + recall-briefing).
 - Mine ledger: 144 satır, 144 unique source (hiç dubli yok)
 - Hook install'lu, fix'li, test edildi (627 pass)
 
-🟡 **Pending user smoke:** yeni cwd'de son testi yapılmadı. Öneri:
-throwaway cwd (örn. `/tmp/test-briefing`) aç → 1-2 turn yaz → kapat →
-tekrar aç → SUB-B2 catch-up (cap=3 ile ≤90s) gözlemle. Eğer Task
-Manager'da 3-4'ten fazla python.exe/claude.exe subprocess veya ≥2 dk
+🟡 **Pending user smoke (non-ASCII fix sonrası):** fix uygulandı, state
+temizlendi. Smoke planı (farcry cwd'sinde 1. session zaten refine+mine
+edilmiş, sadece recall bozuktu):
+
+1. **Cache'i hemen üret (opsiyonel, UX shortcut):**
+   ```
+   python -m mnemos.recall_briefing --brief-and-cache \
+     --cwd "C:\Users\tugrademirors\OneDrive\Masaüstü\farcry" \
+     --vault "C:\Users\tugrademirors\OneDrive\Masaüstü\kasamd"
+   ```
+   → `kasamd/.mnemos-briefings/C--Users-tugrademirors-OneDrive-Masa-st--farcry.md`
+   oluşmalı, 200-400 kelime briefing + "Revize/iptal edilen kararlar"
+   bölümü.
+2. **Farcry klasöründe Claude Code oturumu aç.** İlk gerçek visit
+   CASE A silent (tasarım). Kapat.
+3. **Tekrar aç.** Return-visit SUB-B1 fresh cache → briefing inject
+   edilmeli (Claude ilk turn'den itibaren farcry bağlamıyla gelir).
+4. **Alternatif yol:** 1. adımı atla, direkt 3 kez aç-kapat. 2. visit
+   SUB-B1 no-cache → bg_spawn cache üretir → 3. visit'te fresh inject.
+
+Güvenlik: Task Manager'da 3+ python.exe/claude.exe subprocess veya ≥2 dk
 bekleme olursa harici terminal'den `mnemos install-recall-hook --uninstall`
 ile kapat.
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Any
@@ -68,15 +69,20 @@ def _nt_no_window_flags():
 def cwd_to_slug(cwd: str) -> str:
     """Convert a cwd path to the Claude-Code-style slug used in project dirs.
 
-    Rules:
+    Claude Code itself replaces every non-ASCII-word char (including Unicode
+    letters like Turkish ü/German ä/Japanese 語) with '-' when naming
+    ~/.claude/projects/<slug>/ folders. We must match that exactly, or
+    find_unrefined_jsonls_for_cwd looks at the wrong directory and SUB-B2
+    never fires for any cwd containing non-ASCII characters.
+
+    Rules (aligned with Claude Code):
       - Strip leading/trailing whitespace and trailing path separators
-      - Replace any non-\\w-hyphen char with "-"
-      - Collapse repeated dashes
-      - Preserve underscores and letters (including Unicode word chars)
+      - Replace any char outside [A-Za-z0-9_-] with "-" (ASCII-only word class)
+      - Collapse 3+ consecutive dashes to "--" (double-dash cap)
     """
     s = cwd.strip().rstrip("/\\")
-    s = re.sub(r"[^\w-]", "-", s, flags=re.UNICODE)
-    s = re.sub(r"-{2,}", "--", s)  # cap at double-dash (original pattern)
+    s = re.sub(r"[^A-Za-z0-9_-]", "-", s)
+    s = re.sub(r"-{2,}", "--", s)  # cap at double-dash
     return s
 
 
@@ -438,16 +444,55 @@ class HandleOutcome:
     injected_context: str = ""
 
 
-def _spawn_bg_brief(cwd: str) -> None:
-    """Spawn a detached bg process that runs the briefing skill.
+def brief_and_cache(cwd: str, vault: Path, brief_runner=None) -> bool:
+    """Run the briefing skill for `cwd` and persist the result to cache.
 
-    Non-blocking. Errors are swallowed (diagnostic-only). Uses combined
-    CREATE_NO_WINDOW | DETACHED_PROCESS flags so the spawn never flashes a
-    console window. Child inherits HOOK_ACTIVE_ENV so its own SessionStart
-    fires exit silently (re-entry guard in main()).
+    This is the cache-producing side of the hook. Called directly in two
+    places:
+      1. `_spawn_bg_brief` → detached subprocess invokes us via the
+         `--brief-and-cache` main() entry, so SUB-B1's bg regeneration
+         actually writes a cache file (the old DEVNULL-pipe pattern
+         discarded the body and never created a cache).
+      2. Manual / future foreground callers that want to warm the cache.
+
+    Returns True on success (cache file written), False otherwise.
+    On failure the cache file is NOT written — a fresh-but-empty cache
+    would otherwise mask real briefings forever after.
+    """
+    result = run_brief_sync(cwd, runner=brief_runner)
+    if not result.ok or not result.body.strip():
+        return False
+    cache_p = cache_path_for(vault, cwd_to_slug(cwd))
+    session_n = count_refined_sessions_for_cwd(vault, cwd)
+    write_cache(
+        cache_p,
+        body=result.body,
+        cwd=cwd,
+        session_count=session_n,
+        drawer_count=0,
+    )
+    return True
+
+
+def _spawn_bg_brief(cwd: str, vault: Path) -> None:
+    """Spawn a detached bg process that runs `brief_and_cache(cwd, vault)`.
+
+    Non-blocking. Errors are swallowed (diagnostic-only). The child re-enters
+    this same module through its `--brief-and-cache` subcommand (see `main`),
+    so the briefing result lands in <vault>/.mnemos-briefings/<slug>.md
+    instead of being discarded to DEVNULL.
+
+    Uses CREATE_NO_WINDOW on Windows (same pattern as auto_refine) so no
+    console window flashes. Child inherits HOOK_ACTIVE_ENV so any nested
+    SessionStart fires exit silently via the re-entry guard in main().
     """
     try:
-        cmd = _build_skill_cmd("mnemos-briefing", cwd)
+        cmd = [
+            sys.executable, "-m", "mnemos.recall_briefing",
+            "--brief-and-cache",
+            "--cwd", cwd,
+            "--vault", str(vault),
+        ]
         kwargs: dict = {
             "stdout": _subprocess.DEVNULL,
             "stderr": _subprocess.DEVNULL,
@@ -578,12 +623,12 @@ def handle_session_start(
 
         # Fresh-enough → inject + bg regen
         body = read_cache_body(cache_p)
-        bg_spawn(inp.cwd)
+        bg_spawn(inp.cwd, vault)
         save_state(vault, state)
         return HandleOutcome(outcome="fast_path_injected", injected_context=body)
 
     # No cache → bg spawn, no inject this turn
-    bg_spawn(inp.cwd)
+    bg_spawn(inp.cwd, vault)
     save_state(vault, state)
     return HandleOutcome(outcome="fast_path_no_cache")
 
@@ -689,20 +734,37 @@ def _resolve_vault(explicit: str | None = None) -> Path | None:
     return None
 
 
-def _parse_args(argv: list[str] | None) -> str | None:
-    """Return --vault value from argv if present, else None. Never fails."""
+@dataclass
+class _ParsedArgs:
+    vault: str | None
+    brief_and_cache: bool
+    cwd: str | None
+
+
+def _parse_args(argv: list[str] | None) -> _ParsedArgs:
+    """Parse CLI flags. Supports hook mode (default) and brief-and-cache mode."""
     import argparse
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--vault", default=None)
+    parser.add_argument("--brief-and-cache", action="store_true")
+    parser.add_argument("--cwd", default=None)
     try:
         ns, _ = parser.parse_known_args(argv)
     except SystemExit:
-        return None
-    return ns.vault
+        return _ParsedArgs(vault=None, brief_and_cache=False, cwd=None)
+    return _ParsedArgs(vault=ns.vault, brief_and_cache=ns.brief_and_cache, cwd=ns.cwd)
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Parse hook stdin JSON, run decision tree, emit additionalContext JSON on stdout."""
+    """Parse hook stdin JSON, run decision tree, emit additionalContext JSON on stdout.
+
+    Two modes:
+      1. Hook mode (default): consume SessionStart JSON on stdin, run
+         handle_session_start, emit additionalContext on stdout.
+      2. `--brief-and-cache --cwd X --vault Y`: run brief_and_cache(X, Y)
+         and exit. Used by _spawn_bg_brief to produce the briefing cache
+         in a detached background process.
+    """
     # Re-entry guard: if our own subprocess spawned a `claude --print` which
     # fired SessionStart and re-invoked us, HOOK_ACTIVE_ENV is set. Exit
     # immediately to break the recursion BEFORE any state / subprocess work.
@@ -711,7 +773,31 @@ def main(argv: list[str] | None = None) -> int:
 
     if argv is None:
         argv = sys.argv[1:]
-    explicit_vault = _parse_args(argv)
+    parsed = _parse_args(argv)
+
+    # Brief-and-cache subcommand — foreground cache producer. Does NOT touch
+    # stdin or hook state.
+    if parsed.brief_and_cache:
+        if not parsed.cwd or not parsed.vault:
+            return 0
+        vault = Path(parsed.vault)
+        if not vault.exists():
+            return 0
+        try:
+            brief_and_cache(parsed.cwd, vault)
+        except Exception:
+            return 0
+        return 0
+
+    # Hook mode. Windows Python opens stdin in cp1252 by default; Claude Code
+    # sends UTF-8 JSON, so non-ASCII cwd chars (Turkish ü, German ä, Japanese
+    # etc.) arrive as mojibake without this reconfigure. Guarded by a broad
+    # except because test doubles and some shells provide stdin objects that
+    # don't implement reconfigure().
+    try:
+        sys.stdin.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError, ValueError):
+        pass
 
     try:
         raw = sys.stdin.read()
@@ -725,7 +811,7 @@ def main(argv: list[str] | None = None) -> int:
         transcript_path=data.get("transcript_path", ""),
     )
 
-    vault = _resolve_vault(explicit_vault)
+    vault = _resolve_vault(parsed.vault)
     if vault is None:
         return 0
 

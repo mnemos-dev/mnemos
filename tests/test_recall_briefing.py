@@ -43,9 +43,33 @@ def test_slug_double_dash_collapsed() -> None:
     assert "---" not in result
 
 
-def test_slug_unicode_preserved_via_word_class() -> None:
-    # Turkish chars are word-class in \w if re.UNICODE (default in py3)
-    assert cwd_to_slug("C:\\Projects\\Masaüstü") == "C--Projects-Masaüstü"
+def test_slug_non_ascii_maps_to_dash_matching_claude_code() -> None:
+    """Non-ASCII chars (Turkish ü/ğ, German ä, Japanese etc.) must be replaced
+    with '-' to match Claude Code's actual ~/.claude/projects/<slug>/ algorithm.
+
+    Previously used Unicode \\w which preserved these letters, producing
+    slugs that never matched Claude Code's project dirs — breaking SUB-B2's
+    unrefined-JSONL discovery for any cwd with non-ASCII chars (e.g. the
+    Turkish "Masaüstü" Desktop folder).
+    """
+    # Real Claude Code slug for C:\Users\tugrademirors\OneDrive\Masaüstü\farcry
+    # observed in ledger: C--Users-tugrademirors-OneDrive-Masa-st--farcry
+    assert cwd_to_slug("C:\\Users\\u\\OneDrive\\Masaüstü\\farcry") == \
+        "C--Users-u-OneDrive-Masa-st--farcry"
+
+
+def test_slug_ascii_only_unchanged_after_non_ascii_fix() -> None:
+    """ASCII-only cwds must not regress when non-ASCII handling changes."""
+    assert cwd_to_slug("C:\\Projeler\\mnemos") == "C--Projeler-mnemos"
+    assert cwd_to_slug("/home/user/my-project") == "-home-user-my-project"
+
+
+def test_slug_various_non_ascii_scripts_all_become_dash() -> None:
+    """Cross-script coverage: German, Japanese, Chinese, emoji all map to '-'."""
+    assert cwd_to_slug("C:\\Müller") == "C--M-ller"
+    assert cwd_to_slug("C:\\café") == "C--caf-"
+    # Multi-byte chars each → one dash, consecutive dashes collapse to --
+    assert "---" not in cwd_to_slug("C:\\日本語")
 
 
 # --- state tests ---
@@ -774,3 +798,139 @@ def test_nt_no_window_flags_combines_no_window_and_detached() -> None:
     flags = _nt_no_window_flags()
     # Must include CREATE_NO_WINDOW so subprocess never flashes a terminal
     assert flags & _sp.CREATE_NO_WINDOW == _sp.CREATE_NO_WINDOW
+
+
+# --- RC2: stdin UTF-8 decode (Windows cp1252 mojibake fix) ---
+
+def test_main_decodes_utf8_stdin_without_mojibake(tmp_path: Path, monkeypatch, capsys) -> None:
+    """Claude Code sends SessionStart payload as UTF-8 JSON on stdin.
+    Windows Python defaults stdin to cp1252 — UTF-8 'ü' (C3 BC) becomes 'Ã¼'.
+    main() must reconfigure stdin to UTF-8 so non-ASCII cwds stay intact.
+    Without the fix: state.json cwd field stores mojibake, slug mismatches
+    Claude Code's project dir, and SUB-B2 never triggers for these cwds.
+    """
+    (tmp_path / "mnemos.yaml").write_text("recall_mode: skill\n", encoding="utf-8")
+
+    payload_bytes = json.dumps({
+        "cwd": "C:\\Users\\u\\Masaüstü\\test",
+        "source": "startup",
+        "transcript_path": "",
+    }, ensure_ascii=False).encode("utf-8")
+
+    # Mimic Windows: stdin wraps raw bytes via cp1252 codec. If main() doesn't
+    # reconfigure to UTF-8 before reading, 'ü' will surface as 'Ã¼'.
+    fake_stdin = io.TextIOWrapper(
+        io.BytesIO(payload_bytes), encoding="cp1252", newline="",
+    )
+    monkeypatch.setattr("sys.stdin", fake_stdin)
+    monkeypatch.setenv("MNEMOS_VAULT", str(tmp_path))
+
+    rc = main()
+    assert rc == 0
+
+    # State should store the clean UTF-8 cwd, not cp1252 mojibake
+    state = load_state(tmp_path)
+    assert state.cwds, "main() did not record state — stdin never parsed"
+    for slug, info in state.cwds.items():
+        assert "Ã" not in info["cwd"], (
+            f"mojibake detected in stored cwd {info['cwd']!r} (slug={slug!r}) — "
+            f"stdin was not decoded as UTF-8"
+        )
+
+
+# --- RC3: brief_and_cache subcommand (bg spawn actually produces cache) ---
+
+def test_brief_and_cache_writes_cache_from_briefing_skill(tmp_path: Path) -> None:
+    """brief_and_cache() runs the briefing skill and persists the result to
+    <vault>/.mnemos-briefings/<slug>.md. This replaces the old _spawn_bg_brief
+    pattern which redirected subprocess stdout to DEVNULL — briefing body was
+    discarded, cache was never created, and SUB-B1 no-cache path stayed
+    permanently in no-cache state across every visit.
+    """
+    from mnemos.recall_briefing import brief_and_cache
+
+    cwd = "C:\\Users\\u\\TestProject"
+    fake_body = "**Aktif durum:** test briefing body.\n"
+
+    def fake_runner(cmd, stdout_path=None):
+        if stdout_path is not None:
+            Path(stdout_path).write_text(fake_body, encoding="utf-8")
+        return 0
+
+    ok = brief_and_cache(cwd=cwd, vault=tmp_path, brief_runner=fake_runner)
+    assert ok is True
+
+    cache = cache_path_for(tmp_path, cwd_to_slug(cwd))
+    assert cache.exists(), "brief_and_cache did not write cache file"
+    text = cache.read_text(encoding="utf-8")
+    assert text.startswith("---\n"), "cache missing frontmatter"
+    assert "**Aktif durum:**" in text
+    assert f"cwd: {cwd}" in text
+
+
+def test_brief_and_cache_failure_does_not_write_empty_cache(tmp_path: Path) -> None:
+    """If the briefing skill exits non-zero or emits empty body, cache must
+    NOT be written — otherwise a fresh-enough but empty cache would be
+    injected in place of real briefings forever after.
+    """
+    from mnemos.recall_briefing import brief_and_cache
+
+    cwd = "C:\\x"
+    ok = brief_and_cache(cwd=cwd, vault=tmp_path, brief_runner=lambda cmd, stdout_path=None: 2)
+    assert ok is False
+    assert not cache_path_for(tmp_path, cwd_to_slug(cwd)).exists()
+
+
+def test_spawn_bg_brief_uses_brief_and_cache_subcommand(tmp_path: Path, monkeypatch) -> None:
+    """Bg brief subprocess must invoke the --brief-and-cache entry of
+    mnemos.recall_briefing (which calls brief_and_cache internally) — NOT
+    claude --print with stdout=DEVNULL directly. The old pattern spawned a
+    briefing but discarded the body via DEVNULL, never creating cache.
+    """
+    from mnemos.recall_briefing import _spawn_bg_brief
+
+    captured: list[tuple[list[str], dict]] = []
+
+    class FakePopen:
+        def __init__(self, cmd, **kwargs):
+            captured.append((list(cmd), dict(kwargs)))
+
+    import subprocess as _sp
+    monkeypatch.setattr(_sp, "Popen", FakePopen)
+
+    _spawn_bg_brief("C:\\x", vault=tmp_path)
+
+    assert len(captured) == 1
+    cmd, _ = captured[0]
+    joined = " ".join(cmd)
+    # Must invoke our brief-and-cache entry, not claude --print directly
+    assert "mnemos.recall_briefing" in joined or "recall_briefing" in joined
+    assert "--brief-and-cache" in joined
+    assert "C:\\x" in joined
+    assert str(tmp_path) in joined
+
+
+def test_main_brief_and_cache_mode_invokes_brief_and_cache(tmp_path: Path, monkeypatch) -> None:
+    """Parent hook spawns `python -m mnemos.recall_briefing --brief-and-cache
+    --cwd X --vault Y`. When main() receives these flags it must call
+    brief_and_cache(X, Y) and exit WITHOUT touching stdin / state / hook logic.
+    """
+    called: list[tuple[str, Path]] = []
+
+    def fake_brief_and_cache(cwd, vault, brief_runner=None):
+        called.append((cwd, vault))
+        return True
+
+    monkeypatch.setattr("mnemos.recall_briefing.brief_and_cache", fake_brief_and_cache)
+
+    (tmp_path / "mnemos.yaml").write_text("recall_mode: skill\n", encoding="utf-8")
+
+    # stdin should NEVER be consumed in this mode; make it obvious if it is
+    def fail_stdin_read():
+        raise AssertionError("brief-and-cache mode must not read stdin")
+    fake_stdin = type("S", (), {"read": staticmethod(fail_stdin_read)})()
+    monkeypatch.setattr("sys.stdin", fake_stdin)
+
+    rc = main(["--brief-and-cache", "--cwd", "C:\\Projects\\foo", "--vault", str(tmp_path)])
+    assert rc == 0
+    assert called == [("C:\\Projects\\foo", tmp_path)]
