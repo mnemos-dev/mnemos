@@ -24,6 +24,31 @@ STATE_LOCK = STATE_FILENAME + ".flock"
 CATCH_UP_LOCK = ".mnemos-catch-up.flock"
 STALE_THRESHOLD = 3  # session-count diff that triggers sync regen in SUB-B1
 
+# Re-entry guard: every subprocess we spawn inherits this env var, and main()
+# exits silently when it sees it set. Prevents a fork-bomb cascade when
+# `claude --print` subprocesses themselves fire SessionStart hooks (Claude
+# Code does fire them even in print mode as of v0.4-era releases).
+HOOK_ACTIVE_ENV = "MNEMOS_RECALL_HOOK_ACTIVE"
+
+
+def _child_env() -> dict:
+    """Env for spawned claude subprocesses: strips API key, marks re-entry."""
+    env = os.environ.copy()
+    env.pop("ANTHROPIC_API_KEY", None)
+    env[HOOK_ACTIVE_ENV] = "1"
+    return env
+
+
+def _nt_no_window_flags():
+    """Windows creationflags that fully suppress a console window for a
+    detached (or inline) subprocess. DETACHED_PROCESS alone allows a brief
+    console flash; combining with CREATE_NO_WINDOW suppresses it entirely."""
+    import subprocess as _sp
+    flags = 0
+    flags |= getattr(_sp, "CREATE_NO_WINDOW", 0)
+    flags |= getattr(_sp, "DETACHED_PROCESS", 0)
+    return flags
+
 
 # ---------------------------------------------------------------------------
 # Cwd slug normalization
@@ -308,14 +333,12 @@ class BriefResult:
 
 
 def _default_runner(cmd) -> int:
-    """Invoke claude subprocess; strip ANTHROPIC_API_KEY so subscription is used."""
+    """Invoke claude subprocess; strip ANTHROPIC_API_KEY so subscription is used.
+    Marks re-entry via HOOK_ACTIVE_ENV so recursive SessionStart fires exit silently."""
     import subprocess
-    kwargs: dict = {}
+    kwargs: dict = {"env": _child_env()}
     if os.name == "nt":
-        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    env = os.environ.copy()
-    env.pop("ANTHROPIC_API_KEY", None)
-    kwargs["env"] = env
+        kwargs["creationflags"] = _nt_no_window_flags()
     try:
         return subprocess.call(list(cmd), **kwargs)
     except (FileNotFoundError, OSError):
@@ -325,12 +348,9 @@ def _default_runner(cmd) -> int:
 def _default_runner_stdout(cmd, stdout_path=None) -> int:
     """Like _default_runner but redirects stdout to the given file path."""
     import subprocess
-    kwargs: dict = {}
+    kwargs: dict = {"env": _child_env()}
     if os.name == "nt":
-        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    env = os.environ.copy()
-    env.pop("ANTHROPIC_API_KEY", None)
-    kwargs["env"] = env
+        kwargs["creationflags"] = _nt_no_window_flags()
     try:
         if stdout_path is not None:
             with open(stdout_path, "w", encoding="utf-8") as fh:
@@ -410,16 +430,21 @@ class HandleOutcome:
 def _spawn_bg_brief(cwd: str) -> None:
     """Spawn a detached bg process that runs the briefing skill.
 
-    Non-blocking. Errors are swallowed (diagnostic-only).
+    Non-blocking. Errors are swallowed (diagnostic-only). Uses combined
+    CREATE_NO_WINDOW | DETACHED_PROCESS flags so the spawn never flashes a
+    console window. Child inherits HOOK_ACTIVE_ENV so its own SessionStart
+    fires exit silently (re-entry guard in main()).
     """
     try:
         cmd = _build_skill_cmd("mnemos-briefing", cwd)
-        kwargs: dict = {"stdout": _subprocess.DEVNULL, "stderr": _subprocess.DEVNULL}
+        kwargs: dict = {
+            "stdout": _subprocess.DEVNULL,
+            "stderr": _subprocess.DEVNULL,
+            "stdin": _subprocess.DEVNULL,
+            "env": _child_env(),
+        }
         if os.name == "nt":
-            kwargs["creationflags"] = getattr(_subprocess, "DETACHED_PROCESS", 0)
-        env = os.environ.copy()
-        env.pop("ANTHROPIC_API_KEY", None)
-        kwargs["env"] = env
+            kwargs["creationflags"] = _nt_no_window_flags()
         _subprocess.Popen(cmd, **kwargs)
     except (OSError, FileNotFoundError):
         pass
@@ -660,6 +685,12 @@ def _parse_args(argv: list[str] | None) -> str | None:
 
 def main(argv: list[str] | None = None) -> int:
     """Parse hook stdin JSON, run decision tree, emit additionalContext JSON on stdout."""
+    # Re-entry guard: if our own subprocess spawned a `claude --print` which
+    # fired SessionStart and re-invoked us, HOOK_ACTIVE_ENV is set. Exit
+    # immediately to break the recursion BEFORE any state / subprocess work.
+    if os.environ.get(HOOK_ACTIVE_ENV):
+        return 0
+
     if argv is None:
         argv = sys.argv[1:]
     explicit_vault = _parse_args(argv)

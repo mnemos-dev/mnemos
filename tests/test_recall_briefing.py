@@ -644,3 +644,52 @@ def test_main_first_visit_emits_no_context(tmp_path: Path, capsys, monkeypatch) 
         out = json.loads(captured.out)
         if "hookSpecificOutput" in out:
             assert out["hookSpecificOutput"].get("additionalContext", "") == ""
+
+
+def test_main_reentry_guard_exits_silently(tmp_path: Path, capsys, monkeypatch) -> None:
+    """HOOK_ACTIVE_ENV set → main returns 0 before reading stdin or touching state.
+
+    Protects against fork-bomb: our own claude --print subprocesses fire
+    SessionStart hooks that re-invoke this main(). Without the guard,
+    each re-invocation would spawn more subprocesses → unbounded recursion.
+    """
+    from mnemos.recall_briefing import HOOK_ACTIVE_ENV
+
+    (tmp_path / "mnemos.yaml").write_text("recall_mode: skill\n", encoding="utf-8")
+    monkeypatch.setenv("MNEMOS_VAULT", str(tmp_path))
+    monkeypatch.setenv(HOOK_ACTIVE_ENV, "1")
+
+    hook_input = json.dumps({
+        "cwd": "C:\\Projects\\farcry",
+        "source": "startup",
+        "transcript_path": "/x.jsonl",
+    })
+    monkeypatch.setattr("sys.stdin", io.StringIO(hook_input))
+
+    rc = main()
+    assert rc == 0
+    # No state written — we exit before touching the file
+    assert not (tmp_path / ".mnemos-cwd-state.json").exists()
+    captured = capsys.readouterr()
+    assert captured.out.strip() == ""
+
+
+def test_child_env_carries_reentry_marker_and_drops_api_key(monkeypatch) -> None:
+    from mnemos.recall_briefing import _child_env, HOOK_ACTIVE_ENV
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    env = _child_env()
+    assert env.get(HOOK_ACTIVE_ENV) == "1"
+    assert "ANTHROPIC_API_KEY" not in env
+
+
+def test_nt_no_window_flags_combines_no_window_and_detached() -> None:
+    import os as _os
+    if _os.name != "nt":
+        return
+    import subprocess as _sp
+    from mnemos.recall_briefing import _nt_no_window_flags
+
+    flags = _nt_no_window_flags()
+    # Must include CREATE_NO_WINDOW so subprocess never flashes a terminal
+    assert flags & _sp.CREATE_NO_WINDOW == _sp.CREATE_NO_WINDOW
