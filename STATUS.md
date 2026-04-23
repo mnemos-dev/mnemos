@@ -1,6 +1,6 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-23 (4.3 first ship shipped: cwd-aware auto-briefing hook + MCP recall_mode; 623 test pass +61 new; sonraki: 4.3.1 `/mnemos-recall` explicit skill + 4.5 settings TUI + 4.6 benchmark + 4.7 PyPI v0.4.0)
+**Last updated:** 2026-04-23 (4.3 first ship shipped + post-ship 3 critical fixes: fork-bomb env guard + Windows console flags + SUB-B2 pending cap; ledgers dedup'd; hook re-installed with fixes; 627 test pass +65 new; sonraki: 4.3.1 `/mnemos-recall` explicit skill + 4.5 settings TUI + 4.6 benchmark + 4.7 PyPI v0.4.0)
 **Stable PyPI version:** `v0.3.3` · **Next:** `v0.4.0` (AI Boost / Phase 1 — 4.3.1 + 4.5 + 4.6 + 4.7 remaining)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
@@ -327,16 +327,56 @@ gap.
 
 ### Next session starts here
 
-**4.3 first ship kapandı (2026-04-23, 18 task, 22 commit):** cwd-aware
-auto-briefing hook canlı, MCP recall_mode swap'i hazır, kasamd backfill
-apply'lı. Sıradaki: 4.3.1 explicit `/mnemos-recall` skill (cross-context
-edge case), 4.5 settings TUI, 4.6 benchmark, 4.7 PyPI v0.4.0 release.
+**4.3 first ship kapandı + post-ship 3 kritik fix uygulandı (2026-04-23).**
 
-🟡 **Pending user smoke:** farcry-style same-cwd rapid-reopen scenario
-(1. session kapat → 5 dk sonra 2. session aç → SUB-B2 blocking catch-up
-tetiklenmeli). Offline mechanism smoke PASS (first-visit state, slug
-normalization, subprocess runners mocked); canlı catch-up real Claude
-Code oturumu gerektirir.
+**Ship:** 18 task, cwd-aware auto-briefing hook canlı, MCP recall_mode
+swap'i hazır, kasamd backfill apply'lı, kasamd yaml'ında `mine_mode: skill`
++ `recall_mode: skill`, install-recall-hook kurulu (`~/.claude/settings.json`
+iki SessionStart entry: auto-refine + recall-briefing).
+
+**Post-ship emergency fix'ler (commit sırasıyla):**
+
+- `35e16f3` **Fork-bomb re-entry guard** — `claude --print` subprocess'leri
+  kendi SessionStart hook'unu tetiklediğinde `main()` `HOOK_ACTIVE_ENV=1`
+  env var'ını görüp sessizce çıkıyor. Fork bomb olayı: kullanıcı 2. session
+  açınca ~35 subprocess paralel spawn olmuştu, hard reboot gerekti. Fix:
+  tüm spawn'lar `_child_env()` via marker inherit eder.
+- `b69d5e1` **Windows console flags** — DETACHED_PROCESS + CREATE_NO_WINDOW
+  contradictory idi (terminal flashing). Şimdi sadece CREATE_NO_WINDOW
+  (auto_refine paterni).
+- `43cf464` **SUB_B2_PENDING_CAP = 3** — return-visit'te SUB-B2 blocking
+  catch-up kapsız çalışıyordu; mnemos gibi geçmişi ağır cwd'de 337 pending
+  JSONL'u seri refine+mine'a soktu, 2.5 saatlik blocking iş. Cap: son 3
+  JSONL sync işlenir, gerisi auto_refine async cadansına.
+
+**Operational cleanup (commit'siz, runtime):**
+- Runaway pipeline tree-kill (recall_briefing pid 23064 + auto_refine_bg
+  pid 28824 + ~33 descendants)
+- Stale lock'lar silindi (`.mnemos-catch-up.flock`, `.mnemos-hook.lock`)
+- `.mnemos-hook-status.json` → idle, `.mnemos-cwd-state.json` temizlendi
+  (fork-bomb sırasında farcry slug bozuk encoding ile yazılmıştı)
+- **Ledger dedup:** refine 164→156 (8 dubli OK kaldırıldı), mine 263→144
+  (119 dubli kaldırıldı). Yedekler: `*.bak-20260423-163224`. Kalan 13
+  corrupt "C:\Users" satırı + 4 path × 2-4 SKIP satırı (STATUS'taki
+  "Legacy corrupt ledger rows" polish item kapsamında).
+
+**Kasamd canlı durumu (2026-04-23 session sonu):**
+- Palace: 617 drawer (599 baseline'dan +18 meşru artış)
+- Sessions/: 74 refined .md (40'ı bugün cwd frontmatter backfill ile
+  güncellendi — içerik değişmedi)
+- Refine ledger: 156 satır, 135 unique JSONL
+- Mine ledger: 144 satır, 144 unique source (hiç dubli yok)
+- Hook install'lu, fix'li, test edildi (627 pass)
+
+🟡 **Pending user smoke:** yeni cwd'de son testi yapılmadı. Öneri:
+throwaway cwd (örn. `/tmp/test-briefing`) aç → 1-2 turn yaz → kapat →
+tekrar aç → SUB-B2 catch-up (cap=3 ile ≤90s) gözlemle. Eğer Task
+Manager'da 3-4'ten fazla python.exe/claude.exe subprocess veya ≥2 dk
+bekleme olursa harici terminal'den `mnemos install-recall-hook --uninstall`
+ile kapat.
+
+Sıradaki roadmap işi: 4.3.1 explicit `/mnemos-recall` skill (cross-context
+edge case), 4.5 settings TUI, 4.6 benchmark, 4.7 PyPI v0.4.0 release.
 
 ### Previous — 4.3.A session notes
 
