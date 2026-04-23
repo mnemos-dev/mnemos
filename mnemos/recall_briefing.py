@@ -258,17 +258,30 @@ def find_unrefined_jsonls_for_cwd(
 ) -> list[Path]:
     """List .jsonl files in ~/.claude/projects/<slug>/ NOT in refine ledger.
 
-    Sorted by mtime (oldest first). The caller should also skip any JSONL
-    whose PID marker indicates a live session.
+    Sorted by mtime (oldest first). JSONLs with fewer than MIN_USER_TURNS
+    real user turns are filtered out — they're fork-bomb byproducts,
+    '/clear' resume sessions, or aborted sessions that the briefing skill
+    would just SKIP anyway. Matches auto_refine's picker behavior (v0.3.11
+    min-user-turns filter). Without this, SUB-B2 could sync-refine 3
+    fork-bomb JSONLs for every session start, wasting minutes.
+
+    The caller should also skip any JSONL whose PID marker indicates a
+    live session (handled in handle_session_start via transcript_path).
     """
+    # Local import to avoid shuffling module-level import ordering
+    from mnemos.auto_refine import _count_user_turns, MIN_USER_TURNS
+
     proj_dir = projects_root / cwd_slug
     if not proj_dir.exists():
         return []
     processed = load_refine_ledger_jsonls(ledger)
     candidates: list[Path] = []
     for jsonl in proj_dir.glob("*.jsonl"):
-        if str(jsonl) not in processed:
-            candidates.append(jsonl)
+        if str(jsonl) in processed:
+            continue
+        if _count_user_turns(jsonl) < MIN_USER_TURNS:
+            continue
+        candidates.append(jsonl)
     return sorted(candidates, key=lambda p: p.stat().st_mtime)
 
 

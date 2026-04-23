@@ -1,6 +1,6 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-23 (4.3 first ship shipped + post-ship **5** critical fixes: fork-bomb env guard + Windows console flags + SUB-B2 pending cap + non-ASCII cwd recall bug [slug algo + stdin UTF-8 + bg-spawn cache] + **stdout cp1252 crash** [Turkish briefing body `ş` UnicodeEncodeError → hook exit 1 → Claude Code dropped additionalContext]; ledgers dedup'd; hook re-installed with fixes; **635 test pass +8 new** (baseline 627); sonraki: 4.3.1 `/mnemos-recall` explicit skill + 4.5 settings TUI + 4.6 benchmark + 4.7 PyPI v0.4.0)
+**Last updated:** 2026-04-23 (4.3 first ship shipped + post-ship **6** critical fixes: fork-bomb env guard + Windows console flags + SUB-B2 pending cap + non-ASCII cwd recall bug [slug algo + stdin UTF-8 + bg-spawn cache] + stdout cp1252 crash + **fork-bomb noise pollution** [`MIN_USER_TURNS` filter → SUB-B2 ignores 1-turn fork-bomb debris]; ledgers dedup'd; hook re-installed with fixes; **637 test pass +10 new** (baseline 627); sonraki: 4.3.1 `/mnemos-recall` explicit skill + 4.5 settings TUI + 4.6 benchmark + 4.7 PyPI v0.4.0)
 **Stable PyPI version:** `v0.3.3` · **Next:** `v0.4.0` (AI Boost / Phase 1 — 4.3.1 + 4.5 + 4.6 + 4.7 remaining)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
@@ -409,6 +409,37 @@ iki SessionStart entry: auto-refine + recall-briefing).
   hâlâ fresh, state visit_count=2 → return-visit) SUB-B1 fresh-path
   inject yapacak — Claude ilk turn'den itibaren tavuk pet bağlamı ile
   gelir.
+
+- **Post-fix follow-up: fork-bomb JSONL pending pollution (RC5)** —
+  farcry retry çalıştı (Claude "Selam! 🐔" + tüm kararları özetledi) ama
+  4 dk gecikti. Diagnosis: farcry projects klasöründe 134 JSONL var —
+  ama kullanıcı bugün sadece ~6-7 gerçek session açmış. Histogram
+  13:39-13:45 arası 6 dakikalık bir burst'te **116 JSONL** yaratılmış
+  (dakikada 14-24 dosya) — fork-bomb'un imzası. Fix sonraki kullanıcı
+  vault'larda fork-bomb re-entry guard (`35e16f3`) sayesinde tekrar
+  olmaz ama birikmiş noise yine de SUB-B2'yi boğar.
+
+  Fix: `find_unrefined_jsonls_for_cwd` artık `mnemos.auto_refine._count_user_turns`
+  + `MIN_USER_TURNS=3` filter'ını uygular (auto_refine picker'ıyla
+  paritede). 3'ten az gerçek user turn'ü olan JSONL'lar pending listesine
+  girmez — fork-bomb çöpleri, '/clear' resume session'ları, iptal edilmiş
+  session'lar. Filter SUB-B2'nin sync refine+mine+brief zincirini
+  yalnızca anlamlı transcriptler için ödetir.
+
+  Test: `test_find_unrefined_jsonls_skips_short_transcripts` (1-turn
+  noise atlanır) + `test_find_unrefined_jsonls_tool_result_turns_dont_count`
+  (Claude Code tool_result'larını `type=user` ile saklar; filter tool-heavy
+  1-turn session'ları noise olarak markalar). Mevcut 4 SUB-B2/find testi
+  stub'larını `_REAL_JSONL_3_TURNS` sabitine geçirdik — test intent aynı
+  kaldı, sadece stub realistic.
+
+  Full suite **637 pass / 2 skip** (+2 new, +0 regression).
+
+  **Operational cleanup:** farcry projects klasöründeki 116 fork-bomb
+  JSONL silindi (13:39:00-13:45:30 UTC window). Gerçek tavuk pet session'ı
+  (13:37:50, 82KB) + sonraki fix-test session'ları korundu. Sonuç:
+  134 → 18 JSONL. Pending backlog artık 0'a yakın, farcry SUB-B1
+  fresh-path inject anında çalışır.
 
 **Operational cleanup (commit'siz, runtime):**
 - Runaway pipeline tree-kill (recall_briefing pid 23064 + auto_refine_bg

@@ -4,6 +4,18 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+# Minimum-viable JSONL content: 3 real user turns (meets MIN_USER_TURNS=3
+# threshold used by find_unrefined_jsonls_for_cwd). Use this in tests whose
+# stub JSONLs must survive the min-turns filter; write raw "{}" if you
+# explicitly want the JSONL to be filtered out as fork-bomb-style noise.
+_REAL_JSONL_3_TURNS = (
+    '{"type":"user","message":{"role":"user","content":"msg1"}}\n'
+    '{"type":"assistant","message":{}}\n'
+    '{"type":"user","message":{"role":"user","content":"msg2"}}\n'
+    '{"type":"assistant","message":{}}\n'
+    '{"type":"user","message":{"role":"user","content":"msg3"}}\n'
+)
+
 from mnemos.recall_briefing import (
     cwd_to_slug,
     load_state,
@@ -222,8 +234,8 @@ def test_find_unrefined_jsonls_for_cwd_returns_unprocessed(tmp_path: Path) -> No
     proj_root.mkdir(parents=True)
     jsonl_old = proj_root / "uuid-old.jsonl"
     jsonl_new = proj_root / "uuid-new.jsonl"
-    jsonl_old.write_text("{}\n", encoding="utf-8")
-    jsonl_new.write_text("{}\n", encoding="utf-8")
+    jsonl_old.write_text(_REAL_JSONL_3_TURNS, encoding="utf-8")
+    jsonl_new.write_text(_REAL_JSONL_3_TURNS, encoding="utf-8")
 
     ledger = tmp_path / "processed.tsv"
     ledger.write_text(
@@ -238,6 +250,73 @@ def test_find_unrefined_jsonls_for_cwd_returns_unprocessed(tmp_path: Path) -> No
     )
     assert jsonl_new in result
     assert jsonl_old not in result
+
+
+def test_find_unrefined_jsonls_skips_short_transcripts(tmp_path: Path) -> None:
+    """JSONLs with fewer than MIN_USER_TURNS real user turns are noise —
+    fork-bomb byproducts, '/clear' resume sessions, aborted sessions.
+    Without this filter, SUB-B2 spent ~4 minutes sync-refining 3 fork-bomb
+    JSONLs (no real content) on every session start, wasting latency for
+    zero briefing value. Matches auto_refine's picker behavior (v0.3.11
+    MIN_USER_TURNS filter).
+    """
+    proj_root = tmp_path / ".claude" / "projects" / "C--test"
+    proj_root.mkdir(parents=True)
+
+    # 1-turn fork-bomb trash (no tool_result; 1 real user turn)
+    short = proj_root / "short.jsonl"
+    short.write_text(
+        '{"type":"user","message":{"role":"user","content":"hi"}}\n',
+        encoding="utf-8",
+    )
+
+    # Real 3-turn session
+    real = proj_root / "real.jsonl"
+    real.write_text(
+        '{"type":"user","message":{"role":"user","content":"msg1"}}\n'
+        '{"type":"assistant","message":{}}\n'
+        '{"type":"user","message":{"role":"user","content":"msg2"}}\n'
+        '{"type":"assistant","message":{}}\n'
+        '{"type":"user","message":{"role":"user","content":"msg3"}}\n',
+        encoding="utf-8",
+    )
+
+    ledger = tmp_path / "processed.tsv"
+    ledger.write_text("", encoding="utf-8")
+
+    result = find_unrefined_jsonls_for_cwd(
+        cwd_slug="C--test",
+        projects_root=tmp_path / ".claude" / "projects",
+        ledger=ledger,
+    )
+    assert real in result, "Real multi-turn JSONL must be kept in pending"
+    assert short not in result, "1-turn fork-bomb trash must be filtered out"
+
+
+def test_find_unrefined_jsonls_tool_result_turns_dont_count(tmp_path: Path) -> None:
+    """Claude Code stores tool_result messages as type=user. Those must NOT
+    count toward user-turn threshold — a 1-user-turn session with 5 tool
+    calls is still 1-turn noise for the miner."""
+    proj_root = tmp_path / ".claude" / "projects" / "C--test2"
+    proj_root.mkdir(parents=True)
+
+    # 1 real user turn + 5 tool_result "user" messages — still 1 effective turn
+    tool_heavy = proj_root / "tool_heavy.jsonl"
+    tool_heavy.write_text(
+        '{"type":"user","message":{"role":"user","content":"do stuff"}}\n'
+        + ('{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"x"}]}}\n' * 5),
+        encoding="utf-8",
+    )
+
+    ledger = tmp_path / "processed.tsv"
+    ledger.write_text("", encoding="utf-8")
+
+    result = find_unrefined_jsonls_for_cwd(
+        cwd_slug="C--test2",
+        projects_root=tmp_path / ".claude" / "projects",
+        ledger=ledger,
+    )
+    assert tool_heavy not in result
 
 
 def test_find_unrefined_jsonls_missing_project_dir_returns_empty(tmp_path: Path) -> None:
@@ -521,7 +600,7 @@ def test_sub_b2_refines_and_mines_each_pending(tmp_path: Path) -> None:
     proj_root = tmp_path / ".claude" / "projects" / slug
     proj_root.mkdir(parents=True)
     pending_jsonl = proj_root / "pending-uuid.jsonl"
-    pending_jsonl.write_text("{}\n", encoding="utf-8")
+    pending_jsonl.write_text(_REAL_JSONL_3_TURNS, encoding="utf-8")
 
     ledger = tmp_path / "processed.tsv"
     ledger.write_text("", encoding="utf-8")
@@ -579,7 +658,7 @@ def test_sub_b2_refine_fails_skips_mine(tmp_path: Path) -> None:
     proj_root = tmp_path / ".claude" / "projects" / slug
     proj_root.mkdir(parents=True)
     pending = proj_root / "p.jsonl"
-    pending.write_text("{}\n", encoding="utf-8")
+    pending.write_text(_REAL_JSONL_3_TURNS, encoding="utf-8")
 
     ledger = tmp_path / "processed.tsv"
     ledger.write_text("", encoding="utf-8")
@@ -636,7 +715,7 @@ def test_sub_b2_pending_is_capped_to_most_recent_N(tmp_path: Path) -> None:
     jsonls = []
     for i in range(50):
         j = proj_root / f"{i:03d}.jsonl"
-        j.write_text("{}\n", encoding="utf-8")
+        j.write_text(_REAL_JSONL_3_TURNS, encoding="utf-8")
         ts = 1_000_000 + i * 10  # monotonically increasing mtime
         _os.utime(j, (ts, ts))
         jsonls.append(j)
