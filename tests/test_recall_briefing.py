@@ -330,3 +330,152 @@ def test_run_brief_sync_captures_stdout(tmp_path: Path) -> None:
     )
     assert result.ok is True
     assert "**Aktif durum:**" in result.body
+
+
+# --- handle_session_start: decision tree ---
+
+from mnemos.recall_briefing import (
+    handle_session_start,
+    SessionStartInput,
+    HandleOutcome,
+)
+
+
+def test_first_visit_records_state_no_injection(tmp_path: Path) -> None:
+    (tmp_path / "mnemos.yaml").write_text("recall_mode: skill\n", encoding="utf-8")
+
+    inp = SessionStartInput(
+        cwd="C:\\Projects\\farcry",
+        source="startup",
+        transcript_path="/c/Users/x/.claude/projects/C--Projects-farcry/uuid.jsonl",
+    )
+
+    result = handle_session_start(
+        inp,
+        vault=tmp_path,
+        projects_root=tmp_path / "_no_projects",  # intentionally nonexistent
+        ledger=tmp_path / "_no_ledger.tsv",
+        subprocess_runner=lambda cmd: 0,
+        brief_runner=lambda cmd, stdout_path=None: 0,
+    )
+    assert result.outcome == "first_visit"
+    assert result.injected_context == ""
+
+    state = load_state(tmp_path)
+    slug = cwd_to_slug("C:\\Projects\\farcry")
+    assert slug in state.cwds
+    assert state.cwds[slug]["visit_count"] == 1
+
+
+def test_return_visit_no_pending_no_cache_bg_regen(tmp_path: Path) -> None:
+    (tmp_path / "mnemos.yaml").write_text("recall_mode: skill\n", encoding="utf-8")
+    (tmp_path / "Sessions").mkdir()
+    slug = cwd_to_slug("C:\\Projects\\farcry")
+    state = CwdState()
+    state.cwds[slug] = {"cwd": "C:\\Projects\\farcry", "first_seen": 0.0, "last_seen": 0.0, "visit_count": 1}
+    save_state(tmp_path, state)
+
+    inp = SessionStartInput(cwd="C:\\Projects\\farcry", source="startup", transcript_path="x")
+
+    result = handle_session_start(
+        inp,
+        vault=tmp_path,
+        projects_root=tmp_path / "projects_empty",
+        ledger=tmp_path / "_no_ledger.tsv",
+        subprocess_runner=lambda cmd: 0,
+        brief_runner=lambda cmd, stdout_path=None: 0,
+    )
+    assert result.outcome == "fast_path_no_cache"
+    assert result.injected_context == ""
+
+
+def test_return_visit_cache_fresh_injects_and_bg_regen(tmp_path: Path) -> None:
+    (tmp_path / "mnemos.yaml").write_text("recall_mode: skill\n", encoding="utf-8")
+    (tmp_path / "Sessions").mkdir()
+    slug = cwd_to_slug("C:\\Projects\\farcry")
+    state = CwdState()
+    state.cwds[slug] = {"cwd": "C:\\Projects\\farcry", "first_seen": 0.0, "last_seen": 0.0, "visit_count": 1}
+    save_state(tmp_path, state)
+
+    (tmp_path / "Sessions" / "a.md").write_text(
+        "---\ncwd: C:\\Projects\\farcry\n---\nbody\n", encoding="utf-8"
+    )
+    (tmp_path / "Sessions" / "b.md").write_text(
+        "---\ncwd: C:\\Projects\\farcry\n---\nbody\n", encoding="utf-8"
+    )
+    cache_p = cache_path_for(tmp_path, slug)
+    write_cache(cache_p, body="**Aktif durum:** x\n", cwd="C:\\Projects\\farcry", session_count=2, drawer_count=0)
+
+    inp = SessionStartInput(cwd="C:\\Projects\\farcry", source="startup", transcript_path="x")
+
+    result = handle_session_start(
+        inp,
+        vault=tmp_path,
+        projects_root=tmp_path / "projects_empty",
+        ledger=tmp_path / "_no_ledger.tsv",
+        subprocess_runner=lambda cmd: 0,
+        brief_runner=lambda cmd, stdout_path=None: 0,
+    )
+    assert result.outcome == "fast_path_injected"
+    assert "**Aktif durum:**" in result.injected_context
+
+
+def test_return_visit_cache_stale_triggers_sync_regen(tmp_path: Path) -> None:
+    (tmp_path / "mnemos.yaml").write_text("recall_mode: skill\n", encoding="utf-8")
+    (tmp_path / "Sessions").mkdir()
+    slug = cwd_to_slug("C:\\Projects\\farcry")
+    state = CwdState()
+    state.cwds[slug] = {"cwd": "C:\\Projects\\farcry", "first_seen": 0.0, "last_seen": 0.0, "visit_count": 1}
+    save_state(tmp_path, state)
+
+    for i in range(5):
+        (tmp_path / "Sessions" / f"s{i}.md").write_text(
+            "---\ncwd: C:\\Projects\\farcry\n---\nbody\n", encoding="utf-8"
+        )
+    cache_p = cache_path_for(tmp_path, slug)
+    write_cache(cache_p, body="old briefing\n", cwd="C:\\Projects\\farcry", session_count=1, drawer_count=0)
+
+    def fake_brief(cmd, stdout_path=None):
+        if stdout_path is not None:
+            Path(stdout_path).write_text("**Aktif durum:** fresh briefing\n", encoding="utf-8")
+        return 0
+
+    inp = SessionStartInput(cwd="C:\\Projects\\farcry", source="startup", transcript_path="x")
+    result = handle_session_start(
+        inp,
+        vault=tmp_path,
+        projects_root=tmp_path / "projects_empty",
+        ledger=tmp_path / "_no_ledger.tsv",
+        subprocess_runner=lambda cmd: 0,
+        brief_runner=fake_brief,
+    )
+    assert result.outcome == "sync_regen_injected"
+    assert "fresh briefing" in result.injected_context
+
+
+def test_compact_source_exits_silently(tmp_path: Path) -> None:
+    (tmp_path / "mnemos.yaml").write_text("recall_mode: skill\n", encoding="utf-8")
+    inp = SessionStartInput(cwd="C:\\x", source="compact", transcript_path="y")
+    result = handle_session_start(
+        inp,
+        vault=tmp_path,
+        projects_root=tmp_path,
+        ledger=tmp_path / "_nl",
+        subprocess_runner=lambda cmd: 0,
+        brief_runner=lambda cmd, stdout_path=None: 0,
+    )
+    assert result.outcome == "skipped_source"
+
+
+def test_recall_mode_not_skill_exits(tmp_path: Path) -> None:
+    # No mnemos.yaml → default script
+    inp = SessionStartInput(cwd="C:\\x", source="startup", transcript_path="y")
+    result = handle_session_start(
+        inp,
+        vault=tmp_path,
+        projects_root=tmp_path,
+        ledger=tmp_path / "_nl",
+        subprocess_runner=lambda cmd: 0,
+        brief_runner=lambda cmd, stdout_path=None: 0,
+    )
+    assert result.outcome == "skipped_mode"

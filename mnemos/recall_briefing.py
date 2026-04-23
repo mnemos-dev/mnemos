@@ -382,3 +382,179 @@ def run_brief_sync(cwd: str, runner=None) -> BriefResult:
             os.unlink(tmp_path)
         except OSError:
             pass
+
+
+# ---------------------------------------------------------------------------
+# Main decision tree — handle_session_start
+# ---------------------------------------------------------------------------
+
+import time
+import subprocess as _subprocess
+
+VALID_SESSION_SOURCES = {"", "startup", "resume", "clear"}
+
+
+@dataclass
+class SessionStartInput:
+    cwd: str
+    source: str  # "startup" | "resume" | "clear" | "compact" | ""
+    transcript_path: str
+
+
+@dataclass
+class HandleOutcome:
+    outcome: str
+    injected_context: str = ""
+
+
+def _spawn_bg_brief(cwd: str) -> None:
+    """Spawn a detached bg process that runs the briefing skill.
+
+    Non-blocking. Errors are swallowed (diagnostic-only).
+    """
+    try:
+        cmd = _build_skill_cmd("mnemos-briefing", cwd)
+        kwargs: dict = {"stdout": _subprocess.DEVNULL, "stderr": _subprocess.DEVNULL}
+        if os.name == "nt":
+            kwargs["creationflags"] = getattr(_subprocess, "DETACHED_PROCESS", 0)
+        env = os.environ.copy()
+        env.pop("ANTHROPIC_API_KEY", None)
+        kwargs["env"] = env
+        _subprocess.Popen(cmd, **kwargs)
+    except (OSError, FileNotFoundError):
+        pass
+
+
+def handle_session_start(
+    inp: SessionStartInput,
+    vault: Path,
+    projects_root: Path,
+    ledger: Path,
+    subprocess_runner=None,
+    brief_runner=None,
+    bg_spawn=None,
+) -> HandleOutcome:
+    """Main decision tree. Returns HandleOutcome (no side effects to hook I/O).
+
+    injected_context (if non-empty) is what the wrapper should emit as
+    additionalContext JSON to Claude Code's stdout.
+    """
+    bg_spawn = bg_spawn or _spawn_bg_brief
+
+    # Filter: bad source → exit
+    if inp.source not in VALID_SESSION_SOURCES:
+        return HandleOutcome(outcome="skipped_source")
+
+    # Subagent dispatches
+    if "/subagents/" in (inp.transcript_path or ""):
+        return HandleOutcome(outcome="skipped_subagent")
+
+    # Mode gate
+    if read_recall_mode(vault) != "skill":
+        return HandleOutcome(outcome="skipped_mode")
+
+    # Load state
+    state = load_state(vault)
+    slug = cwd_to_slug(inp.cwd)
+    now = time.time()
+
+    cwd_info = state.cwds.get(slug)
+
+    # CASE A — first visit ever
+    if cwd_info is None:
+        state.cwds[slug] = {
+            "cwd": inp.cwd,
+            "first_seen": now,
+            "last_seen": now,
+            "visit_count": 1,
+            "last_session_id": None,
+        }
+        save_state(vault, state)
+        return HandleOutcome(outcome="first_visit")
+
+    # CASE B — return visit
+    cwd_info["last_seen"] = now
+    cwd_info["visit_count"] = cwd_info.get("visit_count", 1) + 1
+
+    # Check for unrefined JSONLs in this cwd
+    pending = find_unrefined_jsonls_for_cwd(
+        cwd_slug=slug,
+        projects_root=projects_root,
+        ledger=ledger,
+    )
+    # Exclude the current live session's transcript
+    live = Path(inp.transcript_path) if inp.transcript_path else None
+    if live is not None:
+        pending = [p for p in pending if p != live]
+
+    if pending:
+        # SUB-B2: blocking catch-up — implemented in Task 13
+        return _run_sub_b2(
+            inp=inp,
+            vault=vault,
+            state=state,
+            cwd_info=cwd_info,
+            pending=pending,
+            ledger=ledger,
+            subprocess_runner=subprocess_runner,
+            brief_runner=brief_runner,
+        )
+
+    # SUB-B1 — no pending
+    cache_p = cache_path_for(vault, slug)
+    if cache_p.exists():
+        # Staleness check
+        try:
+            cache_text = cache_p.read_text(encoding="utf-8")
+            m = re.match(r"^---\r?\n(.*?)\r?\n---\r?\n", cache_text, re.DOTALL)
+            cached_n = 0
+            if m:
+                for line in m.group(1).splitlines():
+                    s = line.strip()
+                    if s.startswith("session_count_used:"):
+                        try:
+                            cached_n = int(s.split(":", 1)[1].strip().strip("'\""))
+                        except ValueError:
+                            cached_n = 0
+                        break
+        except OSError:
+            cached_n = 0
+
+        current_n = count_refined_sessions_for_cwd(vault, inp.cwd)
+
+        if (current_n - cached_n) >= STALE_THRESHOLD:
+            # SYNC regen
+            write_status(vault, phase="briefing", cwd_slug=slug, sub_phase="stale-regen")
+            result = run_brief_sync(inp.cwd, runner=brief_runner)
+            write_status(vault, phase="idle", last_outcome="ok" if result.ok else "error")
+            save_state(vault, state)
+            if result.ok and result.body:
+                write_cache(cache_p, body=result.body, cwd=inp.cwd, session_count=current_n, drawer_count=0)
+                return HandleOutcome(outcome="sync_regen_injected", injected_context=result.body)
+            return HandleOutcome(outcome="sync_regen_failed")
+
+        # Fresh-enough → inject + bg regen
+        body = read_cache_body(cache_p)
+        bg_spawn(inp.cwd)
+        save_state(vault, state)
+        return HandleOutcome(outcome="fast_path_injected", injected_context=body)
+
+    # No cache → bg spawn, no inject this turn
+    bg_spawn(inp.cwd)
+    save_state(vault, state)
+    return HandleOutcome(outcome="fast_path_no_cache")
+
+
+def _run_sub_b2(
+    inp: SessionStartInput,
+    vault: Path,
+    state: CwdState,
+    cwd_info: dict,
+    pending: list[Path],
+    ledger: Path,
+    subprocess_runner,
+    brief_runner,
+) -> HandleOutcome:
+    """Placeholder — SUB-B2 blocking catch-up implemented in Task 13."""
+    save_state(vault, state)
+    return HandleOutcome(outcome="sub_b2_pending_stub")
