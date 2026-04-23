@@ -24,6 +24,14 @@ STATE_LOCK = STATE_FILENAME + ".flock"
 CATCH_UP_LOCK = ".mnemos-catch-up.flock"
 STALE_THRESHOLD = 3  # session-count diff that triggers sync regen in SUB-B1
 
+# Max pending JSONLs SUB-B2 will refine+mine synchronously in one hook fire.
+# Without this cap, a cwd with 300+ unprocessed JSONLs (e.g. a long-lived
+# project dir) would block the session for hours. The cap limits SUB-B2 to
+# the most-recent N unprocessed transcripts — enough to give a meaningful
+# briefing for this session. Older unprocessed JSONLs drift down to
+# auto-refine's background pipeline on subsequent sessions.
+SUB_B2_PENDING_CAP = 3
+
 # Re-entry guard: every subprocess we spawn inherits this env var, and main()
 # exits silently when it sees it set. Prevents a fork-bomb cascade when
 # `claude --print` subprocesses themselves fire SessionStart hooks (Claude
@@ -514,6 +522,13 @@ def handle_session_start(
     live = Path(inp.transcript_path) if inp.transcript_path else None
     if live is not None:
         pending = [p for p in pending if p != live]
+
+    # Cap pending to most-recent N — long-lived cwds can have hundreds of
+    # unprocessed JSONLs; processing them all synchronously blocks the session
+    # for hours. find_unrefined_jsonls_for_cwd returns oldest-first, so take
+    # the tail for recency.
+    if len(pending) > SUB_B2_PENDING_CAP:
+        pending = pending[-SUB_B2_PENDING_CAP:]
 
     if pending:
         # SUB-B2: blocking catch-up — implemented in Task 13

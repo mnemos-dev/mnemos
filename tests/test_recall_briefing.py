@@ -587,6 +587,87 @@ def test_sub_b2_refine_fails_skips_mine(tmp_path: Path) -> None:
     assert result.outcome in {"sub_b2_catch_up_done", "sub_b2_partial"}
 
 
+def test_sub_b2_pending_is_capped_to_most_recent_N(tmp_path: Path) -> None:
+    """A cwd with many unprocessed JSONLs should only sync-refine the last N.
+
+    Regression: without the cap, a long-lived cwd (e.g. 300+ old sessions)
+    blocked the hook for hours processing every historical JSONL. SUB-B2
+    exists to freshen briefing context, not to catch up the entire backlog —
+    that belongs to auto-refine's async cadence.
+    """
+    from mnemos.recall_briefing import SUB_B2_PENDING_CAP
+
+    (tmp_path / "mnemos.yaml").write_text("recall_mode: skill\n", encoding="utf-8")
+    (tmp_path / "Sessions").mkdir()
+    slug = cwd_to_slug("C:\\big")
+    state = CwdState()
+    state.cwds[slug] = {"cwd": "C:\\big", "first_seen": 0.0, "last_seen": 0.0, "visit_count": 1}
+    save_state(tmp_path, state)
+
+    proj_root = tmp_path / ".claude" / "projects" / slug
+    proj_root.mkdir(parents=True)
+    # Create 50 JSONLs, mtime ascending. find_unrefined returns oldest-first,
+    # cap logic takes the tail → most-recent N.
+    import os as _os
+    jsonls = []
+    for i in range(50):
+        j = proj_root / f"{i:03d}.jsonl"
+        j.write_text("{}\n", encoding="utf-8")
+        ts = 1_000_000 + i * 10  # monotonically increasing mtime
+        _os.utime(j, (ts, ts))
+        jsonls.append(j)
+
+    ledger = tmp_path / "processed.tsv"
+    ledger.write_text("", encoding="utf-8")
+
+    refined_jsonls: list[str] = []
+
+    def subprocess_runner(cmd):
+        # Track which JSONL each refine call targets
+        joined = " ".join(str(c) for c in cmd)
+        if "mnemos-refine-transcripts" in joined:
+            for a in cmd:
+                if str(a).endswith(".jsonl"):
+                    refined_jsonls.append(str(a))
+                    # Also simulate ledger OK for this JSONL + session_md
+                    jpath = str(a)
+                    sname = f"{Path(jpath).stem}.md"
+                    (tmp_path / "Sessions" / sname).write_text(
+                        "---\ncwd: C:\\big\n---\nbody\n", encoding="utf-8"
+                    )
+                    with ledger.open("a", encoding="utf-8") as fh:
+                        fh.write(f"{jpath}\tOK\t{sname}\n")
+                    break
+        return 0
+
+    def brief_runner(cmd, stdout_path=None):
+        if stdout_path is not None:
+            Path(stdout_path).write_text("**Aktif durum:** brief\n", encoding="utf-8")
+        return 0
+
+    inp = SessionStartInput(cwd="C:\\big", source="startup", transcript_path="y")
+    result = handle_session_start(
+        inp,
+        vault=tmp_path,
+        projects_root=tmp_path / ".claude" / "projects",
+        ledger=ledger,
+        subprocess_runner=subprocess_runner,
+        brief_runner=brief_runner,
+    )
+
+    # Refined count must not exceed SUB_B2_PENDING_CAP
+    assert len(refined_jsonls) <= SUB_B2_PENDING_CAP, (
+        f"refined {len(refined_jsonls)} JSONLs, expected ≤ {SUB_B2_PENDING_CAP}"
+    )
+    # The ones refined should be the N most-recent (by mtime) of 50 total
+    refined_names = {Path(p).name for p in refined_jsonls}
+    expected_most_recent = {f"{i:03d}.jsonl" for i in range(50 - SUB_B2_PENDING_CAP, 50)}
+    assert refined_names == expected_most_recent, (
+        f"got {refined_names}, expected most-recent {expected_most_recent}"
+    )
+    assert result.outcome == "sub_b2_catch_up_done"
+
+
 # --- main entry ---
 
 import io
