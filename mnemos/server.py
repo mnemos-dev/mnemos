@@ -435,6 +435,43 @@ class MnemosApp:
 # ---------------------------------------------------------------------------
 
 
+def build_instructions(cfg: MnemosConfig) -> str:
+    """Return MCP server instructions string based on recall_mode.
+
+    Two modes:
+      - "script" (default): AI auto-calls mnemos_search when user mentions a
+        project/topic. Backwards-compatible with existing clients.
+      - "skill": SessionStart briefing hook (see mnemos.recall_briefing) has
+        already injected per-cwd context as additionalContext. AI should NOT
+        auto-call mnemos_search on every turn, but user-explicit asks still
+        trigger search.
+    """
+    base = "Obsidian-native AI memory palace.\n"
+
+    if cfg.recall_mode == "skill":
+        return base + (
+            "SessionStart briefing is already injected as additionalContext "
+            "for the current cwd — rely on it as primary project memory. Do "
+            "NOT auto-call mnemos_search on every user turn; it wastes "
+            "tokens when briefing already covers the context. However, IF the "
+            "user explicitly asks to recall something not in the briefing "
+            "(cross-project reference, older history, keyword lookup), CALL "
+            "mnemos_search — user-explicit requests override the default-off "
+            "rule. /mnemos-recall <query> skill (when available) is the "
+            "preferred entry point for cross-context queries."
+        )
+
+    # Default: script mode (also catches unknown values defensively)
+    return base + (
+        "At the START of every session, call mnemos_wake_up to load identity "
+        "and project context (~200 tokens). "
+        "When the user mentions a project or topic, call mnemos_search to "
+        "retrieve relevant memories before responding. "
+        "Use mnemos_recall with level=L2 and a wing name to get deeper "
+        "room-level details when needed."
+    )
+
+
 def create_mcp_server(config: Optional[MnemosConfig] = None):
     """Create and configure a FastMCP server with 8 Mnemos tools.
 
@@ -460,15 +497,7 @@ def create_mcp_server(config: Optional[MnemosConfig] = None):
 
     mcp = FastMCP(
         "mnemos",
-        instructions=(
-            "Obsidian-native AI memory palace.\n"
-            "At the START of every session, call mnemos_wake_up to load identity "
-            "and project context (~200 tokens). "
-            "When the user mentions a project or topic, call mnemos_search to "
-            "retrieve relevant memories before responding. "
-            "Use mnemos_recall with level=L2 and a wing name to get deeper "
-            "room-level details when needed."
-        ),
+        instructions=build_instructions(config),
     )
 
     # ------------------------------------------------------------------
