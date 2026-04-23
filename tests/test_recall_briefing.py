@@ -225,3 +225,46 @@ def test_find_unrefined_jsonls_missing_project_dir_returns_empty(tmp_path: Path)
         ledger=ledger,
     )
     assert result == []
+
+
+# --- status writes ---
+
+from mnemos.recall_briefing import (
+    STATUS_FILENAME,
+    write_status,
+    read_status,
+)
+
+
+def test_write_status_creates_file(tmp_path: Path) -> None:
+    write_status(tmp_path, phase="refining", current=1, total=2, cwd_slug="s")
+    p = tmp_path / STATUS_FILENAME
+    assert p.exists()
+    data = json.loads(p.read_text(encoding="utf-8"))
+    assert data["phase"] == "refining"
+    assert data["current"] == 1
+    assert data["total"] == 2
+    assert data["cwd_slug"] == "s"
+    assert data["sub_phase"] == "catch-up"  # default when phase != idle
+
+
+def test_write_status_idle_phase(tmp_path: Path) -> None:
+    write_status(tmp_path, phase="idle", last_outcome="ok")
+    data = json.loads((tmp_path / STATUS_FILENAME).read_text(encoding="utf-8"))
+    assert data["phase"] == "idle"
+    assert data["last_outcome"] == "ok"
+
+
+def test_write_status_preserves_existing_fields(tmp_path: Path) -> None:
+    # Auto-refine hook may have written fields like last_ok
+    initial = {"phase": "idle", "last_ok": 5, "backlog": 10}
+    (tmp_path / STATUS_FILENAME).write_text(json.dumps(initial), encoding="utf-8")
+    write_status(tmp_path, phase="briefing", cwd_slug="s")
+    data = read_status(tmp_path)
+    assert data["phase"] == "briefing"
+    assert data["last_ok"] == 5  # preserved
+    assert data["backlog"] == 10  # preserved
+
+
+def test_read_status_missing_returns_empty(tmp_path: Path) -> None:
+    assert read_status(tmp_path) == {}

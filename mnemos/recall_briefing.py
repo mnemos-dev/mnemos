@@ -228,3 +228,55 @@ def find_unrefined_jsonls_for_cwd(
         if str(jsonl) not in processed:
             candidates.append(jsonl)
     return sorted(candidates, key=lambda p: p.stat().st_mtime)
+
+
+# ---------------------------------------------------------------------------
+# Statusline status file (shared with auto_refine.STATUS_FILENAME)
+# ---------------------------------------------------------------------------
+
+STATUS_FILENAME = ".mnemos-hook-status.json"
+
+
+def read_status(vault: Path) -> Dict[str, Any]:
+    p = vault / STATUS_FILENAME
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def write_status(
+    vault: Path,
+    phase: str,
+    current: int | None = None,
+    total: int | None = None,
+    cwd_slug: str | None = None,
+    sub_phase: str | None = None,
+    last_outcome: str | None = None,
+) -> None:
+    """Merge given fields into .mnemos-hook-status.json.
+
+    Preserves fields written by other hooks (e.g. auto_refine's last_ok,
+    last_skip, backlog) — only overwrites the keys we pass.
+    """
+    data = read_status(vault)
+    data["phase"] = phase
+    if current is not None:
+        data["current"] = current
+    if total is not None:
+        data["total"] = total
+    if cwd_slug is not None:
+        data["cwd_slug"] = cwd_slug
+    if sub_phase is not None:
+        data["sub_phase"] = sub_phase
+    elif phase != "idle":
+        data.setdefault("sub_phase", "catch-up")
+    if last_outcome is not None:
+        data["last_outcome"] = last_outcome
+
+    path = vault / STATUS_FILENAME
+    tmp_path = vault / (STATUS_FILENAME + ".tmp")
+    tmp_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp_path, path)
