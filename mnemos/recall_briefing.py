@@ -40,14 +40,17 @@ def _child_env() -> dict:
 
 
 def _nt_no_window_flags():
-    """Windows creationflags that fully suppress a console window for a
-    detached (or inline) subprocess. DETACHED_PROCESS alone allows a brief
-    console flash; combining with CREATE_NO_WINDOW suppresses it entirely."""
+    """Windows creationflags that fully suppress a console window.
+
+    Uses CREATE_NO_WINDOW only — it creates a hidden console process without
+    any visible window. Combining with DETACHED_PROCESS is NOT safe on Windows
+    (the two flags are contradictory per Microsoft docs — DETACHED_PROCESS says
+    "no console at all", CREATE_NO_WINDOW says "console with hidden window").
+    auto_refine uses CREATE_NO_WINDOW alone and has no fork-bomb issues; mirror
+    that pattern.
+    """
     import subprocess as _sp
-    flags = 0
-    flags |= getattr(_sp, "CREATE_NO_WINDOW", 0)
-    flags |= getattr(_sp, "DETACHED_PROCESS", 0)
-    return flags
+    return getattr(_sp, "CREATE_NO_WINDOW", 0)
 
 
 # ---------------------------------------------------------------------------
