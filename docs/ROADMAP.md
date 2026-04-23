@@ -858,14 +858,22 @@ Rerank skill-recall'ın içinde eridi; contradiction v0.5 hygiene'a ertelendi.
       failed; üç zombie mnemos MCP server (PID 25004/31896/43240)
       kill edilip leftover Mnemos/ force-remove sonrası başarılı.
 - [x] **4.3.A Hook → skill-mine route + catch-up** — hook routes to `/mnemos-mine-llm` when `mine_mode: skill` (two-phase queue A+B, cap 10/fire), new `mnemos catch-up [--limit N] [--parallel N] [--dry-run]` command, `<vault>/Mnemos/_processing.xlsx` native-Excel audit trail (openpyxl + filelock). Spec `docs/specs/2026-04-22-4.3.A-hook-skill-mine-route-design.md`, plan `docs/plans/2026-04-22-v0.4-task-4.3.A-hook-skill-mine-route.md`. 10 tasks shipped across commits `8a8783a` … `b0f377e` on 2026-04-22 (561 tests pass, +19 new).
-- [ ] **4.3 Skill-recall** *(~5h)*
-  - `skills/mnemos-recall/` — user-invoked `/mnemos-recall <query>`,
-    vector top-50 → LLM judge → curated 300-500 kelime context
-  - `skills/mnemos-briefing/` + `mnemos/recall_briefing.py` + `mnemos
-    install-recall-hook` — opt-in SessionStart briefing (<4h freshness
-    window, stale-ama-fresh model, refine-hook paraleli)
-  - MCP server `instructions` alanı `recall_mode` yaml'dan dinamik
-    (`script` → AI auto-query; `skill` → AI sessiz, skill-driven)
+- [~] **4.3 Skill-recall** *(~5h, split to two ships)* — *(başladı 2026-04-23)*
+  - **First ship (4.3 first ship, ~4h):** cwd-aware auto-briefing + MCP
+    recall_mode. Spec: [`docs/specs/2026-04-23-v0.4-task-4.3-first-ship-design.md`](specs/2026-04-23-v0.4-task-4.3-first-ship-design.md).
+    - `mnemos/recall_briefing.py` + `skills/mnemos-briefing/` — path checker
+      SessionStart hook, cwd-scope narrative synthesis (evolution-aware,
+      çelişen kararlar "revize" bölümünde), blocking catch-up sequence
+      prior-session-unrefined senaryosu için, statusline progress
+    - `mnemos/server.py` dinamik `instructions` (`recall_mode: script`
+      default / `skill` briefing-first)
+    - `docs/prompts/refine-transcripts.md` + `skills/mnemos-refine-transcripts/
+      SKILL.md` — frontmatter'a `cwd:` field
+    - `scripts/backfill_cwd_frontmatter.py` — mevcut 67 session'ın
+      cwd frontmatter'ını doldur (one-off)
+    - `mnemos install-recall-hook` + `init` integration
+  - **Second ship (4.3.1, ~2h):** `/mnemos-recall <query>` explicit user
+    skill — cross-context edge case, ayrı brainstorm + spec
 - [ ] **4.4 ~~Contradiction detection~~ → v0.5'e ertelendi** (spec §2)
 - [ ] **4.5 `mnemos settings` TUI** *(~2.5h)*
   - `mnemos/settings_tui.py` — numbered menu, 8 satır: backend, mine-mode,
