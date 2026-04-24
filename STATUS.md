@@ -499,9 +499,20 @@ iki SessionStart entry: auto-refine + recall-briefing).
   (baseline 637, +4 net).
 
   **Pilot UX verification:** kullanıcının sonraki mnemos session'ı
-  açılışı <1s hook latency olmalı; cache yoksa silent, 2. session'da
-  fresh inject. Farcry session'ları zaten SUB-B1 fresh-path'te
-  (pending=0), yeni path ile davranış aynı (anında inject).
+  açılışı <1s hook latency olmalı, anında briefing inject. Mnemos cache
+  önceki session içinde elle pre-seeded (`--brief-and-cache` komutu,
+  15 refined session'dan 3.7KB sentez) — bg catchup otomatik cache
+  üretimi henüz kullanıcının vault'unda test edilmedi çünkü önceki
+  9 post-ship bug onu engelliyordu. Farcry session'ları zaten
+  SUB-B1 fresh-path'te çalışıyor (pending=0, cache fresh).
+
+  **Cache pre-seed trivia:** mnemos cwd'de state.cwds visit_count=1
+  gösteriyordu (sadece 1 hook fire) ama kullanıcı 10+ session açmıştı.
+  Sebep: 2026-04-23'te recall hook install edildi; sonraki fire'lar
+  mojibake slug + bg_spawn DEVNULL bug'ları (RC1+RC3) yüzünden cache
+  hiç üretmedi. Fix'ler 2026-04-24'te shipped, manuel cache üretimi
+  snapshot oluşturdu; sonraki session hook bg catchup ile otomatik
+  regenerate eder.
 
 **Operational cleanup (commit'siz, runtime):**
 - Runaway pipeline tree-kill (recall_briefing pid 23064 + auto_refine_bg
