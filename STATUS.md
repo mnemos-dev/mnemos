@@ -1,6 +1,6 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-24 (4.3 first ship shipped + post-ship **8** critical fixes: fork-bomb env guard + Windows console flags + SUB-B2 pending cap + non-ASCII cwd recall bug [slug algo + stdin UTF-8 + bg-spawn cache] + stdout cp1252 crash + fork-bomb noise pollution + SKIP ledger filter + **async SUB-B2** [blocking 5-min sync replaced with detached bg `--catchup` subcommand; hook always <1s]; ledgers dedup'd + corrupt rows purged; hook re-installed with fixes; **641 test pass +14 new** (baseline 627); sonraki: 4.3.1 `/mnemos-recall` explicit skill + 4.5 settings TUI + 4.6 benchmark + 4.7 PyPI v0.4.0)
+**Last updated:** 2026-04-24 (4.3.1 shipped: explicit `/mnemos-recall` skill — in-session narrative synthesis + Sessions grep rescue when drawer match is weak + soft fallback listing; 5 commits `e1ab0e4`…`166809c`; threshold empirically calibrated 0.5 → 0.015 for k=60 RRF; **643 test pass +2 new**; sonraki: 4.5 settings TUI + 4.6 benchmark + 4.7 PyPI v0.4.0)
 **Stable PyPI version:** `v0.3.3` · **Next:** `v0.4.0` (AI Boost / Phase 1 — 4.3.1 + 4.5 + 4.6 + 4.7 remaining)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
@@ -327,222 +327,28 @@ gap.
 
 ### Next session starts here
 
-**4.3 first ship kapandı + post-ship 3 kritik fix uygulandı (2026-04-23).**
+**4.3.1 explicit `/mnemos-recall` skill shipped (2026-04-24).**
 
-**Ship:** 18 task, cwd-aware auto-briefing hook canlı, MCP recall_mode
-swap'i hazır, kasamd backfill apply'lı, kasamd yaml'ında `mine_mode: skill`
-+ `recall_mode: skill`, install-recall-hook kurulu (`~/.claude/settings.json`
-iki SessionStart entry: auto-refine + recall-briefing).
+Kasamd smoke'u rescue path'ini tam beklenen şekilde doğruladı (tavuklu
+oyun query'si farcry Sessions'ından evolution-aware narrative
+ürettirdi). Threshold 0.5 → 0.015 kalibrasyonu + Sessions grep rescue
+SKILL.md'ye ship sırasında smoke-driven iki polish commit olarak
+eklendi.
 
-**Post-ship emergency fix'ler (commit sırasıyla):**
+Sıradaki v0.4.0 ship blocker'ları:
 
-- `35e16f3` **Fork-bomb re-entry guard** — `claude --print` subprocess'leri
-  kendi SessionStart hook'unu tetiklediğinde `main()` `HOOK_ACTIVE_ENV=1`
-  env var'ını görüp sessizce çıkıyor. Fork bomb olayı: kullanıcı 2. session
-  açınca ~35 subprocess paralel spawn olmuştu, hard reboot gerekti. Fix:
-  tüm spawn'lar `_child_env()` via marker inherit eder.
-- `b69d5e1` **Windows console flags** — DETACHED_PROCESS + CREATE_NO_WINDOW
-  contradictory idi (terminal flashing). Şimdi sadece CREATE_NO_WINDOW
-  (auto_refine paterni).
-- `43cf464` **SUB_B2_PENDING_CAP = 3** — return-visit'te SUB-B2 blocking
-  catch-up kapsız çalışıyordu; mnemos gibi geçmişi ağır cwd'de 337 pending
-  JSONL'u seri refine+mine'a soktu, 2.5 saatlik blocking iş. Cap: son 3
-  JSONL sync işlenir, gerisi auto_refine async cadansına.
-- **Non-ASCII cwd recall bug — üç bağımlı root cause, tek commit:**
-  throwaway farcry (Türkçe `Masaüstü` içeren) cwd'sinde kullanıcı 4 visit
-  boyunca briefing alamadı rağmen refine+mine başarılıydı. Root cause'lar:
-  - **RC1 slug algoritması** — `cwd_to_slug` `[^\w-]` flag `re.UNICODE`
-    kullanıyordu → `ü`/`ğ`/`ä`/`語` gibi karakterler korunuyordu. Claude
-    Code kendi `~/.claude/projects/<slug>/` adlandırmasında non-ASCII
-    harfleri `-`'ye çeviriyor. Mismatch → `find_unrefined_jsonls_for_cwd`
-    yanlış klasöre bakar → pending=[] → **SUB-B2 gate hiç tetiklenmez**.
-    Fix: pattern `[^A-Za-z0-9_-]` (flag-independent). `Masaüstü\farcry`
-    artık `Masa-st--farcry` üretiyor (gerçek CC slug'ıyla aynı).
-  - **RC2 cp1252 stdin mojibake** — Windows Python `sys.stdin` default
-    cp1252 kodeki kullanıyor; Claude Code UTF-8 JSON gönderiyor. `ü`
-    (C3 BC) → `Ã¼` mojibake. State JSON bozuk yazılıyor + briefing
-    skill mojibake cwd ile çağrılınca Sessions/.md'lerin temiz UTF-8
-    frontmatter'ı ile eşleşmiyor. Fix: `main()` içinde
-    `sys.stdin.reconfigure(encoding="utf-8", errors="replace")`
-    re-entry guard'ın hemen altında, stdin read'den önce. Try/except
-    ile sarılı (StringIO fake'leri bozmuyor).
-  - **RC3 bg_spawn cache üretmiyordu** — eski `_spawn_bg_brief` paterni
-    `claude --print /mnemos-briefing <cwd>` subprocess'ini
-    `stdout=DEVNULL` ile başlatıyordu — briefing body kaybolup gidiyordu,
-    cache hiçbir zaman yaratılmıyordu, SUB-B1 no-cache path sonsuz
-    döngüde kalıyordu. Fix: yeni `brief_and_cache(cwd, vault)` fonksiyonu
-    + `main()` içinde `--brief-and-cache` subcommand + `_spawn_bg_brief`
-    artık `python -m mnemos.recall_briefing --brief-and-cache --cwd X
-    --vault Y` çağırıyor. Child process body'yi alır, frontmatter
-    ekleyip `.mnemos-briefings/<slug>.md`'ye yazar.
+- **4.5 Settings TUI** (~2.5h) — `mnemos settings` numbered menu
+  (backend / mine-mode / recall-mode / hooks / statusline / languages).
+  Tek panel altında fragmanlı komutları toparlayacak, i18n TR+EN.
+- **4.6 LongMemEval benchmark** (~3h) — S+S combo ölçümü, hedef
+  R@5 ≥ %93.
+- **4.7 PyPI release v0.4.0**.
 
-  **Test delta:** +7 yeni test (3 slug non-ASCII, 1 stdin UTF-8,
-  2 brief_and_cache, 1 subcommand mode). Eski
-  `test_slug_unicode_preserved_via_word_class` silindi (bug'ı
-  lock'luyordu). Full suite **634 pass / 2 skip / 3 deselect**.
-
-  **Operational cleanup:** kasamd `.mnemos-cwd-state.json`'dan eski
-  Unicode-preserve slug entry'si (`...Masaüstü-farcry`) silindi
-  (`cwds.pop`), yalnızca `C--Projeler-mnemos` kaldı. Fix sonrası asla
-  yeniden yazılmayacak slug.
-
-- **Post-fix follow-up: stdout cp1252 crash (RC4)** — farcry smoke testi
-  sırasında çıktı. SUB-B2 catch-up başarıyla tamamlanıyor (cache
-  güncelleniyor, hook-status `last_outcome=ok`), ama briefing Claude'a
-  ulaşmıyordu. Diagnosis: Windows Python default `sys.stdout` cp1252
-  kodeki kullanıyor; briefing body'deki Türkçe `ş` (`ş`) cp1252'de
-  yok → `print(json.dumps(out, ensure_ascii=False))` satırı
-  UnicodeEncodeError atar → hook exit 1 → **Claude Code `additionalContext`'i
-  sessizce reddeder**. Kullanıcı sadece generic bir Claude session görür
-  (kendi MCP `mnemos_search` çağrılarıyla manuel context bulabilir ama
-  otomatik briefing gelmez).
-
-  Fix: `main()` hook mode'da `sys.stdout.reconfigure(encoding="utf-8",
-  errors="replace")` — stdin reconfigure'un yanına stdout için de aynı
-  pattern. Try/except ile sarılı (StringIO test double'larını bozmuyor).
-  Test: `test_main_stdout_handles_turkish_body_without_crash` — Türkçe
-  `ş`/`ğ`/`ü` içeren cache body cp1252 stdout'a emit edilirken
-  UnicodeEncodeError atmaz, UTF-8 byte'ları (\xc5\x9f) raw output'ta
-  görülür.
-
-  **Sonuç:** fix sonrası test 634 → 635 pass. Farcry retry (aynı cache
-  hâlâ fresh, state visit_count=2 → return-visit) SUB-B1 fresh-path
-  inject yapacak — Claude ilk turn'den itibaren tavuk pet bağlamı ile
-  gelir.
-
-- **Post-fix follow-up: fork-bomb JSONL pending pollution (RC5)** —
-  farcry retry çalıştı (Claude "Selam! 🐔" + tüm kararları özetledi) ama
-  4 dk gecikti. Diagnosis: farcry projects klasöründe 134 JSONL var —
-  ama kullanıcı bugün sadece ~6-7 gerçek session açmış. Histogram
-  13:39-13:45 arası 6 dakikalık bir burst'te **116 JSONL** yaratılmış
-  (dakikada 14-24 dosya) — fork-bomb'un imzası. Fix sonraki kullanıcı
-  vault'larda fork-bomb re-entry guard (`35e16f3`) sayesinde tekrar
-  olmaz ama birikmiş noise yine de SUB-B2'yi boğar.
-
-  Fix: `find_unrefined_jsonls_for_cwd` artık `mnemos.auto_refine._count_user_turns`
-  + `MIN_USER_TURNS=3` filter'ını uygular (auto_refine picker'ıyla
-  paritede). 3'ten az gerçek user turn'ü olan JSONL'lar pending listesine
-  girmez — fork-bomb çöpleri, '/clear' resume session'ları, iptal edilmiş
-  session'lar. Filter SUB-B2'nin sync refine+mine+brief zincirini
-  yalnızca anlamlı transcriptler için ödetir.
-
-  Test: `test_find_unrefined_jsonls_skips_short_transcripts` (1-turn
-  noise atlanır) + `test_find_unrefined_jsonls_tool_result_turns_dont_count`
-  (Claude Code tool_result'larını `type=user` ile saklar; filter tool-heavy
-  1-turn session'ları noise olarak markalar). Mevcut 4 SUB-B2/find testi
-  stub'larını `_REAL_JSONL_3_TURNS` sabitine geçirdik — test intent aynı
-  kaldı, sadece stub realistic.
-
-  Full suite **637 pass / 2 skip** (+2 new, +0 regression).
-
-  **Operational cleanup:** farcry projects klasöründeki 116 fork-bomb
-  JSONL silindi (13:39:00-13:45:30 UTC window). Gerçek tavuk pet session'ı
-  (13:37:50, 82KB) + sonraki fix-test session'ları korundu. Sonuç:
-  134 → 18 JSONL. Pending backlog artık 0'a yakın, farcry SUB-B1
-  fresh-path inject anında çalışır.
-
-- **Post-fix follow-up: SKIP ledger rows cycled forever (RC6)** — fork-bomb
-  silme sonrası kalan 1 pending JSONL (`5c4bda3f`, bugünkü 3-turn noise
-  test session'ı) refine skill tarafından işlendi ve `SKIP` kararı verildi
-  (`sonucsuz-3-turn-ne-yapiyoruz-is-yok`). Ama `load_refine_ledger_jsonls`
-  yalnızca `OK` satırlarını "processed" sayıyordu → SKIP'li JSONL'lar her
-  hook fire'da pending listesine geri geliyordu → SUB-B2 sync refine →
-  skill yine SKIP → sonsuz döngü. Kullanıcı her session açılışında aynı
-  noise için 90-120 saniye blocking eder.
-
-  Fix: `load_refine_ledger_jsonls` artık `OK` veya `SKIP` statülü satırları
-  processed kabul ediyor. Test: `test_load_refine_ledger_jsonls_treats_ok_and_skip_as_processed`
-  (eski `..._extracts_ok_jsonl_paths` yanlış semantiği lock'luyordu;
-  inversionla değiştirildi).
-
-  Full suite **637 pass / 2 skip** (mevcut test count, sadece semantic
-  düzeltildi).
-
-  **Operational cleanup:** refine ledger (`~/.claude/skills/mnemos-refine-transcripts/state/processed.tsv`)
-  20 corrupt satırdan temizlendi — hepsi shell escape kazası (bash `\t`
-  tab-expansion, `\2`/`\x05`/`\x08` vb. hex byte'lar). Backup
-  `processed.tsv.bak-20260423-221108`. Sonuç: **farcry pending = 0**,
-  SUB-B1 fresh-path anında inject edecek; cache 21:03'te üretilen fresh
-  hali (staleness diff=0).
-
-- **Post-fix follow-up: async SUB-B2 (RC7)** — farcry akşam smoke'u
-  OK'tu ama mnemos cwd'de (128 fork-bomb JSONL DOLAR vardı, sonra
-  temizlendi, ama o akşam pending 1'di) 2. session "selam" yanıtı için
-  **5 dk bekleme** ölçüldü. Sebep: SUB-B2 sync 3 pending JSONL'ı seri
-  refine+mine+brief yapar → ~90s × 3 + brief ≈ 5 dk. Blocking tasarımı
-  baştan yanlış: briefing'in kritik değeri 90s-fresh içerik değil
-  birikmiş bağlam; 1 session gecikme perceive edilmez, 5 dk bekleme
-  fatal. Spec:
-  [`docs/specs/2026-04-24-async-sub-b2-recall-briefing-design.md`](docs/specs/2026-04-24-async-sub-b2-recall-briefing-design.md).
-
-  Fix: SUB-B2 blocking path kaldırıldı. Yeni `catchup_and_cache(cwd,
-  vault)` fonksiyonu refine+mine loop + brief zincirini tek yerde topluyor;
-  yeni `--catchup` subcommand + `_spawn_bg_catchup` bu zinciri detached
-  bg subprocess'te koşuyor. `handle_session_start` artık her branch'te
-  `bg_spawn`'ı fire eder, hemen döner (<1s). Cache presence inject/silent
-  ayrımını yapar; pending outcome label'ını belirler:
-
-  | pending | cache | outcome |
-  |---|---|---|
-  | 0 | var | `fast_path_injected` (bg refreshes cache) |
-  | 0 | yok | `fast_path_no_cache` (bg creates cache) |
-  | 1+ | var | `fast_path_injected_with_catchup` |
-  | 1+ | yok | `bg_catching_up` (silent, cache next session) |
-
-  `STALE_THRESHOLD` + sync regen branch silindi — bg her zaman
-  regenerate eder, threshold redundant oldu. `_spawn_bg_brief`
-  backward-compat alias olarak kaldı (`_spawn_bg_catchup`'a pointer),
-  legacy callers kırılmadı.
-
-  **Test delta:** +5 async path test, 4 eski SUB-B2 sync test silindi,
-  1 staleness test yeniden yazıldı. Full suite **641 pass / 2 skip**
-  (baseline 637, +4 net).
-
-  **Pilot UX verification:** kullanıcının sonraki mnemos session'ı
-  açılışı <1s hook latency olmalı, anında briefing inject. Mnemos cache
-  önceki session içinde elle pre-seeded (`--brief-and-cache` komutu,
-  15 refined session'dan 3.7KB sentez) — bg catchup otomatik cache
-  üretimi henüz kullanıcının vault'unda test edilmedi çünkü önceki
-  9 post-ship bug onu engelliyordu. Farcry session'ları zaten
-  SUB-B1 fresh-path'te çalışıyor (pending=0, cache fresh).
-
-  **Cache pre-seed trivia:** mnemos cwd'de state.cwds visit_count=1
-  gösteriyordu (sadece 1 hook fire) ama kullanıcı 10+ session açmıştı.
-  Sebep: 2026-04-23'te recall hook install edildi; sonraki fire'lar
-  mojibake slug + bg_spawn DEVNULL bug'ları (RC1+RC3) yüzünden cache
-  hiç üretmedi. Fix'ler 2026-04-24'te shipped, manuel cache üretimi
-  snapshot oluşturdu; sonraki session hook bg catchup ile otomatik
-  regenerate eder.
-
-**Operational cleanup (commit'siz, runtime):**
-- Runaway pipeline tree-kill (recall_briefing pid 23064 + auto_refine_bg
-  pid 28824 + ~33 descendants)
-- Stale lock'lar silindi (`.mnemos-catch-up.flock`, `.mnemos-hook.lock`)
-- `.mnemos-hook-status.json` → idle, `.mnemos-cwd-state.json` temizlendi
-  (fork-bomb sırasında farcry slug bozuk encoding ile yazılmıştı)
-- **Ledger dedup:** refine 164→156 (8 dubli OK kaldırıldı), mine 263→144
-  (119 dubli kaldırıldı). Yedekler: `*.bak-20260423-163224`. Kalan 13
-  corrupt "C:\Users" satırı + 4 path × 2-4 SKIP satırı (STATUS'taki
-  "Legacy corrupt ledger rows" polish item kapsamında).
-
-**Kasamd canlı durumu (2026-04-23 session sonu):**
-- Palace: 617 drawer (599 baseline'dan +18 meşru artış)
-- Sessions/: 74 refined .md (40'ı bugün cwd frontmatter backfill ile
-  güncellendi — içerik değişmedi)
-- Refine ledger: 156 satır, 135 unique JSONL
-- Mine ledger: 144 satır, 144 unique source (hiç dubli yok)
-- Hook install'lu, fix'li, test edildi (627 pass)
-
-✅ **Smoke doğrulandı (2026-04-23 akşam):** farcry cwd'sinde Claude Code
-oturumu açıldı, recall hook SUB-B1 fresh-path ile anında briefing inject
-etti ("Selam! 🐔 farcry/ klasörü hâlâ boş — Shimeji tarzı masaüstü tavuk
-projesi için bıraktığımız yerden devam edebiliriz. Bekleyen kararlar:
-1. Davranış listesi onayı... 2. Dosyaları gagalama... 3. Gıdaklama ses
-efekti... 4. Teknoloji seçimi..."). İlk smoke'ta 4 dk gecikme vardı (SUB-B2
-catch-up fork-bomb backlog yüzünden); 6 post-ship fix sonrası anında inject.
-
-Sıradaki roadmap işi: 4.3.1 explicit `/mnemos-recall` skill (cross-context
-edge case), 4.5 settings TUI, 4.6 benchmark, 4.7 PyPI v0.4.0 release.
+v0.4.1 polish candidate (isteğe bağlı, bu ship'e eklenmedi):
+- `/mnemos-recall` için EN + pure-noise smoke senaryoları (bu backend'de
+  drawer-direct path yeterince hit almıyor — ek gözlem v0.4.1'de).
+- `/mnemos-recall` threshold backend-parity (sqlite-vec vs ChromaDB)
+  smoke — spec §9.1 scenario 7, deferred.
 
 ### Previous — 4.3.A session notes
 
@@ -830,6 +636,51 @@ fix'ler" + "Smoke doğrulandı" bloklarında.
 - Mnemos MCP server şu oturum için kill edildi (accept anında graph.json
   SQLite lock tutuyordu). Bir sonraki Claude Code restart'ında otomatik
   respawn eder, yeni skill palace'ı + yeni ChromaDB'yi kullanır.
+
+### Released — 4.3.1 second ship: explicit /mnemos-recall skill (2026-04-24)
+
+- ✅ `skills/mnemos-recall/SKILL.md` — user-invoked slash command for
+  cross-context recall queries. In-session (no subprocess): current
+  Claude calls `mnemos_search(limit=8, collection="both")`, evaluates
+  top-3 scores against threshold 0.015, iterates candidates in score
+  order reading up to 5 successfully readable drawers, synthesizes a
+  150-300 word narrative with `[[drawer-slug]]` wikilink citations.
+  Language-matches the query; single-drawer case appends an "ek kayıt
+  yok" hint.
+- ✅ **Threshold empirically calibrated** 0.5 → 0.015. The original
+  spec's 0.5 was above the k=60 RRF scoring max (~0.033); kasamd smoke
+  on 2026-04-24 surfaced that every query was falling to fallback.
+  0.015 = "top-1 in at least one collection" (RRF `1/61 = 0.0164`).
+  Spec §11's calibration policy covered this — no spec revision needed.
+- ✅ **Sessions grep rescue (Step 7)** — when drawer scores are weak,
+  skill derives vault root from any drawer hit's `source_path`, extracts
+  2-4 content keywords from the query, runs `Grep` over
+  `<vault>/Sessions/` for each, unions hit files scored by keyword
+  coverage, reads the top 3, synthesizes a narrative from their Özet /
+  Alınan Kararlar / Sorunlar / Sonraki Adımlar sections, cites as
+  `[[session-slug]]`, appends a one-line attribution footer. Solves the
+  embedding-misses-obvious-keywords failure mode: smoke query "tavuklu
+  bir oyun yapacaktık biz sanki?" correctly found the farcry tavuk-pet
+  brainstorm Session and synthesized an evolution-aware narrative
+  (Far Cry 7 → AAA reddi → Shimeji pet pivot) with all 4 open-question
+  decision items preserved.
+- ✅ Soft fallback (Step 8) — triggers only when both drawer path and
+  Sessions rescue come up empty; lists top 3 drawers with scores +
+  snippets, no synthesis.
+- ✅ Junction installed (`$HOME/.claude/skills/mnemos-recall` → repo)
+  via `New-Item -ItemType Junction` on Windows. Zero-drift unit test
+  verifies `SKILL.md` bytes match between repo and junction.
+- ✅ Test delta: +2 unit tests (`test_mnemos_recall_skill_frontmatter_valid`,
+  `test_mnemos_recall_skill_junction_zero_drift`). Full suite **643 pass** /
+  2 skip / 3 deselect (was 641 baseline).
+- ✅ Smoke validated on kasamd: no-args usage hint, Sessions grep rescue
+  (tavuk demo — excellent), soft fallback scoring behavior. Drawer-direct
+  happy-path not explicitly exercised because this backend's RRF score
+  distribution clusters at 0.014-0.017; the rescue path is the de facto
+  common case. EN-query and pure-noise scenarios deferred to v0.4.1
+  polish for follow-up smoke if needed.
+- ✅ Spec: [`docs/specs/2026-04-24-v0.4-task-4.3.1-explicit-recall-design.md`](docs/specs/2026-04-24-v0.4-task-4.3.1-explicit-recall-design.md).
+  Plan: [`docs/plans/2026-04-24-v0.4-task-4.3.1-explicit-recall.md`](docs/plans/2026-04-24-v0.4-task-4.3.1-explicit-recall.md).
 
 ### Practical stats (author's vault, 2026-04-22)
 

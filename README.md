@@ -237,6 +237,30 @@ Your Obsidian Vault
 
 Every memory is a `.md` file with YAML frontmatter. Two backends ship behind the same interface: **ChromaDB** (default) or **sqlite-vec**. Pick one during `mnemos init`, or swap later with `mnemos migrate --backend sqlite-vec`. If it's not in your vault, it doesn't exist.
 
+## Cross-context recall
+
+When the cwd-based auto-briefing doesn't cover what you need (e.g., you're
+working in one project but want a decision from another), use the
+`/mnemos-recall` slash command in any Claude Code session:
+
+```
+/mnemos-recall "what output format did the PO skill use"
+```
+
+The skill runs in the current session (no subprocess): searches the palace
+via the MCP, reads the top matching drawers, and synthesizes a short
+narrative answer with `[[wikilink]]` citations back to the drawer files.
+If the embedding-based search is weak for your query (common for unique
+project names or terms not yet mined into a dedicated drawer), the skill
+falls back to a keyword grep over the vault's `Sessions/` folder and
+synthesizes from the top matching Session summaries instead — so even
+"tavuklu bir oyun yapacaktık biz sanki?" style queries that embeddings
+miss still surface the right conversation.
+
+Use the auto-briefing for "where am I in this project" (silent, per-cwd).
+Use `/mnemos-recall` for "remind me about X from somewhere else"
+(explicit, query-based).
+
 ## MCP Tools
 
 | Tool | Description |

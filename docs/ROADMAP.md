@@ -887,8 +887,18 @@ Rerank skill-recall'ın içinde eridi; contradiction v0.5 hygiene'a ertelendi.
       style cwd, 1. session kapatıldıktan hemen sonra 2. session'da
       sync refine+mine+brief) — manuel Claude Code oturumu gerektirir.
       First-visit fast path offline smoke PASS (state.json kaydı doğru).
-  - [ ] **4.3.1 second ship** — `/mnemos-recall <query>` explicit user
-    skill (~2h), cross-context edge case, ayrı brainstorm + spec
+  - [x] **4.3.1 second ship** *(commit `<HASH>`, 2026-04-24)* —
+    `/mnemos-recall <query>` explicit user skill shipped. In-session
+    (no subprocess): `mnemos_search` → score threshold 0.015 (empirically
+    calibrated from spec's 0.5 for k=60 RRF) → read top-5 drawers →
+    narrative synthesis with `[[wikilink]]` citations. When drawer scores
+    are weak, Step 7 Sessions grep rescue derives vault root, extracts
+    2-4 keywords, Globs + Greps `<vault>/Sessions/`, reads top-3 matched
+    Session files, synthesizes from their Özet / Alınan Kararlar
+    sections with `[[session-slug]]` citations + attribution footer.
+    Final soft fallback (Step 8) lists top 3 drawers only if both paths
+    empty. Spec: [`docs/specs/2026-04-24-v0.4-task-4.3.1-explicit-recall-design.md`](specs/2026-04-24-v0.4-task-4.3.1-explicit-recall-design.md).
+    Plan: [`docs/plans/2026-04-24-v0.4-task-4.3.1-explicit-recall.md`](plans/2026-04-24-v0.4-task-4.3.1-explicit-recall.md).
 - [ ] **4.4 ~~Contradiction detection~~ → v0.5'e ertelendi** (spec §2)
 - [ ] **4.5 `mnemos settings` TUI** *(~2.5h)*
   - `mnemos/settings_tui.py` — numbered menu, 8 satır: backend, mine-mode,
