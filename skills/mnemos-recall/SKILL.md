@@ -57,7 +57,8 @@ pass-through.)
 
 ### Step 4 — Evaluate match quality
 
-Inspect the top 3 hits by `score`:
+Inspect the top 3 hits by `score` (or all hits if fewer than 3 were
+returned):
 
 - **If the top 3 are all below 0.5, or the search returned 0 results:**
   go to Step 6 (soft fallback). Do not synthesize — you will hallucinate.
@@ -67,7 +68,7 @@ The 0.5 threshold is a calibrated default (RRF score combining raw and
 mined collections). See the spec §11 for the rationale; if you are an
 implementer and the threshold feels off for a specific backend, leave
 the code alone and report back — calibration belongs in review, not
-ad-hoc edits.
+ad-hoc edits. Note that Step 5 below reads up to 5 drawers for narrative breadth; the threshold sample stays at 3 because a quality check is cheap and representative.
 
 ### Step 5 — Read drawers (in score order, stop at 5 successes)
 
@@ -103,12 +104,17 @@ Write a 150-300 word narrative answering the user's question. Rules:
   answer. If the drawer bodies are in a different language from the
   query (common case: TR query, some EN drawer bodies), summarize the
   content _in the query's language_ — the wikilink slug stays
-  unchanged regardless.
+  unchanged regardless (do not translate `[[po-edge-pdf]]` to
+  `[[po-kenar-pdf]]` or similar).
 - **Prose paragraphs.** No headers unless the answer genuinely spans
   multiple halls (decisions + problems + events) and structure helps.
 - **No hedging.** Skip "sanırım", "umarım", "I think". If the drawers
   are thin on a specific detail, say so ("drawer'larda X konusunda
   açık kayıt yok") rather than filling gaps with guesses.
+- **Single drawer.** If exactly one drawer was successfully read,
+  synthesize normally but end the answer with this sentence:
+  "Bu konuda palace'ta tek kayıt var; daha fazla bağlam için `mnemos
+  mine` ile indeksi genişletebilirsin."
 
 ### Step 7 — Soft fallback (no strong match)
 
