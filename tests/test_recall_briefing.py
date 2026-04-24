@@ -532,7 +532,11 @@ def test_return_visit_cache_fresh_injects_and_bg_regen(tmp_path: Path) -> None:
     assert "**Aktif durum:**" in result.injected_context
 
 
-def test_return_visit_cache_stale_triggers_sync_regen(tmp_path: Path) -> None:
+def test_return_visit_cache_present_always_injects_no_sync_regen(tmp_path: Path) -> None:
+    """After the async-SUB-B2 refactor, there is no STALE_THRESHOLD branch.
+    Cache present on return-visit always means fast-path inject + bg regen,
+    regardless of how many new Sessions/.md files the cache didn't see.
+    The bg catchup spawn rewrites the cache anyway; no sync blocking."""
     (tmp_path / "mnemos.yaml").write_text("recall_mode: skill\n", encoding="utf-8")
     (tmp_path / "Sessions").mkdir()
     slug = cwd_to_slug("C:\\Projects\\farcry")
@@ -540,17 +544,20 @@ def test_return_visit_cache_stale_triggers_sync_regen(tmp_path: Path) -> None:
     state.cwds[slug] = {"cwd": "C:\\Projects\\farcry", "first_seen": 0.0, "last_seen": 0.0, "visit_count": 1}
     save_state(tmp_path, state)
 
-    for i in range(5):
+    # 10 Sessions but cache says only 1 was seen — old design triggered sync
+    # regen here. New design: just inject the old cache, bg will refresh.
+    for i in range(10):
         (tmp_path / "Sessions" / f"s{i}.md").write_text(
             "---\ncwd: C:\\Projects\\farcry\n---\nbody\n", encoding="utf-8"
         )
     cache_p = cache_path_for(tmp_path, slug)
-    write_cache(cache_p, body="old briefing\n", cwd="C:\\Projects\\farcry", session_count=1, drawer_count=0)
+    write_cache(cache_p, body="old cached briefing\n", cwd="C:\\Projects\\farcry",
+                session_count=1, drawer_count=0)
 
-    def fake_brief(cmd, stdout_path=None):
-        if stdout_path is not None:
-            Path(stdout_path).write_text("**Aktif durum:** fresh briefing\n", encoding="utf-8")
-        return 0
+    bg_calls: list[tuple[str, Path]] = []
+
+    def fake_bg_spawn(cwd, vault):
+        bg_calls.append((cwd, vault))
 
     inp = SessionStartInput(cwd="C:\\Projects\\farcry", source="startup", transcript_path="x")
     result = handle_session_start(
@@ -558,11 +565,13 @@ def test_return_visit_cache_stale_triggers_sync_regen(tmp_path: Path) -> None:
         vault=tmp_path,
         projects_root=tmp_path / "projects_empty",
         ledger=tmp_path / "_no_ledger.tsv",
-        subprocess_runner=lambda cmd: 0,
-        brief_runner=fake_brief,
+        bg_spawn=fake_bg_spawn,
     )
-    assert result.outcome == "sync_regen_injected"
-    assert "fresh briefing" in result.injected_context
+    # No sync regen outcome any more — just inject the existing cache
+    assert result.outcome == "fast_path_injected"
+    assert "old cached briefing" in result.injected_context
+    # Bg catchup fired exactly once to refresh the cache
+    assert len(bg_calls) == 1
 
 
 def test_compact_source_exits_silently(tmp_path: Path) -> None:
@@ -593,77 +602,145 @@ def test_recall_mode_not_skill_exits(tmp_path: Path) -> None:
     assert result.outcome == "skipped_mode"
 
 
-# --- SUB-B2 blocking catch-up ---
+# --- Async catchup path (replaces SUB-B2 sync blocking) ---
 
-def test_sub_b2_refines_and_mines_each_pending(tmp_path: Path) -> None:
-    """Pending JSONL → refine → read session_md from ledger → mine → brief."""
+def _setup_cwd_with_pending(tmp_path: Path, cwd: str, with_cache: bool) -> tuple[str, Path]:
+    """Shared scaffolding: state has the cwd, projects dir has 1 pending JSONL.
+    Returns (slug, pending_jsonl_path)."""
     (tmp_path / "mnemos.yaml").write_text("recall_mode: skill\n", encoding="utf-8")
-    sessions = tmp_path / "Sessions"
-    sessions.mkdir()
-
-    slug = cwd_to_slug("C:\\Projects\\farcry")
+    (tmp_path / "Sessions").mkdir(exist_ok=True)
+    slug = cwd_to_slug(cwd)
     state = CwdState()
-    state.cwds[slug] = {"cwd": "C:\\Projects\\farcry", "first_seen": 0.0, "last_seen": 0.0, "visit_count": 1}
+    state.cwds[slug] = {"cwd": cwd, "first_seen": 0.0, "last_seen": 0.0, "visit_count": 1}
     save_state(tmp_path, state)
 
     proj_root = tmp_path / ".claude" / "projects" / slug
-    proj_root.mkdir(parents=True)
-    pending_jsonl = proj_root / "pending-uuid.jsonl"
-    pending_jsonl.write_text(_REAL_JSONL_3_TURNS, encoding="utf-8")
+    proj_root.mkdir(parents=True, exist_ok=True)
+    pending = proj_root / "pending.jsonl"
+    pending.write_text(_REAL_JSONL_3_TURNS, encoding="utf-8")
 
-    ledger = tmp_path / "processed.tsv"
-    ledger.write_text("", encoding="utf-8")
+    if with_cache:
+        cache = cache_path_for(tmp_path, slug)
+        write_cache(cache, body="**Aktif durum:** cached body\n", cwd=cwd,
+                    session_count=0, drawer_count=0)
+    return slug, pending
 
-    calls: list[str] = []
 
-    def subprocess_runner(cmd):
-        joined = " ".join(str(c) for c in cmd)
-        calls.append(joined)
-        # Simulate refine success: append OK row to ledger, create session_md
-        if "mnemos-refine-transcripts" in joined:
-            sname = "2026-04-01-test.md"
-            (sessions / sname).write_text(
-                "---\ncwd: C:\\Projects\\farcry\n---\nbody\n", encoding="utf-8"
-            )
-            with ledger.open("a", encoding="utf-8") as fh:
-                fh.write(f"{pending_jsonl}\tOK\t{sname}\n")
-        return 0
+def test_return_visit_pending_with_cache_injects_and_bg_catches_up(tmp_path: Path) -> None:
+    """Pending>0 + cache present → inject the (possibly-stale) cache
+    immediately, fire bg catchup to refresh. Hook returns in <1s; the user
+    gets briefing on the very first prompt instead of waiting 5 minutes for
+    sync refine+mine+brief."""
+    cwd = "C:\\Projects\\farcry"
+    slug, _ = _setup_cwd_with_pending(tmp_path, cwd, with_cache=True)
 
-    def brief_runner(cmd, stdout_path=None):
-        if stdout_path is not None:
-            Path(stdout_path).write_text("**Aktif durum:** caught up\n", encoding="utf-8")
-        return 0
+    bg_calls: list[tuple[str, Path]] = []
+    def fake_bg_spawn(cwd_arg, vault_arg):
+        bg_calls.append((cwd_arg, vault_arg))
 
-    inp = SessionStartInput(
-        cwd="C:\\Projects\\farcry",
-        source="startup",
-        transcript_path="unrelated-live-session.jsonl",
-    )
-
+    ledger = tmp_path / "_nl.tsv"
+    inp = SessionStartInput(cwd=cwd, source="startup", transcript_path="live.jsonl")
     result = handle_session_start(
         inp,
         vault=tmp_path,
         projects_root=tmp_path / ".claude" / "projects",
         ledger=ledger,
-        subprocess_runner=subprocess_runner,
-        brief_runner=brief_runner,
+        bg_spawn=fake_bg_spawn,
     )
-    assert result.outcome == "sub_b2_catch_up_done"
-    assert "**Aktif durum:** caught up" in result.injected_context
-
-    # Refine + mine + brief all invoked
-    assert any("mnemos-refine-transcripts" in c for c in calls)
-    assert any("mnemos-mine-llm" in c for c in calls)
+    assert result.outcome == "fast_path_injected_with_catchup"
+    assert "**Aktif durum:** cached body" in result.injected_context
+    assert len(bg_calls) == 1
+    assert bg_calls[0] == (cwd, tmp_path)
 
 
-def test_sub_b2_refine_fails_skips_mine(tmp_path: Path) -> None:
+def test_return_visit_pending_no_cache_silent_bg_catchup(tmp_path: Path) -> None:
+    """Pending>0 + no cache → silent (no inject), bg catchup fires to build
+    the cache. User sees briefing on the NEXT session opens."""
+    cwd = "C:\\Projects\\mnemos-new-cwd"
+    slug, _ = _setup_cwd_with_pending(tmp_path, cwd, with_cache=False)
+
+    bg_calls: list[tuple[str, Path]] = []
+    def fake_bg_spawn(cwd_arg, vault_arg):
+        bg_calls.append((cwd_arg, vault_arg))
+
+    inp = SessionStartInput(cwd=cwd, source="startup", transcript_path="live.jsonl")
+    result = handle_session_start(
+        inp,
+        vault=tmp_path,
+        projects_root=tmp_path / ".claude" / "projects",
+        ledger=tmp_path / "_nl.tsv",
+        bg_spawn=fake_bg_spawn,
+    )
+    assert result.outcome == "bg_catching_up"
+    assert result.injected_context == ""
+    assert len(bg_calls) == 1
+
+
+def test_catchup_and_cache_runs_refine_mine_brief_in_order(tmp_path: Path) -> None:
+    """catchup_and_cache should refine each pending JSONL, then mine the
+    resulting session_md, then brief+cache. Order matters — mine reads what
+    refine wrote, brief reads what mine wrote."""
+    from mnemos.recall_briefing import catchup_and_cache
+
+    cwd = "C:\\Projects\\farcry"
+    slug = cwd_to_slug(cwd)
     (tmp_path / "mnemos.yaml").write_text("recall_mode: skill\n", encoding="utf-8")
-    (tmp_path / "Sessions").mkdir()
-    slug = cwd_to_slug("C:\\x")
-    state = CwdState()
-    state.cwds[slug] = {"cwd": "C:\\x", "first_seen": 0.0, "last_seen": 0.0, "visit_count": 1}
-    save_state(tmp_path, state)
+    sessions = tmp_path / "Sessions"
+    sessions.mkdir()
+    proj_root = tmp_path / ".claude" / "projects" / slug
+    proj_root.mkdir(parents=True)
+    pending = proj_root / "p.jsonl"
+    pending.write_text(_REAL_JSONL_3_TURNS, encoding="utf-8")
 
+    ledger = tmp_path / "processed.tsv"
+    ledger.write_text("", encoding="utf-8")
+
+    order: list[str] = []
+
+    def fake_subprocess_runner(cmd):
+        joined = " ".join(str(c) for c in cmd)
+        if "mnemos-refine-transcripts" in joined:
+            order.append("refine")
+            sname = "2026-04-01-test.md"
+            (sessions / sname).write_text(
+                f"---\ncwd: {cwd}\n---\nbody\n", encoding="utf-8"
+            )
+            with ledger.open("a", encoding="utf-8") as fh:
+                fh.write(f"{pending}\tOK\t{sname}\n")
+        elif "mnemos-mine-llm" in joined:
+            order.append("mine")
+        return 0
+
+    def fake_brief_runner(cmd, stdout_path=None):
+        order.append("brief")
+        if stdout_path is not None:
+            Path(stdout_path).write_text("**Aktif durum:** fresh\n", encoding="utf-8")
+        return 0
+
+    ok = catchup_and_cache(
+        cwd=cwd,
+        vault=tmp_path,
+        projects_root=tmp_path / ".claude" / "projects",
+        ledger=ledger,
+        subprocess_runner=fake_subprocess_runner,
+        brief_runner=fake_brief_runner,
+    )
+    assert ok is True
+    assert order == ["refine", "mine", "brief"], f"got order {order}"
+
+    cache = cache_path_for(tmp_path, slug)
+    assert cache.exists()
+    assert "**Aktif durum:** fresh" in cache.read_text(encoding="utf-8")
+
+
+def test_catchup_and_cache_refine_fail_skips_mine_continues_to_brief(tmp_path: Path) -> None:
+    """If refine fails for a JSONL, skip mining that one but still brief —
+    previous sessions' content is already in the vault."""
+    from mnemos.recall_briefing import catchup_and_cache
+
+    cwd = "C:\\Projects\\x"
+    slug = cwd_to_slug(cwd)
+    (tmp_path / "Sessions").mkdir()
     proj_root = tmp_path / ".claude" / "projects" / slug
     proj_root.mkdir(parents=True)
     pending = proj_root / "p.jsonl"
@@ -673,111 +750,136 @@ def test_sub_b2_refine_fails_skips_mine(tmp_path: Path) -> None:
     ledger.write_text("", encoding="utf-8")
 
     mine_called = [False]
+    brief_called = [False]
 
-    def subprocess_runner(cmd):
-        if any("mnemos-mine-llm" in str(c) for c in cmd):
+    def fake_subprocess_runner(cmd):
+        joined = " ".join(str(c) for c in cmd)
+        if "mnemos-refine-transcripts" in joined:
+            return 2  # fail
+        if "mnemos-mine-llm" in joined:
             mine_called[0] = True
-        return 2  # refine fails
-
-    def brief_runner(cmd, stdout_path=None):
-        if stdout_path is not None:
-            Path(stdout_path).write_text("**Aktif durum:** no sessions\n", encoding="utf-8")
         return 0
 
-    inp = SessionStartInput(cwd="C:\\x", source="startup", transcript_path="y")
-    result = handle_session_start(
-        inp,
+    def fake_brief_runner(cmd, stdout_path=None):
+        brief_called[0] = True
+        if stdout_path is not None:
+            Path(stdout_path).write_text("**Aktif durum:** partial\n", encoding="utf-8")
+        return 0
+
+    ok = catchup_and_cache(
+        cwd=cwd,
         vault=tmp_path,
         projects_root=tmp_path / ".claude" / "projects",
         ledger=ledger,
-        subprocess_runner=subprocess_runner,
-        brief_runner=brief_runner,
+        subprocess_runner=fake_subprocess_runner,
+        brief_runner=fake_brief_runner,
     )
-    # Refine failed → mine should not run
     assert mine_called[0] is False
-    # Briefing still runs on whatever was already in cache / prior sessions
-    assert result.outcome in {"sub_b2_catch_up_done", "sub_b2_partial"}
+    assert brief_called[0] is True
+    assert ok is True  # brief succeeded even though refine didn't
 
 
-def test_sub_b2_pending_is_capped_to_most_recent_N(tmp_path: Path) -> None:
-    """A cwd with many unprocessed JSONLs should only sync-refine the last N.
+def test_catchup_and_cache_caps_pending_to_most_recent_N(tmp_path: Path) -> None:
+    """Bg catchup processes at most SUB_B2_PENDING_CAP JSONLs — the rest
+    drift to auto_refine's async cadence. Prevents multi-hour work on a
+    long-lived cwd's historical backlog."""
+    import os as _os
+    from mnemos.recall_briefing import catchup_and_cache, SUB_B2_PENDING_CAP
 
-    Regression: without the cap, a long-lived cwd (e.g. 300+ old sessions)
-    blocked the hook for hours processing every historical JSONL. SUB-B2
-    exists to freshen briefing context, not to catch up the entire backlog —
-    that belongs to auto-refine's async cadence.
-    """
-    from mnemos.recall_briefing import SUB_B2_PENDING_CAP
-
-    (tmp_path / "mnemos.yaml").write_text("recall_mode: skill\n", encoding="utf-8")
+    cwd = "C:\\Projects\\big"
+    slug = cwd_to_slug(cwd)
     (tmp_path / "Sessions").mkdir()
-    slug = cwd_to_slug("C:\\big")
-    state = CwdState()
-    state.cwds[slug] = {"cwd": "C:\\big", "first_seen": 0.0, "last_seen": 0.0, "visit_count": 1}
-    save_state(tmp_path, state)
-
     proj_root = tmp_path / ".claude" / "projects" / slug
     proj_root.mkdir(parents=True)
-    # Create 50 JSONLs, mtime ascending. find_unrefined returns oldest-first,
-    # cap logic takes the tail → most-recent N.
-    import os as _os
-    jsonls = []
-    for i in range(50):
+
+    for i in range(10):
         j = proj_root / f"{i:03d}.jsonl"
         j.write_text(_REAL_JSONL_3_TURNS, encoding="utf-8")
-        ts = 1_000_000 + i * 10  # monotonically increasing mtime
+        ts = 1_000_000 + i * 10
         _os.utime(j, (ts, ts))
-        jsonls.append(j)
 
     ledger = tmp_path / "processed.tsv"
     ledger.write_text("", encoding="utf-8")
 
-    refined_jsonls: list[str] = []
+    refined: list[str] = []
 
-    def subprocess_runner(cmd):
-        # Track which JSONL each refine call targets
+    def fake_subprocess_runner(cmd):
         joined = " ".join(str(c) for c in cmd)
         if "mnemos-refine-transcripts" in joined:
             for a in cmd:
                 if str(a).endswith(".jsonl"):
-                    refined_jsonls.append(str(a))
-                    # Also simulate ledger OK for this JSONL + session_md
-                    jpath = str(a)
-                    sname = f"{Path(jpath).stem}.md"
+                    refined.append(Path(a).name)
+                    sname = f"{Path(a).stem}.md"
                     (tmp_path / "Sessions" / sname).write_text(
-                        "---\ncwd: C:\\big\n---\nbody\n", encoding="utf-8"
+                        f"---\ncwd: {cwd}\n---\nbody\n", encoding="utf-8"
                     )
                     with ledger.open("a", encoding="utf-8") as fh:
-                        fh.write(f"{jpath}\tOK\t{sname}\n")
+                        fh.write(f"{a}\tOK\t{sname}\n")
                     break
         return 0
 
-    def brief_runner(cmd, stdout_path=None):
+    def fake_brief_runner(cmd, stdout_path=None):
         if stdout_path is not None:
             Path(stdout_path).write_text("**Aktif durum:** brief\n", encoding="utf-8")
         return 0
 
-    inp = SessionStartInput(cwd="C:\\big", source="startup", transcript_path="y")
-    result = handle_session_start(
-        inp,
+    catchup_and_cache(
+        cwd=cwd,
         vault=tmp_path,
         projects_root=tmp_path / ".claude" / "projects",
         ledger=ledger,
-        subprocess_runner=subprocess_runner,
-        brief_runner=brief_runner,
+        subprocess_runner=fake_subprocess_runner,
+        brief_runner=fake_brief_runner,
     )
+    assert len(refined) <= SUB_B2_PENDING_CAP
+    expected = {f"{i:03d}.jsonl" for i in range(10 - SUB_B2_PENDING_CAP, 10)}
+    assert set(refined) == expected
 
-    # Refined count must not exceed SUB_B2_PENDING_CAP
-    assert len(refined_jsonls) <= SUB_B2_PENDING_CAP, (
-        f"refined {len(refined_jsonls)} JSONLs, expected ≤ {SUB_B2_PENDING_CAP}"
-    )
-    # The ones refined should be the N most-recent (by mtime) of 50 total
-    refined_names = {Path(p).name for p in refined_jsonls}
-    expected_most_recent = {f"{i:03d}.jsonl" for i in range(50 - SUB_B2_PENDING_CAP, 50)}
-    assert refined_names == expected_most_recent, (
-        f"got {refined_names}, expected most-recent {expected_most_recent}"
-    )
-    assert result.outcome == "sub_b2_catch_up_done"
+
+def test_main_catchup_subcommand_invokes_catchup_and_cache(tmp_path: Path, monkeypatch) -> None:
+    """`python -m mnemos.recall_briefing --catchup --cwd X --vault Y` must
+    call catchup_and_cache(X, Y) without reading stdin or touching hook state."""
+    called: list[tuple[str, Path]] = []
+
+    def fake_catchup_and_cache(cwd, vault, **kwargs):
+        called.append((cwd, vault))
+        return True
+
+    monkeypatch.setattr("mnemos.recall_briefing.catchup_and_cache", fake_catchup_and_cache)
+
+    (tmp_path / "mnemos.yaml").write_text("recall_mode: skill\n", encoding="utf-8")
+
+    def fail_stdin():
+        raise AssertionError("--catchup must not read stdin")
+    fake_stdin = type("S", (), {"read": staticmethod(fail_stdin)})()
+    monkeypatch.setattr("sys.stdin", fake_stdin)
+
+    rc = main(["--catchup", "--cwd", "C:\\foo", "--vault", str(tmp_path)])
+    assert rc == 0
+    assert called == [("C:\\foo", tmp_path)]
+
+
+def test_spawn_bg_catchup_invokes_catchup_subcommand(tmp_path: Path, monkeypatch) -> None:
+    """_spawn_bg_catchup builds a Popen cmd that invokes our --catchup entry,
+    not the old --brief-and-cache-only pattern."""
+    from mnemos.recall_briefing import _spawn_bg_catchup
+
+    captured: list[list[str]] = []
+    class FakePopen:
+        def __init__(self, cmd, **kwargs):
+            captured.append(list(cmd))
+
+    import subprocess as _sp
+    monkeypatch.setattr(_sp, "Popen", FakePopen)
+
+    _spawn_bg_catchup("C:\\proj", tmp_path)
+    assert len(captured) == 1
+    cmd = captured[0]
+    joined = " ".join(cmd)
+    assert "mnemos.recall_briefing" in joined
+    assert "--catchup" in joined
+    assert "C:\\proj" in joined
+    assert str(tmp_path) in joined
 
 
 # --- main entry ---
@@ -1019,19 +1121,19 @@ def test_brief_and_cache_failure_does_not_write_empty_cache(tmp_path: Path) -> N
     assert not cache_path_for(tmp_path, cwd_to_slug(cwd)).exists()
 
 
-def test_spawn_bg_brief_uses_brief_and_cache_subcommand(tmp_path: Path, monkeypatch) -> None:
-    """Bg brief subprocess must invoke the --brief-and-cache entry of
-    mnemos.recall_briefing (which calls brief_and_cache internally) — NOT
-    claude --print with stdout=DEVNULL directly. The old pattern spawned a
-    briefing but discarded the body via DEVNULL, never creating cache.
+def test_spawn_bg_brief_alias_routes_to_catchup_subcommand(tmp_path: Path, monkeypatch) -> None:
+    """_spawn_bg_brief is kept as an alias for _spawn_bg_catchup (v0.4.3
+    async refactor). Legacy callers still work; the child subprocess now
+    uses the --catchup entry which runs refine+mine+brief (no-op loop
+    when pending is empty, equivalent to the old brief-only behavior).
     """
     from mnemos.recall_briefing import _spawn_bg_brief
 
-    captured: list[tuple[list[str], dict]] = []
+    captured: list[list[str]] = []
 
     class FakePopen:
         def __init__(self, cmd, **kwargs):
-            captured.append((list(cmd), dict(kwargs)))
+            captured.append(list(cmd))
 
     import subprocess as _sp
     monkeypatch.setattr(_sp, "Popen", FakePopen)
@@ -1039,11 +1141,9 @@ def test_spawn_bg_brief_uses_brief_and_cache_subcommand(tmp_path: Path, monkeypa
     _spawn_bg_brief("C:\\x", vault=tmp_path)
 
     assert len(captured) == 1
-    cmd, _ = captured[0]
-    joined = " ".join(cmd)
-    # Must invoke our brief-and-cache entry, not claude --print directly
-    assert "mnemos.recall_briefing" in joined or "recall_briefing" in joined
-    assert "--brief-and-cache" in joined
+    joined = " ".join(captured[0])
+    assert "mnemos.recall_briefing" in joined
+    assert "--catchup" in joined  # alias now routes through the unified entry
     assert "C:\\x" in joined
     assert str(tmp_path) in joined
 

@@ -23,7 +23,6 @@ STATE_FILENAME = ".mnemos-cwd-state.json"
 CACHE_DIR = ".mnemos-briefings"
 STATE_LOCK = STATE_FILENAME + ".flock"
 CATCH_UP_LOCK = ".mnemos-catch-up.flock"
-STALE_THRESHOLD = 3  # session-count diff that triggers sync regen in SUB-B1
 
 # Max pending JSONLs SUB-B2 will refine+mine synchronously in one hook fire.
 # Without this cap, a cwd with 300+ unprocessed JSONLs (e.g. a long-lived
@@ -496,13 +495,60 @@ def brief_and_cache(cwd: str, vault: Path, brief_runner=None) -> bool:
     return True
 
 
-def _spawn_bg_brief(cwd: str, vault: Path) -> None:
-    """Spawn a detached bg process that runs `brief_and_cache(cwd, vault)`.
+def catchup_and_cache(
+    cwd: str,
+    vault: Path,
+    projects_root: Path | None = None,
+    ledger: Path | None = None,
+    subprocess_runner=None,
+    brief_runner=None,
+) -> bool:
+    """Refine pending JSONLs for this cwd, mine their session_mds, then brief+cache.
+
+    Called from the --catchup subcommand (detached bg subprocess). Extends
+    brief_and_cache with a pending refine+mine prelude, so the next session
+    opens with fresh content. If no pending JSONLs exist, this is equivalent
+    to brief_and_cache (just refreshes cache body).
+
+    Limits work to SUB_B2_PENDING_CAP most-recent pending JSONLs — older
+    ones drift to auto_refine's async cadence. Refine failures don't block
+    the brief step: previous sessions' content is already in the vault.
+
+    Returns True if brief+cache step succeeded.
+    """
+    if projects_root is None:
+        projects_root = DEFAULT_CLAUDE_PROJECTS
+    if ledger is None:
+        ledger = DEFAULT_REFINE_LEDGER
+
+    slug = cwd_to_slug(cwd)
+    pending = find_unrefined_jsonls_for_cwd(
+        cwd_slug=slug, projects_root=projects_root, ledger=ledger,
+    )
+    if len(pending) > SUB_B2_PENDING_CAP:
+        pending = pending[-SUB_B2_PENDING_CAP:]
+
+    for jsonl in pending:
+        rres = run_refine_sync(jsonl, runner=subprocess_runner)
+        if not rres.ok:
+            continue
+        session_md_name = _lookup_session_md_in_ledger(ledger, jsonl)
+        if not session_md_name:
+            continue
+        session_md = vault / "Sessions" / session_md_name
+        if not session_md.exists():
+            continue
+        run_mine_sync(session_md, runner=subprocess_runner)
+
+    return brief_and_cache(cwd, vault, brief_runner=brief_runner)
+
+
+def _spawn_bg_catchup(cwd: str, vault: Path) -> None:
+    """Spawn a detached bg process that runs `catchup_and_cache(cwd, vault)`.
 
     Non-blocking. Errors are swallowed (diagnostic-only). The child re-enters
-    this same module through its `--brief-and-cache` subcommand (see `main`),
-    so the briefing result lands in <vault>/.mnemos-briefings/<slug>.md
-    instead of being discarded to DEVNULL.
+    this module through its `--catchup` subcommand, refines/mines pending
+    JSONLs, and rewrites the cache at <vault>/.mnemos-briefings/<slug>.md.
 
     Uses CREATE_NO_WINDOW on Windows (same pattern as auto_refine) so no
     console window flashes. Child inherits HOOK_ACTIVE_ENV so any nested
@@ -511,7 +557,7 @@ def _spawn_bg_brief(cwd: str, vault: Path) -> None:
     try:
         cmd = [
             sys.executable, "-m", "mnemos.recall_briefing",
-            "--brief-and-cache",
+            "--catchup",
             "--cwd", cwd,
             "--vault", str(vault),
         ]
@@ -528,21 +574,36 @@ def _spawn_bg_brief(cwd: str, vault: Path) -> None:
         pass
 
 
+# Backward-compat alias: legacy _spawn_bg_brief callers (tests, external code)
+# now go through the same --catchup path. When pending is empty,
+# catchup_and_cache is effectively brief-only, so semantics match.
+_spawn_bg_brief = _spawn_bg_catchup
+
+
 def handle_session_start(
     inp: SessionStartInput,
     vault: Path,
     projects_root: Path,
     ledger: Path,
-    subprocess_runner=None,
-    brief_runner=None,
+    subprocess_runner=None,  # retained for backward-compat; unused in async path
+    brief_runner=None,        # same
     bg_spawn=None,
 ) -> HandleOutcome:
-    """Main decision tree. Returns HandleOutcome (no side effects to hook I/O).
+    """Main decision tree. Returns in <1s on every branch; all subprocess
+    work is delegated to a detached bg catchup spawn.
+
+    Pending JSONLs present → always fire bg catchup (refine+mine+brief)
+    and refresh cache for the next session. Cache presence only decides
+    whether to inject something NOW on this session:
+      - pending=0, cache present → inject (bg refreshes anyway)
+      - pending=0, cache missing → silent (bg creates cache)
+      - pending>0, cache present → inject stale cache + bg catchup
+      - pending>0, cache missing → silent + bg catchup
 
     injected_context (if non-empty) is what the wrapper should emit as
     additionalContext JSON to Claude Code's stdout.
     """
-    bg_spawn = bg_spawn or _spawn_bg_brief
+    bg_spawn = bg_spawn or _spawn_bg_catchup
 
     # Filter: bad source → exit
     if inp.source not in VALID_SESSION_SOURCES:
@@ -579,135 +640,35 @@ def handle_session_start(
     cwd_info["last_seen"] = now
     cwd_info["visit_count"] = cwd_info.get("visit_count", 1) + 1
 
-    # Check for unrefined JSONLs in this cwd
+    # Check for unrefined JSONLs in this cwd (live session excluded)
     pending = find_unrefined_jsonls_for_cwd(
         cwd_slug=slug,
         projects_root=projects_root,
         ledger=ledger,
     )
-    # Exclude the current live session's transcript
     live = Path(inp.transcript_path) if inp.transcript_path else None
     if live is not None:
         pending = [p for p in pending if p != live]
 
-    # Cap pending to most-recent N — long-lived cwds can have hundreds of
-    # unprocessed JSONLs; processing them all synchronously blocks the session
-    # for hours. find_unrefined_jsonls_for_cwd returns oldest-first, so take
-    # the tail for recency.
-    if len(pending) > SUB_B2_PENDING_CAP:
-        pending = pending[-SUB_B2_PENDING_CAP:]
-
-    if pending:
-        # SUB-B2: blocking catch-up — implemented in Task 13
-        return _run_sub_b2(
-            inp=inp,
-            vault=vault,
-            state=state,
-            cwd_info=cwd_info,
-            pending=pending,
-            ledger=ledger,
-            subprocess_runner=subprocess_runner,
-            brief_runner=brief_runner,
-        )
-
-    # SUB-B1 — no pending
     cache_p = cache_path_for(vault, slug)
-    if cache_p.exists():
-        # Staleness check
-        try:
-            cache_text = cache_p.read_text(encoding="utf-8")
-            m = re.match(r"^---\r?\n(.*?)\r?\n---\r?\n", cache_text, re.DOTALL)
-            cached_n = 0
-            if m:
-                for line in m.group(1).splitlines():
-                    s = line.strip()
-                    if s.startswith("session_count_used:"):
-                        try:
-                            cached_n = int(s.split(":", 1)[1].strip().strip("'\""))
-                        except ValueError:
-                            cached_n = 0
-                        break
-        except OSError:
-            cached_n = 0
+    cache_exists = cache_p.exists()
 
-        current_n = count_refined_sessions_for_cwd(vault, inp.cwd)
-
-        if (current_n - cached_n) >= STALE_THRESHOLD:
-            # SYNC regen
-            write_status(vault, phase="briefing", cwd_slug=slug, sub_phase="stale-regen")
-            result = run_brief_sync(inp.cwd, runner=brief_runner)
-            write_status(vault, phase="idle", last_outcome="ok" if result.ok else "error")
-            save_state(vault, state)
-            if result.ok and result.body:
-                write_cache(cache_p, body=result.body, cwd=inp.cwd, session_count=current_n, drawer_count=0)
-                return HandleOutcome(outcome="sync_regen_injected", injected_context=result.body)
-            return HandleOutcome(outcome="sync_regen_failed")
-
-        # Fresh-enough → inject + bg regen
-        body = read_cache_body(cache_p)
-        bg_spawn(inp.cwd, vault)
-        save_state(vault, state)
-        return HandleOutcome(outcome="fast_path_injected", injected_context=body)
-
-    # No cache → bg spawn, no inject this turn
+    # Always fire bg catchup — it's a no-op refine loop when pending is empty,
+    # just refreshes the cache body. Hook path stays <1s either way.
     bg_spawn(inp.cwd, vault)
     save_state(vault, state)
+
+    if cache_exists:
+        body = read_cache_body(cache_p)
+        if pending:
+            return HandleOutcome(outcome="fast_path_injected_with_catchup", injected_context=body)
+        return HandleOutcome(outcome="fast_path_injected", injected_context=body)
+
+    # No cache — silent this session; next session opens with fresh cache
+    # produced by the bg catchup we just fired.
+    if pending:
+        return HandleOutcome(outcome="bg_catching_up")
     return HandleOutcome(outcome="fast_path_no_cache")
-
-
-def _run_sub_b2(
-    inp: SessionStartInput,
-    vault: Path,
-    state: CwdState,
-    cwd_info: dict,
-    pending: list[Path],
-    ledger: Path,
-    subprocess_runner,
-    brief_runner,
-) -> HandleOutcome:
-    """Blocking catch-up: refine each pending JSONL → mine resulting session_md → brief."""
-    from filelock import FileLock, Timeout
-
-    slug = cwd_to_slug(inp.cwd)
-    total = len(pending)
-    lock = FileLock(str(vault / CATCH_UP_LOCK), timeout=10)
-
-    try:
-        with lock:
-            for i, jsonl in enumerate(pending, start=1):
-                write_status(vault, phase="refining", current=i, total=total, cwd_slug=slug, sub_phase="catch-up")
-                rres = run_refine_sync(jsonl, runner=subprocess_runner)
-                if not rres.ok:
-                    continue
-
-                # Read session_md from updated ledger
-                session_md_name = _lookup_session_md_in_ledger(ledger, jsonl)
-                if not session_md_name:
-                    continue
-                session_md = vault / "Sessions" / session_md_name
-                if not session_md.exists():
-                    continue
-
-                write_status(vault, phase="mining", current=i, total=total, cwd_slug=slug, sub_phase="catch-up")
-                run_mine_sync(session_md, runner=subprocess_runner)
-
-            # Briefing (always attempt, even if some refines failed)
-            write_status(vault, phase="briefing", cwd_slug=slug, sub_phase="catch-up")
-            bres = run_brief_sync(inp.cwd, runner=brief_runner)
-    except Timeout:
-        save_state(vault, state)
-        return HandleOutcome(outcome="sub_b2_lock_timeout")
-
-    write_status(vault, phase="idle", last_outcome="ok" if bres.ok else "error")
-    save_state(vault, state)
-
-    if bres.ok and bres.body:
-        cache_p = cache_path_for(vault, slug)
-        current_n = count_refined_sessions_for_cwd(vault, inp.cwd)
-        write_cache(cache_p, body=bres.body, cwd=inp.cwd, session_count=current_n, drawer_count=0)
-        return HandleOutcome(outcome="sub_b2_catch_up_done", injected_context=bres.body)
-
-    return HandleOutcome(outcome="sub_b2_partial")
 
 
 def _lookup_session_md_in_ledger(ledger: Path, jsonl: Path) -> str | None:
@@ -760,21 +721,32 @@ def _resolve_vault(explicit: str | None = None) -> Path | None:
 class _ParsedArgs:
     vault: str | None
     brief_and_cache: bool
+    catchup: bool
     cwd: str | None
 
 
 def _parse_args(argv: list[str] | None) -> _ParsedArgs:
-    """Parse CLI flags. Supports hook mode (default) and brief-and-cache mode."""
+    """Parse CLI flags. Three modes:
+      - hook mode (default): consume stdin JSON, dispatch handle_session_start
+      - --brief-and-cache: brief-only cache regen (retained for backward-compat)
+      - --catchup: pending refine+mine+brief pipeline (default bg entry)
+    """
     import argparse
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--vault", default=None)
     parser.add_argument("--brief-and-cache", action="store_true")
+    parser.add_argument("--catchup", action="store_true")
     parser.add_argument("--cwd", default=None)
     try:
         ns, _ = parser.parse_known_args(argv)
     except SystemExit:
-        return _ParsedArgs(vault=None, brief_and_cache=False, cwd=None)
-    return _ParsedArgs(vault=ns.vault, brief_and_cache=ns.brief_and_cache, cwd=ns.cwd)
+        return _ParsedArgs(vault=None, brief_and_cache=False, catchup=False, cwd=None)
+    return _ParsedArgs(
+        vault=ns.vault,
+        brief_and_cache=ns.brief_and_cache,
+        catchup=ns.catchup,
+        cwd=ns.cwd,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -797,8 +769,22 @@ def main(argv: list[str] | None = None) -> int:
         argv = sys.argv[1:]
     parsed = _parse_args(argv)
 
-    # Brief-and-cache subcommand — foreground cache producer. Does NOT touch
-    # stdin or hook state.
+    # --catchup subcommand — foreground refine+mine+brief pipeline. Default
+    # bg entry from _spawn_bg_catchup. Does NOT touch stdin or hook state.
+    if parsed.catchup:
+        if not parsed.cwd or not parsed.vault:
+            return 0
+        vault = Path(parsed.vault)
+        if not vault.exists():
+            return 0
+        try:
+            catchup_and_cache(parsed.cwd, vault)
+        except Exception:
+            return 0
+        return 0
+
+    # --brief-and-cache subcommand — brief-only regen (backward-compat).
+    # Kept for external callers and legacy test imports.
     if parsed.brief_and_cache:
         if not parsed.cwd or not parsed.vault:
             return 0

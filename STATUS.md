@@ -1,6 +1,6 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-23 (4.3 first ship shipped + post-ship **7** critical fixes: fork-bomb env guard + Windows console flags + SUB-B2 pending cap + non-ASCII cwd recall bug [slug algo + stdin UTF-8 + bg-spawn cache] + stdout cp1252 crash + fork-bomb noise pollution + **SKIP ledger filter** [refine ledger SKIP rows now count as processed → noise JSONLs don't cycle forever]; ledgers dedup'd + corrupt rows purged; hook re-installed with fixes; **637 test pass +10 new** (baseline 627); sonraki: 4.3.1 `/mnemos-recall` explicit skill + 4.5 settings TUI + 4.6 benchmark + 4.7 PyPI v0.4.0)
+**Last updated:** 2026-04-24 (4.3 first ship shipped + post-ship **8** critical fixes: fork-bomb env guard + Windows console flags + SUB-B2 pending cap + non-ASCII cwd recall bug [slug algo + stdin UTF-8 + bg-spawn cache] + stdout cp1252 crash + fork-bomb noise pollution + SKIP ledger filter + **async SUB-B2** [blocking 5-min sync replaced with detached bg `--catchup` subcommand; hook always <1s]; ledgers dedup'd + corrupt rows purged; hook re-installed with fixes; **641 test pass +14 new** (baseline 627); sonraki: 4.3.1 `/mnemos-recall` explicit skill + 4.5 settings TUI + 4.6 benchmark + 4.7 PyPI v0.4.0)
 **Stable PyPI version:** `v0.3.3` · **Next:** `v0.4.0` (AI Boost / Phase 1 — 4.3.1 + 4.5 + 4.6 + 4.7 remaining)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
@@ -464,6 +464,44 @@ iki SessionStart entry: auto-refine + recall-briefing).
   `processed.tsv.bak-20260423-221108`. Sonuç: **farcry pending = 0**,
   SUB-B1 fresh-path anında inject edecek; cache 21:03'te üretilen fresh
   hali (staleness diff=0).
+
+- **Post-fix follow-up: async SUB-B2 (RC7)** — farcry akşam smoke'u
+  OK'tu ama mnemos cwd'de (128 fork-bomb JSONL DOLAR vardı, sonra
+  temizlendi, ama o akşam pending 1'di) 2. session "selam" yanıtı için
+  **5 dk bekleme** ölçüldü. Sebep: SUB-B2 sync 3 pending JSONL'ı seri
+  refine+mine+brief yapar → ~90s × 3 + brief ≈ 5 dk. Blocking tasarımı
+  baştan yanlış: briefing'in kritik değeri 90s-fresh içerik değil
+  birikmiş bağlam; 1 session gecikme perceive edilmez, 5 dk bekleme
+  fatal. Spec:
+  [`docs/specs/2026-04-24-async-sub-b2-recall-briefing-design.md`](docs/specs/2026-04-24-async-sub-b2-recall-briefing-design.md).
+
+  Fix: SUB-B2 blocking path kaldırıldı. Yeni `catchup_and_cache(cwd,
+  vault)` fonksiyonu refine+mine loop + brief zincirini tek yerde topluyor;
+  yeni `--catchup` subcommand + `_spawn_bg_catchup` bu zinciri detached
+  bg subprocess'te koşuyor. `handle_session_start` artık her branch'te
+  `bg_spawn`'ı fire eder, hemen döner (<1s). Cache presence inject/silent
+  ayrımını yapar; pending outcome label'ını belirler:
+
+  | pending | cache | outcome |
+  |---|---|---|
+  | 0 | var | `fast_path_injected` (bg refreshes cache) |
+  | 0 | yok | `fast_path_no_cache` (bg creates cache) |
+  | 1+ | var | `fast_path_injected_with_catchup` |
+  | 1+ | yok | `bg_catching_up` (silent, cache next session) |
+
+  `STALE_THRESHOLD` + sync regen branch silindi — bg her zaman
+  regenerate eder, threshold redundant oldu. `_spawn_bg_brief`
+  backward-compat alias olarak kaldı (`_spawn_bg_catchup`'a pointer),
+  legacy callers kırılmadı.
+
+  **Test delta:** +5 async path test, 4 eski SUB-B2 sync test silindi,
+  1 staleness test yeniden yazıldı. Full suite **641 pass / 2 skip**
+  (baseline 637, +4 net).
+
+  **Pilot UX verification:** kullanıcının sonraki mnemos session'ı
+  açılışı <1s hook latency olmalı; cache yoksa silent, 2. session'da
+  fresh inject. Farcry session'ları zaten SUB-B1 fresh-path'te
+  (pending=0), yeni path ile davranış aynı (anında inject).
 
 **Operational cleanup (commit'siz, runtime):**
 - Runaway pipeline tree-kill (recall_briefing pid 23064 + auto_refine_bg
