@@ -887,7 +887,7 @@ Rerank skill-recall'ın içinde eridi; contradiction v0.5 hygiene'a ertelendi.
       style cwd, 1. session kapatıldıktan hemen sonra 2. session'da
       sync refine+mine+brief) — manuel Claude Code oturumu gerektirir.
       First-visit fast path offline smoke PASS (state.json kaydı doğru).
-  - [x] **4.3.1 second ship** *(commit `<HASH>`, 2026-04-24)* —
+  - [x] **4.3.1 second ship** *(commit `7446976`, 2026-04-24)* —
     `/mnemos-recall <query>` explicit user skill shipped. In-session
     (no subprocess): `mnemos_search` → score threshold 0.015 (empirically
     calibrated from spec's 0.5 for k=60 RRF) → read top-5 drawers →
