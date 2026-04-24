@@ -60,15 +60,18 @@ pass-through.)
 Inspect the top 3 hits by `score` (or all hits if fewer than 3 were
 returned):
 
-- **If the top 3 are all below 0.5, or the search returned 0 results:**
-  go to Step 6 (soft fallback). Do not synthesize — you will hallucinate.
+- **If the top 3 are all below 0.015, or the search returned 0 results:**
+  go to Step 7 (soft fallback). Do not synthesize — you will hallucinate.
 - **Otherwise:** proceed to Step 5.
 
-The 0.5 threshold is a calibrated default (RRF score combining raw and
-mined collections). See the spec §11 for the rationale; if you are an
-implementer and the threshold feels off for a specific backend, leave
-the code alone and report back — calibration belongs in review, not
-ad-hoc edits. Note that Step 5 below reads up to 5 drawers for narrative breadth; the threshold sample stays at 3 because a quality check is cheap and representative.
+The 0.015 threshold is a calibrated default for RRF scoring with k=60
+(combining raw and mined collections). Formula: `1/(60+rank_mined) +
+1/(60+rank_raw)`. Theoretical max is ~0.033 (both collections rank 1);
+0.015 is the "top-1 in at least one collection" floor, below which
+hits are typically topically unrelated noise. Spec §11 documents
+calibration policy. Note that Step 5 below reads up to 5 drawers for
+narrative breadth; the threshold sample stays at 3 because a quality
+check is cheap and representative.
 
 ### Step 5 — Read drawers (in score order, stop at 5 successes)
 
