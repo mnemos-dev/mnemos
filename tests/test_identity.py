@@ -221,3 +221,44 @@ def test_show_returns_identity_content():
     )
     output = show(vault)
     assert "User Identity" in output
+
+
+# ---------------------------------------------------------------------------
+# handle_status — Identity Layer metadata (Task 14)
+# ---------------------------------------------------------------------------
+
+
+def test_handle_status_includes_identity_last_refreshed(tmp_path):
+    """mnemos_status MCP tool returns identity refresh metadata."""
+    from mnemos.config import MnemosConfig
+    from mnemos.server import MnemosApp
+
+    vault = tmp_path / "vault"
+    (vault / "Sessions").mkdir(parents=True)
+    (vault / "_identity").mkdir()
+    (vault / "_identity" / "L0-identity.md").write_text(
+        "---\nlast_refreshed: 2026-04-25\nsession_count_at_refresh: 5\n---\n\n# User Identity\n",
+        encoding="utf-8",
+    )
+
+    cfg = MnemosConfig(vault_path=str(vault), languages=["en"])
+    app = MnemosApp(cfg, chromadb_in_memory=True)
+    status = app.handle_status()
+    assert "identity_last_refreshed" in status
+    assert status["identity_last_refreshed"] == "2026-04-25"
+    assert status["identity_session_count_at_refresh"] == 5
+
+
+def test_handle_status_identity_none_when_not_bootstrapped(tmp_path):
+    """No L0-identity.md → identity_last_refreshed is None."""
+    from mnemos.config import MnemosConfig
+    from mnemos.server import MnemosApp
+
+    vault = tmp_path / "vault"
+    (vault / "Sessions").mkdir(parents=True)
+
+    cfg = MnemosConfig(vault_path=str(vault), languages=["en"])
+    app = MnemosApp(cfg, chromadb_in_memory=True)
+    status = app.handle_status()
+    assert status.get("identity_last_refreshed") is None
+    assert status.get("identity_session_count_at_refresh") is None

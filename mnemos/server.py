@@ -101,12 +101,17 @@ class MnemosApp:
         ``wings`` is now derived from the on-disk ``wings_dir`` layout (any
         subdirectory of ``palace_dir/wings/`` counts), not from the deleted
         ``Palace.list_wings`` helper.
+
+        v1.0 also surfaces Identity Layer metadata (``identity_last_refreshed``
+        + ``identity_session_count_at_refresh``) so clients can decide when to
+        prompt an auto-refresh. Both keys are ``None`` when the vault hasn't
+        been bootstrapped yet (no ``_identity/L0-identity.md``).
         """
         stats = self.search_engine.get_stats()
         wings = self._list_wings_from_disk()
         sp = self.search_engine.storage_path()
 
-        return {
+        status = {
             "total_drawers": stats["total_drawers"],
             "vault_path": self.config.vault_path,
             "wings": wings,
@@ -117,6 +122,24 @@ class MnemosApp:
                 "storage_bytes": stats.get("storage_bytes", 0),
             },
         }
+
+        # Identity Layer metadata (v1.0)
+        identity_path = Path(self.config.vault_path) / "_identity" / "L0-identity.md"
+        if identity_path.exists():
+            from mnemos.identity import _parse_frontmatter
+            fm = _parse_frontmatter(identity_path.read_text(encoding="utf-8"))
+            last_refreshed = fm.get("last_refreshed")
+            # YAML parses bare ``2026-04-25`` as datetime.date; coerce to ISO
+            # string so the MCP JSON envelope serializes cleanly.
+            if last_refreshed is not None and not isinstance(last_refreshed, str):
+                last_refreshed = last_refreshed.isoformat()
+            status["identity_last_refreshed"] = last_refreshed
+            status["identity_session_count_at_refresh"] = fm.get("session_count_at_refresh")
+        else:
+            status["identity_last_refreshed"] = None
+            status["identity_session_count_at_refresh"] = None
+
+        return status
 
     def _list_wings_from_disk(self) -> list[str]:
         """Lightweight replacement for the deleted ``Palace.list_wings``.
