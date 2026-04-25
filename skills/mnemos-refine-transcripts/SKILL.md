@@ -144,6 +144,15 @@ Atlanan: K (kısa: A, sonuçsuz: B, duplicate: C, ...)
 Ledger: <tsv-path>
 ```
 
+## v1.0 Tag/Wikilink Hibrit Kuralları
+
+Her Session frontmatter'ında 5-prefix tag kategorisi ve prose'da entity wikilink üretiriz. Detaylı kurallar `docs/prompts/refine-transcripts.md`'de:
+- TAG PREFIX KATEGORİLERİ
+- PROSE İÇİNDE WIKILINK
+- KALİTE KONTROL checklist
+
+Refine sırasında bu üç bölümü canlı referans olarak kullan.
+
 ## Kritik prensipler
 
 - **mnemos API çağrısı YOK.** Refinement = Claude Code oturumunda yapılan
