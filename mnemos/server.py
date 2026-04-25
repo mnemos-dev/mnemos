@@ -175,8 +175,14 @@ class MnemosApp:
     # handle_recall
     # ------------------------------------------------------------------
 
-    def handle_recall(self, level: str = "L1", wing: Optional[str] = None) -> dict:
-        """Recall memory at the specified stack level."""
+    def handle_recall(self, level: str = "L0", wing: Optional[str] = None) -> dict:
+        """Recall memory at the specified stack level.
+
+        v1.0: only ``L0`` (Identity Layer) is supported. ``L1`` and ``L2``
+        return a deprecation marker — the drawer paradigm was retired in the
+        narrative-first pivot. The default level changed from ``L1`` to
+        ``L0`` accordingly.
+        """
         return self.stack.recall(level=level, wing=wing)
 
     # ------------------------------------------------------------------
@@ -254,12 +260,12 @@ def build_instructions(cfg: MnemosConfig) -> str:
 
     # Default: script mode (also catches unknown values defensively)
     return base + (
-        "At the START of every session, call mnemos_wake_up to load identity "
-        "and project context (~200 tokens). "
+        "At the START of every session, call mnemos_wake_up to load the "
+        "Identity Layer (~200 tokens). "
         "When the user mentions a project or topic, call mnemos_search to "
-        "retrieve relevant memories before responding. "
-        "Use mnemos_recall with level=L2 and a wing name to get deeper "
-        "room-level details when needed."
+        "retrieve relevant memories from Sessions/<date>-<slug>.md before "
+        "responding. The drawer paradigm (L1 wings / L2 rooms) is retired "
+        "in v1.0 — mnemos_recall returns only L0 (Identity)."
     )
 
 
@@ -332,10 +338,15 @@ def create_mcp_server(config: Optional[MnemosConfig] = None):
 
     @mcp.tool()
     def mnemos_recall(
-        level: str = "L1",
+        level: str = "L0",
         wing: Optional[str] = None,
     ) -> str:
-        """Recall memory at the specified stack level (L0, L1, L2)."""
+        """Recall memory at the specified stack level.
+
+        v1.0: only ``L0`` (Identity Layer) is supported; ``L1`` and ``L2``
+        return a deprecation marker. The drawer paradigm (wings/rooms) was
+        retired in the narrative-first pivot.
+        """
         result = _get_app().handle_recall(level=level, wing=wing)
         return json.dumps(result, ensure_ascii=False)
 

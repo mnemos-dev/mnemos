@@ -159,3 +159,51 @@ def test_wake_up_returns_empty_when_no_identity(tmp_path: Path) -> None:
         assert result.get("identity", "") == ""
     finally:
         app.close()
+
+
+# ---------------------------------------------------------------------------
+# Task 20: mnemos_recall — L0-only (L1/L2 deprecated)
+# ---------------------------------------------------------------------------
+
+
+def test_recall_l0_returns_identity(tmp_path: Path) -> None:
+    """v1.0: handle_recall(level='L0') surfaces the Identity Layer body."""
+    vault = tmp_path / "vault"
+    (vault / "Sessions").mkdir(parents=True)
+    (vault / "_identity").mkdir()
+    (vault / "_identity" / "L0-identity.md").write_text(
+        "# User Identity", encoding="utf-8",
+    )
+    cfg = MnemosConfig(vault_path=str(vault), languages=["en"])
+    app = MnemosApp(cfg, chromadb_in_memory=True)
+    try:
+        result = app.handle_recall(level="L0")
+        assert "identity" in result
+    finally:
+        app.close()
+
+
+def test_recall_l1_returns_deprecated_marker(tmp_path: Path) -> None:
+    """v1.0: handle_recall(level='L1') returns {"deprecated": True, ...}."""
+    vault = tmp_path / "vault"
+    (vault / "Sessions").mkdir(parents=True)
+    cfg = MnemosConfig(vault_path=str(vault), languages=["en"])
+    app = MnemosApp(cfg, chromadb_in_memory=True)
+    try:
+        result = app.handle_recall(level="L1")
+        assert result.get("deprecated") is True
+    finally:
+        app.close()
+
+
+def test_recall_l2_returns_deprecated_marker(tmp_path: Path) -> None:
+    """v1.0: handle_recall(level='L2') returns {"deprecated": True, ...}."""
+    vault = tmp_path / "vault"
+    (vault / "Sessions").mkdir(parents=True)
+    cfg = MnemosConfig(vault_path=str(vault), languages=["en"])
+    app = MnemosApp(cfg, chromadb_in_memory=True)
+    try:
+        result = app.handle_recall(level="L2")
+        assert result.get("deprecated") is True
+    finally:
+        app.close()
