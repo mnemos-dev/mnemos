@@ -44,11 +44,17 @@ handle the tool-not-found error there — do not fabricate a check.
 
 Call:
 
-    mnemos_search(query=<user's full query>, limit=8, collection="both")
+    mnemos_search(query=<user's full query>, limit=8, collection="raw")
 
 Do NOT pass `wing`, `room`, `hall`, or any filter. The user invoked
 this skill precisely because they want cross-context — filtering by
 current cwd or wing would defeat the purpose.
+
+v1.0 narrative-first pivot: only the `raw` collection (Sessions/<date>-<slug>.md
+files) is searchable — the mined-fragments collection was retired.
+`collection="raw"` is the default and only valid value; passing
+`"mined"` or `"both"` triggers a deprecation warning and falls back
+to raw.
 
 The result is a list of hits. Each hit carries at minimum:
 `drawer_id`, `score`, `wing`, `room`, `hall`, `source_path`, `snippet`.
@@ -66,14 +72,25 @@ returned):
   Step 8 (soft fallback).
 - **Otherwise:** proceed to Step 5.
 
-The 0.015 threshold is a calibrated default for RRF scoring with k=60
-(combining raw and mined collections). Formula: `1/(60+rank_mined) +
-1/(60+rank_raw)`. Theoretical max is ~0.033 (both collections rank 1);
-0.015 is the "top-1 in at least one collection" floor, below which
-hits are typically topically unrelated noise. Spec §11 documents
-calibration policy. Note that Step 5 below reads up to 5 drawers for
-narrative breadth; the threshold sample stays at 3 because a quality
-check is cheap and representative.
+The 0.015 threshold is a calibrated default for RRF scoring with k=60.
+v1.0 searches only the raw collection, so RRF is now single-stream
+(`1/(60+rank_raw)`); 0.015 ≈ rank-7 floor below which hits are
+typically topically unrelated noise. Spec §11 documents calibration
+policy. Note that Step 5 below reads up to 5 drawers for narrative
+breadth; the threshold sample stays at 3 because a quality check is
+cheap and representative.
+
+## Score Threshold
+
+Default threshold: **0.015** (k=60 RRF scoring).
+
+**Calibration note:** This threshold was calibrated (kalibre edildi)
+on the kasamd vault (sqlite-vec backend, ~78 Sessions). New vaults may
+behave differently; ChromaDB vs sqlite-vec score distributions can
+vary. The threshold is soft — if scores fall below it, the skill
+falls through to Sessions grep rescue (Step 7) which usually recovers
+a useful answer regardless of score band. v1.1 may make this
+configurable via `mnemos.yaml` if pilots show recurring miscalibration.
 
 ### Step 5 — Read drawers (in score order, stop at 5 successes)
 

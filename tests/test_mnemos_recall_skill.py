@@ -46,3 +46,19 @@ def test_mnemos_recall_skill_junction_zero_drift():
     assert junction.read_bytes() == SKILL_MD.read_bytes(), (
         "Junction has drifted from repo SKILL.md — re-create the junction"
     )
+
+
+def test_skill_uses_collection_raw_only():
+    """v1.0: SKILL.md must specify collection='raw' (not 'both' or 'mined')."""
+    skill_path = Path(__file__).parent.parent / "skills" / "mnemos-recall" / "SKILL.md"
+    content = skill_path.read_text(encoding="utf-8")
+    assert 'collection="raw"' in content
+    assert 'collection="both"' not in content
+    assert 'collection="mined"' not in content
+
+
+def test_skill_documents_threshold_calibration_note():
+    skill_path = Path(__file__).parent.parent / "skills" / "mnemos-recall" / "SKILL.md"
+    content = skill_path.read_text(encoding="utf-8")
+    assert "0.015" in content
+    assert "kalibre" in content.lower() or "calibrat" in content.lower()
