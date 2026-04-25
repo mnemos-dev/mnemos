@@ -78,9 +78,27 @@ class MnemosApp:
         hall: Optional[str] = None,
         exclude_wing: Optional[str] = None,
         limit: int = 5,
-        collection: str = "both",
+        collection: str = "raw",
     ) -> list[dict]:
-        """Semantic search over indexed drawers with optional filters."""
+        """Semantic search over indexed drawers with optional filters.
+
+        v1.0 narrative-first pivot: only the ``raw`` collection (Sessions/
+        <date>-<slug>.md) remains indexed. The legacy ``mined`` and ``both``
+        values are accepted for backward compatibility but emit a
+        ``DeprecationWarning`` and fall back to ``raw``.
+        """
+        if collection in ("mined", "both"):
+            import warnings
+            warnings.warn(
+                f"collection={collection!r} is deprecated in v1.0; "
+                "the mined collection was retired in the narrative-first "
+                "pivot — falling back to 'raw'",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            collection = "raw"
+        if collection != "raw":
+            raise ValueError(f"unknown collection: {collection!r}")
         return self.search_engine.search(
             query=query,
             wing=wing,
@@ -288,9 +306,13 @@ def create_mcp_server(config: Optional[MnemosConfig] = None):
         room: Optional[str] = None,
         hall: Optional[str] = None,
         limit: int = 5,
-        collection: str = "both",
+        collection: str = "raw",
     ) -> str:
-        """Search the memory palace. collection: 'raw', 'mined', or 'both' (default)."""
+        """Search the memory palace (Sessions). collection: 'raw' (default).
+
+        v1.0: 'mined' and 'both' are deprecated and silently fall back to
+        'raw' — the mined collection was retired in the narrative-first pivot.
+        """
         results = _get_app().handle_search(query=query, wing=wing, room=room, hall=hall, limit=limit, collection=collection)
         return json.dumps(results, ensure_ascii=False)
 

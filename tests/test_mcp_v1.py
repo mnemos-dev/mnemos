@@ -8,12 +8,13 @@ them.
 from __future__ import annotations
 
 import asyncio
+import warnings
 from pathlib import Path
 
 import pytest
 
 from mnemos.config import MnemosConfig
-from mnemos.server import create_mcp_server
+from mnemos.server import MnemosApp, create_mcp_server
 
 
 def _registered_tool_names(mcp) -> list[str]:
@@ -68,3 +69,56 @@ def test_v1_mcp_surface_has_six_read_tools(tmp_path: Path) -> None:
     assert expected.issubset(tool_names), (
         f"v1.0 surface missing tools. Have: {tool_names}, expected: {expected}"
     )
+
+
+# ---------------------------------------------------------------------------
+# handle_search — collection parameter v1.0 deprecation
+# ---------------------------------------------------------------------------
+
+
+def test_search_raw_collection_works(tmp_path: Path) -> None:
+    """mnemos_search(collection='raw') returns results normally."""
+    vault = tmp_path / "vault"
+    (vault / "Sessions").mkdir(parents=True)
+    cfg = MnemosConfig(vault_path=str(vault), languages=["en"])
+    app = MnemosApp(cfg, chromadb_in_memory=True)
+    try:
+        result = app.handle_search(query="test", limit=5, collection="raw")
+        # handle_search returns list[dict]; on a fresh vault it's just empty
+        assert isinstance(result, list)
+    finally:
+        app.close()
+
+
+def test_search_mined_collection_warns_falls_back_to_raw(tmp_path: Path) -> None:
+    """mnemos_search(collection='mined') logs a warning and uses raw."""
+    vault = tmp_path / "vault"
+    (vault / "Sessions").mkdir(parents=True)
+    cfg = MnemosConfig(vault_path=str(vault), languages=["en"])
+    app = MnemosApp(cfg, chromadb_in_memory=True)
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            app.handle_search(query="test", limit=5, collection="mined")
+        assert any("deprecated" in str(w.message).lower() for w in caught), (
+            f"Expected DeprecationWarning, got: {[str(w.message) for w in caught]}"
+        )
+    finally:
+        app.close()
+
+
+def test_search_both_collection_falls_back_to_raw(tmp_path: Path) -> None:
+    """mnemos_search(collection='both') logs a warning and uses raw."""
+    vault = tmp_path / "vault"
+    (vault / "Sessions").mkdir(parents=True)
+    cfg = MnemosConfig(vault_path=str(vault), languages=["en"])
+    app = MnemosApp(cfg, chromadb_in_memory=True)
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            app.handle_search(query="test", limit=5, collection="both")
+        assert any("deprecated" in str(w.message).lower() for w in caught), (
+            f"Expected DeprecationWarning, got: {[str(w.message) for w in caught]}"
+        )
+    finally:
+        app.close()
