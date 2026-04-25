@@ -2,8 +2,11 @@
 
 Called by Claude Code's SessionStart hook when `recall_mode: skill`. Decides
 between fast-path (inject existing briefing + bg regen) and blocking catch-up
-(sync refine + mine + brief for this cwd's unrefined JSONLs) based on a
+(sync refine + brief for this cwd's unrefined JSONLs) based on a
 per-cwd state file (.mnemos-cwd-state.json).
+
+v1.0 narrative-first pivot: mining is gone. Sessions/.md are the source of
+truth and the briefing skill reads them directly.
 
 See docs/specs/2026-04-23-v0.4-task-4.3-first-ship-design.md for the full
 decision tree.
@@ -24,7 +27,7 @@ CACHE_DIR = ".mnemos-briefings"
 STATE_LOCK = STATE_FILENAME + ".flock"
 CATCH_UP_LOCK = ".mnemos-catch-up.flock"
 
-# Max pending JSONLs SUB-B2 will refine+mine synchronously in one hook fire.
+# Max pending JSONLs SUB-B2 will refine synchronously in one hook fire.
 # Without this cap, a cwd with 300+ unprocessed JSONLs (e.g. a long-lived
 # project dir) would block the session for hours. The cap limits SUB-B2 to
 # the most-recent N unprocessed transcripts — enough to give a meaningful
@@ -362,12 +365,6 @@ class RefineResult:
 
 
 @dataclass
-class MineResult:
-    ok: bool
-    session_md: Path
-
-
-@dataclass
 class BriefResult:
     ok: bool
     body: str
@@ -417,13 +414,6 @@ def run_refine_sync(jsonl: Path, runner=None) -> RefineResult:
     cmd = _build_skill_cmd("mnemos-refine-transcripts", str(jsonl))
     rc = runner(cmd)
     return RefineResult(ok=(rc == 0), jsonl=jsonl)
-
-
-def run_mine_sync(session_md: Path, runner=None) -> MineResult:
-    runner = runner or _default_runner
-    cmd = _build_skill_cmd("mnemos-mine-llm", str(session_md))
-    rc = runner(cmd)
-    return MineResult(ok=(rc == 0), session_md=session_md)
 
 
 def run_brief_sync(cwd: str, runner=None) -> BriefResult:
@@ -506,12 +496,15 @@ def catchup_and_cache(
     subprocess_runner=None,
     brief_runner=None,
 ) -> bool:
-    """Refine pending JSONLs for this cwd, mine their session_mds, then brief+cache.
+    """Refine pending JSONLs for this cwd, then brief+cache.
 
     Called from the --catchup subcommand (detached bg subprocess). Extends
-    brief_and_cache with a pending refine+mine prelude, so the next session
+    brief_and_cache with a pending refine prelude, so the next session
     opens with fresh content. If no pending JSONLs exist, this is equivalent
     to brief_and_cache (just refreshes cache body).
+
+    v1.0 narrative-first pivot: no mining step. Sessions/.md are the source
+    of truth and the briefing skill reads them directly.
 
     Limits work to SUB_B2_PENDING_CAP most-recent pending JSONLs — older
     ones drift to auto_refine's async cadence. Refine failures don't block
@@ -532,16 +525,9 @@ def catchup_and_cache(
         pending = pending[-SUB_B2_PENDING_CAP:]
 
     for jsonl in pending:
-        rres = run_refine_sync(jsonl, runner=subprocess_runner)
-        if not rres.ok:
-            continue
-        session_md_name = _lookup_session_md_in_ledger(ledger, jsonl)
-        if not session_md_name:
-            continue
-        session_md = vault / "Sessions" / session_md_name
-        if not session_md.exists():
-            continue
-        run_mine_sync(session_md, runner=subprocess_runner)
+        run_refine_sync(jsonl, runner=subprocess_runner)
+        # Refine failures are non-fatal: previous sessions' content is
+        # already in the vault, briefing will just skip this JSONL.
 
     return brief_and_cache(cwd, vault, brief_runner=brief_runner)
 
@@ -550,7 +536,7 @@ def _spawn_bg_catchup(cwd: str, vault: Path) -> None:
     """Spawn a detached bg process that runs `catchup_and_cache(cwd, vault)`.
 
     Non-blocking. Errors are swallowed (diagnostic-only). The child re-enters
-    this module through its `--catchup` subcommand, refines/mines pending
+    this module through its `--catchup` subcommand, refines pending
     JSONLs, and rewrites the cache at <vault>/.mnemos-briefings/<slug>.md.
 
     Uses CREATE_NO_WINDOW on Windows (same pattern as auto_refine) so no
@@ -595,7 +581,7 @@ def handle_session_start(
     """Main decision tree. Returns in <1s on every branch; all subprocess
     work is delegated to a detached bg catchup spawn.
 
-    Pending JSONLs present → always fire bg catchup (refine+mine+brief)
+    Pending JSONLs present → always fire bg catchup (refine+brief)
     and refresh cache for the next session. Cache presence only decides
     whether to inject something NOW on this session:
       - pending=0, cache present → inject (bg refreshes anyway)
@@ -674,27 +660,6 @@ def handle_session_start(
     return HandleOutcome(outcome="fast_path_no_cache")
 
 
-def _lookup_session_md_in_ledger(ledger: Path, jsonl: Path) -> str | None:
-    """Return session_md filename for a JSONL's OK row in the ledger, or None.
-
-    Ledger format: <jsonl>\\tOK\\t<session_md>. Newest row wins if duplicate.
-    """
-    if not ledger.exists():
-        return None
-    try:
-        text = ledger.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None
-    target = str(jsonl)
-    for line in reversed(text.splitlines()):
-        parts = line.split("\t")
-        if len(parts) < 3:
-            continue
-        if parts[1] == "OK" and parts[0] == target:
-            return parts[2]
-    return None
-
-
 # ---------------------------------------------------------------------------
 # Main entry — called by Claude Code SessionStart hook
 # ---------------------------------------------------------------------------
@@ -732,7 +697,7 @@ def _parse_args(argv: list[str] | None) -> _ParsedArgs:
     """Parse CLI flags. Three modes:
       - hook mode (default): consume stdin JSON, dispatch handle_session_start
       - --brief-and-cache: brief-only cache regen (retained for backward-compat)
-      - --catchup: pending refine+mine+brief pipeline (default bg entry)
+      - --catchup: pending refine+brief pipeline (default bg entry)
     """
     import argparse
     parser = argparse.ArgumentParser(add_help=False)
@@ -772,7 +737,7 @@ def main(argv: list[str] | None = None) -> int:
         argv = sys.argv[1:]
     parsed = _parse_args(argv)
 
-    # --catchup subcommand — foreground refine+mine+brief pipeline. Default
+    # --catchup subcommand — foreground refine+brief pipeline. Default
     # bg entry from _spawn_bg_catchup. Does NOT touch stdin or hook state.
     if parsed.catchup:
         if not parsed.cwd or not parsed.vault:

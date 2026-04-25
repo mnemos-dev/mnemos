@@ -386,10 +386,8 @@ def test_read_status_missing_returns_empty(tmp_path: Path) -> None:
 
 from mnemos.recall_briefing import (
     run_refine_sync,
-    run_mine_sync,
     run_brief_sync,
     RefineResult,
-    MineResult,
     BriefResult,
 )
 
@@ -419,15 +417,6 @@ def test_run_refine_sync_nonzero_exit_fails(tmp_path: Path) -> None:
     jsonl.write_text("{}\n", encoding="utf-8")
     result = run_refine_sync(jsonl, runner=lambda cmd: 2)
     assert result.ok is False
-
-
-def test_run_mine_sync_invokes_claude_with_session_md(tmp_path: Path) -> None:
-    session_md = tmp_path / "2026-04-01-foo.md"
-    session_md.write_text("---\n---\nbody\n", encoding="utf-8")
-    captured: list[list[str]] = []
-    result = run_mine_sync(session_md, runner=lambda cmd: captured.append(list(cmd)) or 0)
-    assert result.ok is True
-    assert any("mnemos-mine-llm" in a for a in captured[0])
 
 
 def test_run_brief_sync_captures_stdout(tmp_path: Path) -> None:
@@ -676,10 +665,73 @@ def test_return_visit_pending_no_cache_silent_bg_catchup(tmp_path: Path) -> None
     assert len(bg_calls) == 1
 
 
-def test_catchup_and_cache_runs_refine_mine_brief_in_order(tmp_path: Path) -> None:
-    """catchup_and_cache should refine each pending JSONL, then mine the
-    resulting session_md, then brief+cache. Order matters — mine reads what
-    refine wrote, brief reads what mine wrote."""
+def test_sub_b2_does_not_invoke_mine_skill(tmp_path: Path) -> None:
+    """v1.0: SUB-B2 catch-up only runs refine + briefing, never mine.
+
+    The narrative-first pivot deletes mining from the briefing pipeline —
+    Sessions/.md is now the source of truth and the briefing skill reads
+    them directly. Any /mnemos-mine-llm or `mnemos mine` invocation in
+    the catch-up path is a regression."""
+    from mnemos.recall_briefing import catchup_and_cache
+
+    cwd = "C:\\Projects\\farcry"
+    slug = cwd_to_slug(cwd)
+    sessions = tmp_path / "Sessions"
+    sessions.mkdir()
+    proj_root = tmp_path / ".claude" / "projects" / slug
+    proj_root.mkdir(parents=True)
+    pending = proj_root / "p.jsonl"
+    pending.write_text(_REAL_JSONL_3_TURNS, encoding="utf-8")
+
+    ledger = tmp_path / "processed.tsv"
+    ledger.write_text("", encoding="utf-8")
+
+    captured_commands: list[str] = []
+
+    def fake_subprocess_runner(cmd):
+        joined = " ".join(str(c) for c in cmd)
+        captured_commands.append(joined)
+        if "mnemos-refine-transcripts" in joined:
+            sname = "2026-04-01-test.md"
+            (sessions / sname).write_text(
+                f"---\ncwd: {cwd}\n---\nbody\n", encoding="utf-8"
+            )
+            with ledger.open("a", encoding="utf-8") as fh:
+                fh.write(f"{pending}\tOK\t{sname}\n")
+        return 0
+
+    def fake_brief_runner(cmd, stdout_path=None):
+        captured_commands.append(" ".join(str(c) for c in cmd))
+        if stdout_path is not None:
+            Path(stdout_path).write_text("**Aktif durum:** fresh\n", encoding="utf-8")
+        return 0
+
+    catchup_and_cache(
+        cwd=cwd,
+        vault=tmp_path,
+        projects_root=tmp_path / ".claude" / "projects",
+        ledger=ledger,
+        subprocess_runner=fake_subprocess_runner,
+        brief_runner=fake_brief_runner,
+    )
+
+    # Assert: no mining commands ever invoked
+    for cmd_str in captured_commands:
+        assert "/mnemos-mine-llm" not in cmd_str, f"mining invoked: {cmd_str}"
+        assert "mnemos-mine-llm" not in cmd_str, f"mining invoked: {cmd_str}"
+        assert "mnemos mine" not in cmd_str, f"mnemos mine CLI invoked: {cmd_str}"
+
+    # Assert: refine + briefing both happened
+    assert any("mnemos-refine-transcripts" in s for s in captured_commands), \
+        f"refine not invoked; got: {captured_commands}"
+    assert any("mnemos-briefing" in s for s in captured_commands), \
+        f"briefing not invoked; got: {captured_commands}"
+
+
+def test_catchup_and_cache_runs_refine_then_brief_no_mine(tmp_path: Path) -> None:
+    """catchup_and_cache should refine each pending JSONL, then brief+cache.
+    v1.0 narrative-first pivot: mining is gone from this pipeline. Sessions
+    are the source of truth, briefing reads them directly."""
     from mnemos.recall_briefing import catchup_and_cache
 
     cwd = "C:\\Projects\\farcry"
@@ -707,8 +759,6 @@ def test_catchup_and_cache_runs_refine_mine_brief_in_order(tmp_path: Path) -> No
             )
             with ledger.open("a", encoding="utf-8") as fh:
                 fh.write(f"{pending}\tOK\t{sname}\n")
-        elif "mnemos-mine-llm" in joined:
-            order.append("mine")
         return 0
 
     def fake_brief_runner(cmd, stdout_path=None):
@@ -726,16 +776,16 @@ def test_catchup_and_cache_runs_refine_mine_brief_in_order(tmp_path: Path) -> No
         brief_runner=fake_brief_runner,
     )
     assert ok is True
-    assert order == ["refine", "mine", "brief"], f"got order {order}"
+    assert order == ["refine", "brief"], f"got order {order}"
 
     cache = cache_path_for(tmp_path, slug)
     assert cache.exists()
     assert "**Aktif durum:** fresh" in cache.read_text(encoding="utf-8")
 
 
-def test_catchup_and_cache_refine_fail_skips_mine_continues_to_brief(tmp_path: Path) -> None:
-    """If refine fails for a JSONL, skip mining that one but still brief —
-    previous sessions' content is already in the vault."""
+def test_catchup_and_cache_refine_fail_continues_to_brief(tmp_path: Path) -> None:
+    """If refine fails for a JSONL, skip that JSONL but still brief —
+    previous sessions' content is already in the vault. (v1.0: no mine step.)"""
     from mnemos.recall_briefing import catchup_and_cache
 
     cwd = "C:\\Projects\\x"
@@ -749,15 +799,14 @@ def test_catchup_and_cache_refine_fail_skips_mine_continues_to_brief(tmp_path: P
     ledger = tmp_path / "processed.tsv"
     ledger.write_text("", encoding="utf-8")
 
-    mine_called = [False]
     brief_called = [False]
+    seen_commands: list[str] = []
 
     def fake_subprocess_runner(cmd):
         joined = " ".join(str(c) for c in cmd)
+        seen_commands.append(joined)
         if "mnemos-refine-transcripts" in joined:
             return 2  # fail
-        if "mnemos-mine-llm" in joined:
-            mine_called[0] = True
         return 0
 
     def fake_brief_runner(cmd, stdout_path=None):
@@ -774,7 +823,8 @@ def test_catchup_and_cache_refine_fail_skips_mine_continues_to_brief(tmp_path: P
         subprocess_runner=fake_subprocess_runner,
         brief_runner=fake_brief_runner,
     )
-    assert mine_called[0] is False
+    # v1.0: no mining step at all
+    assert all("mnemos-mine-llm" not in s for s in seen_commands)
     assert brief_called[0] is True
     assert ok is True  # brief succeeded even though refine didn't
 
