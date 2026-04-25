@@ -1,9 +1,11 @@
 """Mnemos CLI — init, search, status, import, install-hook commands.
 
 v1.0 narrative-first pivot removed the mining subcommands (`mine`, `catch-up`,
-`migrate`, `processing-log`, `import claude-code`). Their parsers remain as
-no-arg sentinels that route to a friendly "removed in v1.0" message — see
-`REMOVED_COMMANDS` and the dispatch in `main()`.
+`migrate`, `processing-log`, `import claude-code`). They are pre-dispatched
+in :func:`main` BEFORE argparse so any flags the user types (e.g.
+``mnemos mine --rebuild``) are slurped into a friendly "removed in v1.0"
+message instead of producing argparse "unrecognized arguments" errors.
+See :data:`LEGACY_REMOVED` and :func:`cmd_removed`.
 """
 from __future__ import annotations
 
@@ -245,6 +247,10 @@ def cmd_init(args: argparse.Namespace) -> None:
     cfg.palace_dir.mkdir(parents=True, exist_ok=True)
     (Path(cfg.vault_path) / "Sessions").mkdir(parents=True, exist_ok=True)
     cfg.identity_full_path.mkdir(parents=True, exist_ok=True)
+    # _recycled/ is the canonical soft-delete target documented in CLAUDE.md
+    # (see "Mimari hatırlatıcılar" — Sessions notes are moved here instead of
+    # being deleted; the watcher then cleans the index).
+    cfg.recycled_full_path.mkdir(parents=True, exist_ok=True)
     print(f"  Created vault structure at: {cfg.palace_dir}")
 
     # --- Identity placeholder ---
@@ -477,25 +483,19 @@ def cmd_import(args: argparse.Namespace) -> None:
     """Dispatch `mnemos import <kind>` to the right handler.
 
     v1.0: ``import claude-code`` was removed (use /mnemos-refine-transcripts
-    skill directly instead). The remaining kinds are still mining-related and
-    funnel through ``MnemosApp.handle_mine`` — Task 5/6 will revisit them.
+    skill directly instead) — pre-dispatched in :func:`main` before argparse.
+    The remaining kinds are still mining-related and funnel through
+    ``MnemosApp.handle_mine`` — Task 5/6 will revisit them.
     """
-    if args.import_kind == "claude-code":
-        print(
-            "Error: `mnemos import claude-code` was removed in v1.0.\n"
-            "Use the /mnemos-refine-transcripts skill in a Claude Code\n"
-            "session — it scans ~/.claude/projects directly and produces\n"
-            "Sessions/<YYYY-MM-DD>-<slug>.md notes without a separate import\n"
-            "step. See https://github.com/mnemos-dev/mnemos/tree/legacy/atomic-paradigm\n"
-            "for the previous import paradigm.",
-            file=sys.stderr,
-        )
-        sys.exit(2)
-
     vault_path = _resolve_vault(args.vault)
     _require_vault(vault_path, "import")
     cfg = load_config(vault_path)
 
+    # TODO(v1.0 Task 5/6): mnemos import chatgpt|slack|markdown|memory currently
+    # routes to MnemosApp.handle_mine which still references deleted mining
+    # modules in server.py (broken at runtime). Decide in Task 5 whether to:
+    #   (a) shim these as cmd_removed pending v1.x re-implementation, OR
+    #   (b) revive them as refine-only (no mining) on the new Sessions paradigm.
     handler = {
         "chatgpt": _import_chatgpt,
         "slack": _import_slack,
@@ -678,18 +678,33 @@ def _install_recall_hook_prompt(lang: str = "en", vault: Path = Path(".")) -> No
 # ---------------------------------------------------------------------------
 
 
-def cmd_removed(args: argparse.Namespace) -> None:
-    """Print a friendly removal message for any v1.0-removed subcommand."""
-    cmd_name = getattr(args, "command", None) or "<unknown>"
-    print(
-        f"Error: `mnemos {cmd_name}` was removed in v1.0.\n"
+# Legacy top-level subcommands removed by the v1.0 narrative-first pivot.
+# Pre-dispatched in :func:`main` BEFORE argparse so trailing flags (e.g.
+# ``mnemos mine --rebuild``) don't trigger argparse "unrecognized arguments"
+# errors. See Issue C1 in the Task 4 review.
+LEGACY_REMOVED = frozenset({"mine", "pilot", "migrate", "catch-up", "processing-log"})
+
+
+def cmd_removed(command_name: str, remaining_args: list[str] | None = None) -> int:
+    """Print a friendly removal message for a v1.0-removed (sub)command.
+
+    Returns exit code 2 (so :func:`main` can return it directly).
+    """
+    _ = remaining_args  # captured for future telemetry; intentionally unused
+    msg = (
+        f"Error: `mnemos {command_name}` was removed in v1.0.\n"
         f"The mining/drawer paradigm is gone — Sessions/<date>-<slug>.md is\n"
         f"now the canonical memory unit. See\n"
         f"https://github.com/mnemos-dev/mnemos/tree/legacy/atomic-paradigm\n"
-        f"for the previous paradigm.",
-        file=sys.stderr,
+        f"for the previous paradigm."
     )
-    sys.exit(2)
+    if command_name == "import claude-code":
+        msg += (
+            "\nUse the /mnemos-refine-transcripts skill to convert Claude Code"
+            "\nJSONLs to Sessions notes."
+        )
+    print(msg, file=sys.stderr)
+    return 2
 
 
 # ---------------------------------------------------------------------------
@@ -855,7 +870,7 @@ def cmd_benchmark(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> int:
     # Ensure non-ASCII output (Turkish onboarding text, Unicode in vault paths)
     # works on Windows consoles that default to cp1252. No-op on Unix where
     # stdout is already UTF-8, and silent on older Pythons that lack the API.
@@ -864,6 +879,17 @@ def main() -> None:
             stream.reconfigure(encoding="utf-8", errors="replace")
         except (AttributeError, OSError):
             pass
+
+    argv = list(argv) if argv is not None else sys.argv[1:]
+
+    # Pre-dispatch v1.0-removed legacy commands BEFORE argparse so any
+    # ``--``-prefixed flags get a friendly migration nudge instead of
+    # argparse's "unrecognized arguments" error (Python issue #17050 means
+    # argparse.REMAINDER cannot reliably slurp `--flag` tokens).
+    if argv and argv[0] in LEGACY_REMOVED:
+        return cmd_removed(argv[0], argv[1:])
+    if len(argv) >= 2 and argv[0] == "import" and argv[1] == "claude-code":
+        return cmd_removed("import claude-code", argv[2:])
 
     parser = argparse.ArgumentParser(
         prog="mnemos",
@@ -889,17 +915,12 @@ def main() -> None:
     parser_init.set_defaults(func=cmd_init)
 
     # ------------------------------------------------------------------
-    # mine — REMOVED in v1.0 (narrative-first pivot)
-    # Sentinel subparser: any extra args are slurped and discarded so the
-    # friendly error fires instead of argparse's "unrecognized arguments".
+    # mine / pilot / migrate / catch-up / processing-log — REMOVED in v1.0
     # ------------------------------------------------------------------
-    parser_mine = subparsers.add_parser(
-        "mine",
-        help="[REMOVED in v1.0 — see error message]",
-        add_help=False,
-    )
-    parser_mine.add_argument("_args", nargs=argparse.REMAINDER)
-    parser_mine.set_defaults(func=cmd_removed)
+    # Pre-dispatched by `main()` before `parse_args()` — see LEGACY_REMOVED.
+    # Registering them as argparse subparsers with REMAINDER does NOT work
+    # for `--`-prefixed flags (Python issue #17050), which defeats the
+    # migration nudge. So they are simply not registered with argparse.
 
     # ------------------------------------------------------------------
     # search
@@ -940,38 +961,23 @@ def main() -> None:
     parser_status.set_defaults(func=cmd_status)
 
     # ------------------------------------------------------------------
-    # pilot — REMOVED in v1.0 (narrative-first pivot)
+    # pilot — REMOVED in v1.0 (pre-dispatched by `main()`).
     # ------------------------------------------------------------------
-    parser_pilot = subparsers.add_parser(
-        "pilot",
-        help="[REMOVED in v1.0 — see error message]",
-        add_help=False,
-    )
-    parser_pilot.add_argument("_args", nargs=argparse.REMAINDER)
-    parser_pilot.set_defaults(func=cmd_removed)
 
     # ------------------------------------------------------------------
     # import — bring an external knowledge source into the palace
     # ------------------------------------------------------------------
     parser_import = subparsers.add_parser(
         "import",
-        help="Import a knowledge source (claude-code / chatgpt / slack / markdown / memory)",
+        help="Import a knowledge source (chatgpt / slack / markdown / memory)",
     )
     import_subs = parser_import.add_subparsers(
         dest="import_kind", metavar="<kind>", required=True,
     )
 
-    # `import claude-code` — REMOVED in v1.0. The /mnemos-refine-transcripts
-    # skill scans ~/.claude/projects directly; no separate registration step.
-    # Sentinel parser keeps the subcommand discoverable so cmd_import can
-    # surface the friendly removal message.
-    p_cc = import_subs.add_parser(
-        "claude-code",
-        help="[REMOVED in v1.0 — use /mnemos-refine-transcripts skill]",
-        add_help=False,
-    )
-    p_cc.add_argument("_args", nargs=argparse.REMAINDER)
-    p_cc.set_defaults(func=cmd_import)
+    # `import claude-code` — REMOVED in v1.0. Pre-dispatched by `main()` so
+    # any flags (e.g. ``--projects-dir``) get the friendly removal message
+    # instead of an argparse error. Not registered as a subparser at all.
 
     p_chat = import_subs.add_parser("chatgpt", help="Mine a ChatGPT JSON export file")
     p_chat.add_argument("path", help="Path to the chatgpt export .json")
@@ -1023,26 +1029,8 @@ def main() -> None:
     parser_install_statusline.set_defaults(func=cmd_install_statusline)
 
     # ------------------------------------------------------------------
-    # migrate — REMOVED in v1.0 (narrative-first pivot)
+    # migrate / catch-up — REMOVED in v1.0 (pre-dispatched by `main()`).
     # ------------------------------------------------------------------
-    parser_migrate = subparsers.add_parser(
-        "migrate",
-        help="[REMOVED in v1.0 — see error message]",
-        add_help=False,
-    )
-    parser_migrate.add_argument("_args", nargs=argparse.REMAINDER)
-    parser_migrate.set_defaults(func=cmd_removed)
-
-    # ------------------------------------------------------------------
-    # catch-up — REMOVED in v1.0 (narrative-first pivot)
-    # ------------------------------------------------------------------
-    parser_catchup = subparsers.add_parser(
-        "catch-up",
-        help="[REMOVED in v1.0 — see error message]",
-        add_help=False,
-    )
-    parser_catchup.add_argument("_args", nargs=argparse.REMAINDER)
-    parser_catchup.set_defaults(func=cmd_removed)
 
     # ------------------------------------------------------------------
     # benchmark
@@ -1090,11 +1078,11 @@ def main() -> None:
     # ------------------------------------------------------------------
     # Dispatch
     # ------------------------------------------------------------------
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if not hasattr(args, "func"):
         parser.print_help()
-        sys.exit(0)
+        return 0
 
     from mnemos.errors import BackendInitError
 
@@ -1102,8 +1090,9 @@ def main() -> None:
         args.func(args)
     except BackendInitError as exc:
         print(str(exc), file=sys.stderr)
-        sys.exit(2)
+        return 2
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
