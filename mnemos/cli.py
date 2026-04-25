@@ -756,6 +756,26 @@ def cmd_identity(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_reindex(args: argparse.Namespace) -> int:
+    """Rebuild the vector index from ``Sessions/`` (optionally switching backend).
+
+    Surfaces :class:`mnemos.reindex.ReindexError` as a friendly stderr
+    message + exit code 1, matching the rest of the CLI's error UX.
+    """
+    from mnemos.reindex import reindex, ReindexError
+
+    vault = Path(args.vault) if args.vault else _resolve_vault_from_yaml()
+    try:
+        result = reindex(vault, backend=args.backend, no_backup=args.no_backup)
+    except ReindexError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    print(f"Indexed {result['session_count']} sessions on {result['backend']}.")
+    if result["backup_path"]:
+        print(f"Backup: {result['backup_path']}")
+    return 0
+
+
 def _resolve_vault_from_yaml() -> Path:
     """Find mnemos.yaml in cwd or vault env var; return its ``vault:`` path.
 
@@ -1019,6 +1039,29 @@ def main(argv: list[str] | None = None) -> int:
     # an int so we can't slot it into the generic `args.func(args)` flow.
 
     # ------------------------------------------------------------------
+    # reindex — rebuild vector index from Sessions (v1.0 backend switch +
+    # recovery; replaces the removed ``migrate`` subcommand).
+    # ------------------------------------------------------------------
+    sub_reindex = subparsers.add_parser(
+        "reindex", help="Rebuild vector index from Sessions"
+    )
+    sub_reindex.add_argument(
+        "--backend",
+        choices=["chromadb", "sqlite-vec"],
+        help="Switch search backend before rebuilding",
+    )
+    sub_reindex.add_argument(
+        "--no-backup",
+        action="store_true",
+        help="Skip backup of existing on-disk index",
+    )
+    sub_reindex.add_argument(
+        "--vault", help="Vault path (default: from mnemos.yaml in cwd)"
+    )
+    # Dispatch is special-cased in `main()` below — `cmd_reindex` returns
+    # an int so we can't slot it into the generic `args.func(args)` flow.
+
+    # ------------------------------------------------------------------
     # migrate / catch-up — REMOVED in v1.0 (pre-dispatched by `main()`).
     # ------------------------------------------------------------------
 
@@ -1073,6 +1116,10 @@ def main(argv: list[str] | None = None) -> int:
     # Special-case: identity returns an int directly (not via args.func).
     if getattr(args, "command", None) == "identity":
         return cmd_identity(args)
+
+    # Special-case: reindex also returns an int directly.
+    if getattr(args, "command", None) == "reindex":
+        return cmd_reindex(args)
 
     if not hasattr(args, "func"):
         parser.print_help()
