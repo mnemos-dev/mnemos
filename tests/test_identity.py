@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from mnemos.identity import bootstrap, refresh, IdentityError, _has_identity_relevant_new_tags
+from mnemos.identity import bootstrap, refresh, rollback, show, IdentityError, _has_identity_relevant_new_tags
 
 PROMPT_PATH = Path(__file__).parent.parent / "docs" / "prompts" / "identity-bootstrap.md"
 
@@ -174,3 +174,50 @@ def test_has_identity_relevant_new_tags_false_for_existing_only():
     new_session_paths = [Path("/tmp/x.md")]
     with patch("pathlib.Path.read_text", return_value="---\ntags: [session-log, proj/mnemos]\n---\n"):
         assert _has_identity_relevant_new_tags(profile_text, new_session_paths) is False
+
+
+def test_rollback_to_latest_bak():
+    vault = _make_test_vault(0)
+    identity_dir = vault / "_identity"
+    identity_dir.mkdir()
+    identity_path = identity_dir / "L0-identity.md"
+    identity_path.write_text("# Current", encoding="utf-8")
+    bak = identity_dir / "L0-identity.md.bak-2026-04-24-1200"
+    bak.write_text("# Old version", encoding="utf-8")
+
+    result = rollback(vault, target=None, confirm=True)
+    assert result == identity_path
+    assert "Old version" in identity_path.read_text(encoding="utf-8")
+
+
+def test_rollback_specific_date():
+    vault = _make_test_vault(0)
+    identity_dir = vault / "_identity"
+    identity_dir.mkdir()
+    identity_path = identity_dir / "L0-identity.md"
+    identity_path.write_text("# Current", encoding="utf-8")
+    (identity_dir / "L0-identity.md.bak-2026-04-24-1200").write_text("# A", encoding="utf-8")
+    (identity_dir / "L0-identity.md.bak-2026-04-25-0900").write_text("# B", encoding="utf-8")
+
+    rollback(vault, target="2026-04-24-1200", confirm=True)
+    assert identity_path.read_text(encoding="utf-8") == "# A"
+
+
+def test_rollback_raises_when_no_baks():
+    vault = _make_test_vault(0)
+    (vault / "_identity").mkdir()
+    (vault / "_identity" / "L0-identity.md").write_text("# X", encoding="utf-8")
+
+    with pytest.raises(IdentityError, match="no backup"):
+        rollback(vault, target=None, confirm=True)
+
+
+def test_show_returns_identity_content():
+    vault = _make_test_vault(0)
+    (vault / "_identity").mkdir()
+    (vault / "_identity" / "L0-identity.md").write_text(
+        "---\nlast_refreshed: 2026-04-25\n---\n\n# User Identity\n",
+        encoding="utf-8",
+    )
+    output = show(vault)
+    assert "User Identity" in output

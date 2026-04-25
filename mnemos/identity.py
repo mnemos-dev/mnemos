@@ -279,3 +279,61 @@ def _is_git_tracked(vault: Path) -> bool:
         return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
+
+
+def rollback(vault: Path, target: Optional[str] = None, confirm: bool = False) -> Path:
+    """Restore L0-identity.md from a .bak snapshot.
+
+    Args:
+        vault: Mnemos vault root.
+        target: Snapshot suffix (e.g. ``"2026-04-24-1200"``). ``None`` selects
+            the latest available .bak file.
+        confirm: Must be ``True`` to actually overwrite the identity file.
+            Acts as a tripwire so callers (CLI / library) cannot accidentally
+            destroy current state without explicit acknowledgement.
+
+    Returns:
+        Path to the restored L0-identity.md.
+
+    Raises:
+        IdentityError: if no identity file, no backups, no matching target,
+            or ``confirm`` is False.
+    """
+    identity_dir = vault / "_identity"
+    identity_path = identity_dir / "L0-identity.md"
+    if not identity_path.exists():
+        raise IdentityError(f"no identity file at {identity_path}")
+
+    baks = sorted(identity_dir.glob("L0-identity.md.bak-*"))
+    if not baks:
+        raise IdentityError(f"no backup snapshots in {identity_dir}")
+
+    if target is None:
+        chosen = baks[-1]
+    else:
+        candidates = [b for b in baks if b.name.endswith(target)]
+        if not candidates:
+            raise IdentityError(
+                f"no backup matching {target}; available: {[b.name for b in baks]}"
+            )
+        chosen = candidates[0]
+
+    if not confirm:
+        raise IdentityError("rollback requires confirm=True")
+
+    shutil.copy2(chosen, identity_path)
+    return identity_path
+
+
+def show(vault: Path) -> str:
+    """Read and return L0-identity.md content.
+
+    Raises:
+        IdentityError: if the identity file does not exist.
+    """
+    path = vault / "_identity" / "L0-identity.md"
+    if not path.exists():
+        raise IdentityError(
+            f"no identity file at {path}; run `mnemos identity bootstrap` first"
+        )
+    return path.read_text(encoding="utf-8")
