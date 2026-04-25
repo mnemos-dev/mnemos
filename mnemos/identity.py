@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+import yaml
 
 
 class IdentityError(Exception):
@@ -111,3 +114,168 @@ def _invoke_claude_print(prompt_input: str, model: str = "sonnet") -> str:
     if proc.returncode != 0:
         raise IdentityError(f"claude --print failed (exit {proc.returncode}): {proc.stderr[:500]}")
     return proc.stdout
+
+
+_REFRESH_PROMPT_TEMPLATE = """\
+You are updating an existing Identity Layer with new Sessions.
+
+## EXISTING PROFILE
+
+{existing_profile}
+
+## NEW SESSIONS (since last refresh)
+
+{new_sessions}
+
+## RULES
+
+1. Yeni bilgi mevcut bir (general) preference ile çelişiyorsa, bunun proje-spesifik mi
+   (yeni `(proj/<name>)` satırı) yoksa gerçek genel tercih değişikliği mi (Revize edilen
+   kararlar bölümüne taşı) olduğunu açıkça belirle.
+2. Yeni bilgi mevcut general'i pekiştiriyorsa dokunma.
+3. Yeni bilgi yeni bir entity (kişi, araç, proje) tanıtıyorsa eklemekten çekinme.
+4. Tutarlı olanlara dokunma — gereksiz revizyon yok.
+
+3-case scenario for conflicts:
+- Project-specific addition: scope farklı, no conflict, add new (proj/...) row
+- Genuine general shift: old general → "Revize edilen kararlar", new general added
+- Project override of general: general stays, (proj/...) override row added
+
+## OUTPUT
+
+Updated full profile markdown to stdout. Same frontmatter schema, updated `last_refreshed` and `session_count_at_refresh`.
+"""
+
+
+def refresh(vault: Path, force: bool = False, model: str = "sonnet") -> Optional[Path]:
+    """Incrementally update <vault>/_identity/L0-identity.md.
+
+    Args:
+        vault: Mnemos vault root.
+        force: Skip auto-trigger condition check.
+        model: claude --print model.
+
+    Returns:
+        Path to updated identity file, or None if skipped (no new sessions or trigger not met).
+    """
+    identity_path = vault / "_identity" / "L0-identity.md"
+    if not identity_path.exists():
+        raise IdentityError(f"identity layer not bootstrapped at {identity_path}; run `mnemos identity bootstrap` first")
+
+    existing = identity_path.read_text(encoding="utf-8")
+    fm = _parse_frontmatter(existing)
+    last_count = int(fm.get("session_count_at_refresh", 0))
+
+    # Discover new sessions (count > last_count)
+    sessions_dir = vault / "Sessions"
+    all_sessions = sorted(sessions_dir.glob("*.md"), key=lambda p: p.name)
+    new_sessions = all_sessions[last_count:]
+
+    if not force:
+        if len(new_sessions) < 10:
+            return None  # quantity gate
+        if not _has_identity_relevant_new_tags(existing, new_sessions):
+            return None  # relevance gate
+
+    # Pre-refresh backup
+    _backup_identity(vault, identity_path)
+
+    # Build prompt
+    new_sessions_text = "\n\n".join(
+        f"# {s.name}\n\n{s.read_text(encoding='utf-8')}" for s in new_sessions
+    )
+    prompt = _REFRESH_PROMPT_TEMPLATE.format(
+        existing_profile=existing, new_sessions=new_sessions_text
+    )
+
+    output = _invoke_claude_print(prompt, model=model)
+
+    # Atomic write
+    tmp = identity_path.with_suffix(".tmp")
+    tmp.write_text(output, encoding="utf-8")
+    tmp.replace(identity_path)
+
+    # History snapshot
+    history_dir = vault / "_identity" / "_history"
+    history_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M")
+    snapshot = history_dir / f"{timestamp}-refresh.md"
+    snapshot.write_text(output, encoding="utf-8")
+
+    return identity_path
+
+
+def _parse_frontmatter(text: str) -> dict:
+    """Extract YAML frontmatter from markdown. Returns {} if absent."""
+    if not text.startswith("---\n"):
+        return {}
+    end = text.find("\n---\n", 4)
+    if end < 0:
+        return {}
+    try:
+        return yaml.safe_load(text[4:end]) or {}
+    except yaml.YAMLError:
+        return {}
+
+
+def _has_identity_relevant_new_tags(profile_text: str, new_sessions: list[Path]) -> bool:
+    """Returns True if any new Session has a tag (proj/, person/, tool/, skill/) not present in profile."""
+    profile_entities = set(re.findall(r"\[\[([^\]]+)\]\]", profile_text))
+    profile_entities_lower = {e.lower() for e in profile_entities}
+    for session in new_sessions:
+        try:
+            content = session.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        fm = _parse_frontmatter(content)
+        tags = fm.get("tags", [])
+        if not isinstance(tags, list):
+            continue
+        for tag in tags:
+            if not isinstance(tag, str):
+                continue
+            for prefix in ("proj/", "tool/", "person/", "skill/"):
+                if tag.startswith(prefix):
+                    name = tag[len(prefix):]
+                    if name.lower() not in profile_entities_lower:
+                        return True  # new identity-relevant entity found
+    return False
+
+
+def _backup_identity(vault: Path, identity_path: Path) -> None:
+    """Create pre-refresh snapshot. Git-tracked vaults: auto-commit. Else: .bak file."""
+    if _is_git_tracked(vault):
+        try:
+            subprocess.run(
+                ["git", "-C", str(vault), "add", str(identity_path.relative_to(vault))],
+                check=True, capture_output=True,
+            )
+            subprocess.run(
+                [
+                    "git", "-C", str(vault), "commit", "-m",
+                    f"mnemos identity refresh checkpoint {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                ],
+                check=False, capture_output=True,
+            )
+            return
+        except subprocess.CalledProcessError:
+            pass  # fall through to .bak
+    # .bak rolling window (last 5)
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M")
+    bak = identity_path.parent / f"L0-identity.md.bak-{timestamp}"
+    shutil.copy2(identity_path, bak)
+    # Trim old .bak files
+    all_baks = sorted(identity_path.parent.glob("L0-identity.md.bak-*"))
+    for old in all_baks[:-5]:
+        old.unlink()
+
+
+def _is_git_tracked(vault: Path) -> bool:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(vault), "rev-parse", "--git-dir"],
+            capture_output=True, check=False, timeout=5,
+        )
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
