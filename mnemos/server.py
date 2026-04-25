@@ -6,24 +6,44 @@ no longer has ``palace``, ``miner``, ``handle_mine``, ``handle_add``, or the
 mnemos.palace which were deleted in Task 3. The remaining surface is the
 narrative-first read path: search, status, recall, graph, timeline, wake_up.
 
-Subsequent v1.0 tasks will reshape these:
-  - Task 18: ``mnemos_search`` collection becomes raw-only
-  - Task 19: ``mnemos_wake_up`` returns the Identity Layer
-  - Task 20: ``mnemos_recall`` becomes L0-only
-  - Task 21: ``mnemos_graph`` / ``mnemos_timeline`` become wikilink-driven
+Task 21 also retired the SQLite ``KnowledgeGraph`` triple store: ``handle_graph``
+and ``handle_timeline`` now scan Obsidian wikilinks (``[[Entity]]``) directly
+from ``Sessions/<date>-<slug>.md`` files. The graph is no longer a separate
+durable index — it is derived on demand from the canonical vault.
 """
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
 from mnemos.config import MnemosConfig, load_config
 
 if TYPE_CHECKING:
-    from mnemos.graph import KnowledgeGraph
     from mnemos.search import SearchEngine
     from mnemos.stack import MemoryStack
+
+
+# Module-level wikilink pattern reused by handle_graph and handle_timeline.
+_WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
+
+
+def _coerce_date(value) -> Optional[str]:
+    """Return an ISO date string for ``value``, or None if unset.
+
+    YAML parses bare ``date: 2026-04-01`` as ``datetime.date``; we want a
+    JSON-serialisable ISO string for the MCP envelope and for lexicographic
+    date comparisons.
+    """
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        return value
+    isofmt = getattr(value, "isoformat", None)
+    if callable(isofmt):
+        return isofmt()
+    return str(value)
 
 
 # ---------------------------------------------------------------------------
@@ -40,15 +60,11 @@ class MnemosApp:
 
     def __init__(self, config: MnemosConfig, chromadb_in_memory: bool = False) -> None:
         # Lazy imports to avoid slow chromadb import at server startup
-        from mnemos.graph import KnowledgeGraph
         from mnemos.search import SearchEngine
         from mnemos.stack import MemoryStack
 
         self.config = config
         self.search_engine = SearchEngine(config, in_memory=chromadb_in_memory)
-        # Ensure palace dir exists before opening SQLite graph
-        config.graph_full_path.parent.mkdir(parents=True, exist_ok=True)
-        self.graph = KnowledgeGraph(config.graph_full_path)
         self.stack = MemoryStack(config)
 
     def close(self) -> None:
@@ -190,13 +206,41 @@ class MnemosApp:
     # ------------------------------------------------------------------
 
     def handle_graph(self, entity: str, as_of: Optional[str] = None) -> dict:
-        """Query the knowledge graph for triples about an entity."""
-        triples = self.graph.query_entity(entity=entity, as_of=as_of)
-        return {
-            "entity": entity,
-            "as_of": as_of,
-            "triples": triples,
-        }
+        """Query the Obsidian wikilink graph for an entity's neighbours.
+
+        v1.0: scans ``Sessions/<date>-<slug>.md`` for ``[[Entity]]`` mentions
+        and emits a ``co-mentioned-in`` triple for every other wikilink found
+        in the same session. The SQLite triple store was retired — the vault
+        is the canonical graph.
+        """
+        from mnemos.obsidian import parse_frontmatter
+
+        sessions_dir = Path(self.config.vault_path) / "Sessions"
+        if not sessions_dir.exists():
+            return {"entity": entity, "as_of": as_of, "triples": []}
+
+        triples: list[dict] = []
+        vault_root = Path(self.config.vault_path)
+        for session in sorted(sessions_dir.glob("*.md")):
+            try:
+                fm, body = parse_frontmatter(session)
+            except Exception:
+                continue
+            session_date = _coerce_date(fm.get("date"))
+            if as_of is not None and session_date is not None and session_date > as_of:
+                continue
+            mentions = set(_WIKILINK_RE.findall(body))
+            if entity not in mentions:
+                continue
+            for other in sorted(mentions - {entity}):
+                triples.append({
+                    "subject": entity,
+                    "predicate": "co-mentioned-in",
+                    "object": other,
+                    "valid_from": session_date,
+                    "source_file": str(session.relative_to(vault_root)),
+                })
+        return {"entity": entity, "as_of": as_of, "triples": triples}
 
     # ------------------------------------------------------------------
     # handle_timeline
@@ -208,15 +252,46 @@ class MnemosApp:
         from_date: Optional[str] = None,
         to_date: Optional[str] = None,
     ) -> list:
-        """Return timeline of triples for an entity, optionally filtered by date range."""
-        entries = self.graph.timeline(entity=entity)
+        """Chronological list of Sessions mentioning ``entity`` via wikilink.
 
-        if from_date is not None:
-            entries = [e for e in entries if e.get("valid_from") and e["valid_from"] >= from_date]
-        if to_date is not None:
-            entries = [e for e in entries if e.get("valid_from") and e["valid_from"] <= to_date]
+        v1.0: scans ``Sessions/<date>-<slug>.md`` for ``[[entity]]`` mentions,
+        sorts ascending by frontmatter ``date``, and returns one entry per
+        session. ``from_date`` / ``to_date`` are optional ISO-string bounds.
+        """
+        from mnemos.obsidian import parse_frontmatter
 
-        return entries
+        sessions_dir = Path(self.config.vault_path) / "Sessions"
+        if not sessions_dir.exists():
+            return []
+
+        entity_pattern = re.compile(r"\[\[" + re.escape(entity) + r"\]\]")
+        vault_root = Path(self.config.vault_path)
+        timeline: list[dict] = []
+        for session in sorted(sessions_dir.glob("*.md")):
+            try:
+                content = session.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            if not entity_pattern.search(content):
+                continue
+            try:
+                fm, _ = parse_frontmatter(session)
+            except Exception:
+                fm = {}
+            date = _coerce_date(fm.get("date"))
+            if from_date is not None and date is not None and date < from_date:
+                continue
+            if to_date is not None and date is not None and date > to_date:
+                continue
+            timeline.append({
+                "subject": entity,
+                "predicate": "mentioned-in",
+                "object": session.name,
+                "valid_from": date,
+                "source_file": str(session.relative_to(vault_root)),
+            })
+        timeline.sort(key=lambda e: e.get("valid_from") or "")
+        return timeline
 
     # ------------------------------------------------------------------
     # handle_wake_up

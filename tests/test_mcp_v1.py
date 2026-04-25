@@ -207,3 +207,62 @@ def test_recall_l2_returns_deprecated_marker(tmp_path: Path) -> None:
         assert result.get("deprecated") is True
     finally:
         app.close()
+
+
+# ---------------------------------------------------------------------------
+# Task 21: mnemos_graph + mnemos_timeline — wikilink-based
+# ---------------------------------------------------------------------------
+
+
+def test_mnemos_graph_returns_wikilink_neighbors(tmp_path):
+    """v1.0: handle_graph reads vault wikilinks instead of SQLite triples."""
+    from mnemos.server import MnemosApp
+    from mnemos.config import MnemosConfig
+    vault = tmp_path / "vault"
+    (vault / "Sessions").mkdir(parents=True)
+    (vault / "Sessions" / "2026-04-01-test1.md").write_text(
+        "---\ndate: 2026-04-01\n---\n\n[[Mnemos]] is the project. [[Tugra]] works on it.",
+        encoding="utf-8",
+    )
+    (vault / "Sessions" / "2026-04-02-test2.md").write_text(
+        "---\ndate: 2026-04-02\n---\n\n[[Mnemos]] uses [[Supabase]].",
+        encoding="utf-8",
+    )
+    cfg = MnemosConfig(vault_path=str(vault), languages=["en"])
+    app = MnemosApp(cfg, chromadb_in_memory=True)
+    try:
+        result = app.handle_graph(entity="Mnemos")
+        assert "triples" in result
+        assert any("Tugra" in str(t) for t in result["triples"]) \
+            or any("Supabase" in str(t) for t in result["triples"])
+    finally:
+        app.close()
+
+
+def test_mnemos_timeline_returns_chronological_mentions(tmp_path):
+    """v1.0: handle_timeline reads vault wikilinks instead of SQLite triples."""
+    from mnemos.server import MnemosApp
+    from mnemos.config import MnemosConfig
+    vault = tmp_path / "vault"
+    (vault / "Sessions").mkdir(parents=True)
+    (vault / "Sessions" / "2026-04-01-x.md").write_text(
+        "---\ndate: 2026-04-01\n---\n\n[[Mnemos]] launched.",
+        encoding="utf-8",
+    )
+    (vault / "Sessions" / "2026-04-15-y.md").write_text(
+        "---\ndate: 2026-04-15\n---\n\n[[Mnemos]] v0.4 work.",
+        encoding="utf-8",
+    )
+    cfg = MnemosConfig(vault_path=str(vault), languages=["en"])
+    app = MnemosApp(cfg, chromadb_in_memory=True)
+    try:
+        result = app.handle_timeline(entity="Mnemos")
+        assert isinstance(result, list)
+        assert len(result) >= 2
+        # Sorted by valid_from / date asc
+        dates = [r.get("valid_from") or r.get("date") for r in result]
+        # Filter None values for safe comparison
+        non_none_dates = [d for d in dates if d is not None]
+        assert non_none_dates == sorted(non_none_dates)
+    finally:
+        app.close()

@@ -111,23 +111,26 @@ def test_app_recall(config: MnemosConfig) -> None:
 
 
 def test_app_graph(config: MnemosConfig) -> None:
-    """add triple, query graph, verify relation."""
-    app = MnemosApp(config, chromadb_in_memory=True)
-
-    app.graph.add_triple(
-        subject="ProcureTrack",
-        predicate="uses",
-        obj="Supabase",
+    """v1.0: graph reads vault wikilinks — co-mentioned-in triples."""
+    sessions_dir = Path(config.vault_path) / "Sessions"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    (sessions_dir / "2026-01-01-uses.md").write_text(
+        "---\ndate: 2026-01-01\n---\n\n[[ProcureTrack]] uses [[Supabase]] for storage.",
+        encoding="utf-8",
     )
 
-    result = app.handle_graph(entity="ProcureTrack")
+    app = MnemosApp(config, chromadb_in_memory=True)
+    try:
+        result = app.handle_graph(entity="ProcureTrack")
 
-    assert "entity" in result
-    assert "triples" in result
-    assert result["entity"] == "ProcureTrack"
+        assert "entity" in result
+        assert "triples" in result
+        assert result["entity"] == "ProcureTrack"
 
-    predicates = [t["predicate"] for t in result["triples"]]
-    assert "uses" in predicates
+        objects = [t["object"] for t in result["triples"]]
+        assert "Supabase" in objects
+    finally:
+        app.close()
 
 
 # ---------------------------------------------------------------------------
@@ -136,30 +139,30 @@ def test_app_graph(config: MnemosConfig) -> None:
 
 
 def test_app_timeline(config: MnemosConfig) -> None:
-    """add 2 triples with dates, verify timeline order."""
+    """v1.0: timeline reads vault wikilinks, ordered ASC by frontmatter date."""
+    sessions_dir = Path(config.vault_path) / "Sessions"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    (sessions_dir / "2026-01-01-launch.md").write_text(
+        "---\ndate: 2026-01-01\n---\n\n[[ProcureTrack]] launched MVP.",
+        encoding="utf-8",
+    )
+    (sessions_dir / "2026-03-15-deploy.md").write_text(
+        "---\ndate: 2026-03-15\n---\n\n[[ProcureTrack]] deployed to Production.",
+        encoding="utf-8",
+    )
+
     app = MnemosApp(config, chromadb_in_memory=True)
+    try:
+        timeline = app.handle_timeline(entity="ProcureTrack")
 
-    app.graph.add_triple(
-        subject="ProcureTrack",
-        predicate="launched",
-        obj="MVP",
-        valid_from="2026-01-01",
-    )
-    app.graph.add_triple(
-        subject="ProcureTrack",
-        predicate="deployed",
-        obj="Production",
-        valid_from="2026-03-15",
-    )
+        assert isinstance(timeline, list)
+        assert len(timeline) >= 2
 
-    timeline = app.handle_timeline(entity="ProcureTrack")
-
-    assert isinstance(timeline, list)
-    assert len(timeline) >= 2
-
-    # Verify ascending order by valid_from
-    dates = [t["valid_from"] for t in timeline if t.get("valid_from")]
-    assert dates == sorted(dates)
+        # Verify ascending order by valid_from
+        dates = [t["valid_from"] for t in timeline if t.get("valid_from")]
+        assert dates == sorted(dates)
+    finally:
+        app.close()
 
 
 # ---------------------------------------------------------------------------
