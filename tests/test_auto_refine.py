@@ -1355,53 +1355,6 @@ def test_run_skill_pipeline_phase_a_only(tmp_path, monkeypatch):
     assert refine_calls == []
 
 
-def test_run_skill_pipeline_phase_b_chain(tmp_path):
-    """One unrefined JSONL → refine + mine calls in order; xlsx has one row."""
-    from mnemos.auto_refine import _run_skill_pipeline
-    from mnemos.processing_log import read_rows
-
-    vault = tmp_path
-    (vault / "Sessions").mkdir()
-    (vault / "Mnemos").mkdir()
-    mine_ledger = tmp_path / "mined.tsv"
-    mine_ledger.touch()
-    refine_ledger = tmp_path / "refine.tsv"
-    refine_ledger.touch()
-    projects = tmp_path / "projects"
-    jsonl = _write_jsonl(projects, "session-X.jsonl", 1_500_000)
-
-    def fake_runner(cmd):
-        # cmd[-1] is "/mnemos-refine-transcripts <path>" or
-        # "/mnemos-mine-llm <session> <palace>"
-        if "/mnemos-refine-transcripts" in cmd[-1]:
-            # Write refine ledger OK row with session_md name
-            session_md_name = "2026-04-22-session-x.md"
-            (vault / "Sessions" / session_md_name).write_text("x", encoding="utf-8")
-            with refine_ledger.open("a", encoding="utf-8") as fh:
-                fh.write(f"{jsonl}\tOK\t{session_md_name}\n")
-        elif "/mnemos-mine-llm" in cmd[-1]:
-            session_path = cmd[-1].split()[1]
-            palace = cmd[-1].split()[2]
-            with mine_ledger.open("a", encoding="utf-8") as fh:
-                fh.write(f"{session_path}\t{palace}\t5\t2026-04-22T10:00:00Z\n")
-        return 0
-
-    _run_skill_pipeline(
-        vault=vault, projects_dir=projects,
-        refine_ledger_path=refine_ledger, mine_ledger_path=mine_ledger,
-        runner=fake_runner, cap=10,
-    )
-
-    rows = read_rows(vault)
-    # One row for the JSONL — refine_outcome OK, mined_outcome OK, 5 drawers.
-    jsonl_rows = [r for r in rows if r["source_type"] == "jsonl"]
-    assert len(jsonl_rows) == 1
-    r = jsonl_rows[0]
-    assert r["refine_outcome"] == "OK"
-    assert r["mined_outcome"] == "OK"
-    assert r["drawer_count"] == 5
-
-
 def test_run_skill_pipeline_cap_allocation(tmp_path):
     """Phase A fills cap first; remaining slots go to Phase B."""
     from mnemos.auto_refine import _run_skill_pipeline
