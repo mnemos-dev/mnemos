@@ -220,59 +220,12 @@ class TestPendingHelpers:
         assert entry.last_action == "awaiting-refine-skill"
 
 
-class TestImportClaudeCode:
-    """test_import_claude_code — register-only (no mining), refine hint shown."""
-
-    def _args(self, projects_dir: Path, limit: int = 0):
-        import argparse
-        return argparse.Namespace(
-            vault=None, projects_dir=str(projects_dir), limit=limit,
-        )
-
-    def test_registers_as_pending_with_refine_action(
-        self, config, tmp_vault: Path, tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture,
-    ) -> None:
-        from mnemos import pending
-        from mnemos.cli import _import_claude_code
-
-        cc_dir = tmp_path / "claude-projects"
-        (cc_dir / "proj").mkdir(parents=True)
-        for i in range(3):
-            (cc_dir / "proj" / f"s{i}.jsonl").write_text("{}", encoding="utf-8")
-
-        _import_claude_code(config, self._args(cc_dir))
-
-        entry = pending.load(tmp_vault).get("claude-code-jsonl")
-        assert entry.status == "pending"
-        assert entry.last_action == "awaiting-refine-skill"
-        assert entry.total == 3
-
-        out = capsys.readouterr().out
-        assert "/mnemos-refine-transcripts" in out
-
-    def test_limit_caps_registered_count(
-        self, config, tmp_vault: Path, tmp_path: Path,
-    ) -> None:
-        from mnemos import pending
-        from mnemos.cli import _import_claude_code
-
-        cc_dir = tmp_path / "claude-projects"
-        (cc_dir / "proj").mkdir(parents=True)
-        for i in range(10):
-            (cc_dir / "proj" / f"s{i}.jsonl").write_text("{}", encoding="utf-8")
-
-        _import_claude_code(config, self._args(cc_dir, limit=4))
-        assert pending.load(tmp_vault).get("claude-code-jsonl").total == 4
-
-    def test_missing_projects_dir_exits(
-        self, config, tmp_path: Path,
-    ) -> None:
-        from mnemos.cli import _import_claude_code
-
-        ghost = tmp_path / "no-such-dir"
-        with pytest.raises(SystemExit, match="Not a directory"):
-            _import_claude_code(config, self._args(ghost))
+# TestImportClaudeCode (was: register-only `mnemos import claude-code` path)
+# was REMOVED in v1.0. The /mnemos-refine-transcripts skill now scans
+# ~/.claude/projects directly, so the separate registration step + the
+# `_import_claude_code` helper are gone. See mnemos/cli.py `cmd_import`
+# for the friendly removal message that fires when users invoke the
+# legacy subcommand.
 
 
 class TestImportPathValidation:

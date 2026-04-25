@@ -246,8 +246,11 @@ def test_run_invokes_refine_for_each_picked_jsonl(tmp_path):
     assert any("/mnemos-refine-transcripts" in c and str(b) in c for c in calls)
     assert any("/mnemos-refine-transcripts" in c and str(a) in c for c in calls)
     assert any("--dangerously-skip-permissions" in c for c in calls)
-    assert any("mnemos" in c and "mine" in c for c in calls)
-    assert any("-m" in c and "mnemos.cli" in c and "--vault" in c and "mine" in c for c in calls)
+    # v1.0 narrative-first pivot: legacy `mnemos mine` fallback was removed —
+    # the hook now only fires refine subprocesses, no mining anywhere.
+    assert not any("/mnemos-mine-llm" in c for c in calls), (
+        f"v1.0 invariant: no mining subprocess; got {calls}"
+    )
 
 
 def test_run_updates_reminder_timestamp_when_active(tmp_path):
@@ -415,156 +418,6 @@ def test_run_skips_mining_when_no_picked(tmp_path):
 
     mine_calls = [c for c in calls if "mine" in c]
     assert mine_calls == [], f"runner should not be invoked when picked=[]; got {calls}"
-
-
-def test_run_still_mines_when_picked_nonempty(tmp_path):
-    """Sanity guard: behavior change must not regress the picked>0 case."""
-    from mnemos.auto_refine import run
-
-    projects = tmp_path / "projects"
-    a = _write_jsonl(projects, "a.jsonl", 1_000_000)
-    ledger = tmp_path / "ledger.tsv"
-    ledger.touch()
-
-    calls: list[list[str]] = []
-
-    def recording_runner(cmd):
-        calls.append([str(c) for c in cmd])
-        return 0
-
-    run(
-        vault=tmp_path,
-        projects_dir=projects,
-        ledger_path=ledger,
-        picked=[a],
-        reminder_active=False,
-        started_at="2026-04-16T10:00:00+00:00",
-        runner=recording_runner,
-    )
-
-    assert any("mine" in c for c in calls), f"mine must still run when picked is non-empty; got {calls}"
-
-
-def test_run_fires_skill_pipeline_when_picked_empty(tmp_path, monkeypatch):
-    """Regression for 2026-04-22 incident: `if picked:` gate stranded
-    Phase A (unmined Sessions) whenever the refine-picker returned empty
-    (e.g. all unprocessed JSONLs belonged to live sessions). Skill mode
-    must enter the pipeline regardless of picked."""
-    from mnemos.auto_refine import run
-
-    vault = tmp_path
-    (vault / "mnemos.yaml").write_text("mine_mode: skill\n", encoding="utf-8")
-    (vault / "Sessions").mkdir()
-    (vault / "Mnemos").mkdir()
-    # One unmined Session md → Phase A will pick it
-    session_md = vault / "Sessions" / "2026-04-22-standalone.md"
-    session_md.write_text("x", encoding="utf-8")
-
-    projects = tmp_path / "projects"
-    projects.mkdir()
-    refine_ledger = tmp_path / "refine.tsv"
-    refine_ledger.touch()
-    mine_ledger = tmp_path / "mine_ledger.tsv"
-    mine_ledger.touch()
-    monkeypatch.setenv("MNEMOS_MINE_LEDGER", str(mine_ledger))
-
-    calls: list[list[str]] = []
-
-    def recording_runner(cmd):
-        calls.append([str(c) for c in cmd])
-        if "/mnemos-mine-llm" in cmd[-1]:
-            parts = cmd[-1].split()
-            with mine_ledger.open("a", encoding="utf-8") as fh:
-                fh.write(f"{parts[1]}\t{parts[2]}\t4\t2026-04-22T17:00:00Z\n")
-        return 0
-
-    run(
-        vault=vault,
-        projects_dir=projects,
-        ledger_path=refine_ledger,
-        picked=[],  # empty — gate under test
-        reminder_active=False,
-        started_at="2026-04-22T17:00:00+00:00",
-        runner=recording_runner,
-    )
-
-    # Phase A must have fired for the standalone Session md.
-    mine_calls = [c for c in calls if any("/mnemos-mine-llm" in s for s in c)]
-    assert len(mine_calls) == 1, (
-        f"Phase A mine must fire even when picked=[]; got calls={calls}"
-    )
-    # Assert the target is our Session md.
-    assert "2026-04-22-standalone.md" in " ".join(mine_calls[0])
-
-
-def test_run_routes_to_skill_pipeline_when_mine_mode_skill(tmp_path, monkeypatch):
-    """When mnemos.yaml has mine_mode: skill, hook calls _run_skill_pipeline
-    (not the legacy regex `mnemos mine` subprocess)."""
-    from mnemos.auto_refine import run
-
-    projects = tmp_path / "projects"
-    a = _write_jsonl(projects, "a.jsonl", 1_000_000)
-    ledger = tmp_path / "ledger.tsv"
-    ledger.touch()
-    (tmp_path / "mnemos.yaml").write_text("mine_mode: skill\n", encoding="utf-8")
-    (tmp_path / "Sessions").mkdir()
-    (tmp_path / "Mnemos").mkdir()
-    mine_ledger = tmp_path / "mine_ledger.tsv"
-    mine_ledger.touch()
-    monkeypatch.setenv("MNEMOS_MINE_LEDGER", str(mine_ledger))
-
-    calls: list[list[str]] = []
-
-    def recording_runner(cmd):
-        calls.append([str(c) for c in cmd])
-        # Simulate refine OK to enable Phase B chain
-        if "/mnemos-refine-transcripts" in cmd[-1]:
-            jsonl_path = cmd[-1].split(maxsplit=1)[1]
-            name = Path(jsonl_path).stem + ".md"
-            (tmp_path / "Sessions" / name).write_text("x", encoding="utf-8")
-            with ledger.open("a", encoding="utf-8") as fh:
-                fh.write(f"{jsonl_path}\tOK\t{name}\n")
-        elif "/mnemos-mine-llm" in cmd[-1]:
-            parts = cmd[-1].split()
-            with mine_ledger.open("a", encoding="utf-8") as fh:
-                fh.write(f"{parts[1]}\t{parts[2]}\t2\t2026-04-22T10:00:00Z\n")
-        return 0
-
-    run(
-        vault=tmp_path,
-        projects_dir=projects,
-        ledger_path=ledger,
-        picked=[a],
-        reminder_active=False,
-        started_at="2026-04-22T10:00:00+00:00",
-        runner=recording_runner,
-    )
-
-    # Legacy regex mine (python -m mnemos.cli ... mine Sessions) must NOT appear.
-    assert not any(
-        "mnemos.cli" in " ".join(c) and "mine" in c for c in calls
-    ), f"legacy regex mine still firing: {calls}"
-    # But /mnemos-refine-transcripts AND /mnemos-mine-llm must appear.
-    assert any("/mnemos-refine-transcripts" in " ".join(c) for c in calls)
-    assert any("/mnemos-mine-llm" in " ".join(c) for c in calls)
-
-
-def test_read_mine_mode_defaults_to_script_when_yaml_missing(tmp_path):
-    from mnemos.auto_refine import _read_mine_mode
-
-    assert _read_mine_mode(tmp_path) == "script"
-
-
-def test_read_mine_mode_parses_yaml_value(tmp_path):
-    from mnemos.auto_refine import _read_mine_mode
-
-    (tmp_path / "mnemos.yaml").write_text(
-        "search_backend: sqlite-vec\nmine_mode: skill\nother: x\n", encoding="utf-8"
-    )
-    assert _read_mine_mode(tmp_path) == "skill"
-
-    (tmp_path / "mnemos.yaml").write_text("mine_mode: 'script'\n", encoding="utf-8")
-    assert _read_mine_mode(tmp_path) == "script"
 
 
 def test_run_writes_last_outcome_ok_when_picked(tmp_path):
@@ -1210,83 +1063,6 @@ def test_run_passes_triggering_session_id_through_to_status(tmp_path):
     assert data.get("triggering_session_id") == "my-session-xyz"
 
 
-def test_pick_unprocessed_jsonls_returns_all_under_limit(tmp_path):
-    from mnemos.auto_refine import _pick_unprocessed_jsonls
-
-    projects = tmp_path / "projects"
-    # Create 5 fresh JSONLs, none in ledger
-    old = 1_000_000
-    paths = [_write_jsonl(projects, f"s{i}.jsonl", old + i) for i in range(5)]
-    ledger = tmp_path / "ledger.tsv"
-    ledger.touch()
-
-    picked = _pick_unprocessed_jsonls(
-        projects_dir=projects, ledger_path=ledger, limit=10,
-        exclude=set(), active_paths=set(),
-    )
-    assert len(picked) == 5
-    # mtime desc order — s4 newest
-    assert picked[0].name == "s4.jsonl"
-
-
-def test_pick_unprocessed_jsonls_honors_limit(tmp_path):
-    from mnemos.auto_refine import _pick_unprocessed_jsonls
-
-    projects = tmp_path / "projects"
-    for i in range(7):
-        _write_jsonl(projects, f"s{i}.jsonl", 1_000_000 + i)
-    ledger = tmp_path / "ledger.tsv"
-    ledger.touch()
-
-    picked = _pick_unprocessed_jsonls(
-        projects_dir=projects, ledger_path=ledger, limit=3,
-        exclude=set(), active_paths=set(),
-    )
-    assert len(picked) == 3
-
-
-def test_pick_unmined_sessions_returns_unmined(tmp_path):
-    from mnemos.auto_refine import _pick_unmined_sessions
-
-    vault = tmp_path
-    sessions = vault / "Sessions"
-    sessions.mkdir()
-    (sessions / "2026-04-20-a.md").write_text("x", encoding="utf-8")
-    (sessions / "2026-04-21-b.md").write_text("x", encoding="utf-8")
-    (sessions / "2026-04-22-c.md").write_text("x", encoding="utf-8")
-    # Mine ledger: only b.md processed
-    mine_ledger = tmp_path / "mined.tsv"
-    palace = str(vault / "Mnemos")
-    mine_ledger.write_text(
-        f"{sessions / '2026-04-21-b.md'}\t{palace}\t3\t2026-04-21T10:00:00Z\n",
-        encoding="utf-8",
-    )
-
-    picked = _pick_unmined_sessions(
-        vault=vault, mine_ledger_path=mine_ledger,
-        palace_root=vault / "Mnemos", limit=10,
-    )
-    names = {p.name for p in picked}
-    assert names == {"2026-04-20-a.md", "2026-04-22-c.md"}
-
-
-def test_pick_unmined_sessions_honors_limit(tmp_path):
-    from mnemos.auto_refine import _pick_unmined_sessions
-
-    sessions = tmp_path / "Sessions"
-    sessions.mkdir()
-    for i in range(5):
-        (sessions / f"2026-04-2{i}-s.md").write_text("x", encoding="utf-8")
-    mine_ledger = tmp_path / "mined.tsv"
-    mine_ledger.touch()
-
-    picked = _pick_unmined_sessions(
-        vault=tmp_path, mine_ledger_path=mine_ledger,
-        palace_root=tmp_path / "Mnemos", limit=2,
-    )
-    assert len(picked) == 2
-
-
 def test_latest_session_for_jsonl_returns_path(tmp_path):
     from mnemos.auto_refine import _latest_session_for_jsonl
 
@@ -1312,92 +1088,66 @@ def test_latest_session_for_jsonl_missing_returns_none(tmp_path):
     assert result is None
 
 
-def test_run_skill_pipeline_phase_a_only(tmp_path, monkeypatch):
-    """When there are unmined Sessions but no unrefined JSONLs, only Phase A runs."""
-    from mnemos.auto_refine import _run_skill_pipeline
+# ---------------------------------------------------------------------------
+# v1.0 narrative-first pivot — refine-only invariant
+# ---------------------------------------------------------------------------
 
-    vault = tmp_path
-    (vault / "Sessions").mkdir()
-    (vault / "Mnemos").mkdir()
-    # Two Sessions, neither in mine ledger
-    (vault / "Sessions" / "2026-04-21-a.md").write_text("x", encoding="utf-8")
-    (vault / "Sessions" / "2026-04-22-b.md").write_text("x", encoding="utf-8")
-    mine_ledger = tmp_path / "mined.tsv"
-    mine_ledger.touch()
-    refine_ledger = tmp_path / "refine.tsv"
-    refine_ledger.touch()
+
+def test_auto_refine_only_refines_no_mining_call(tmp_path):
+    """v1.0: auto_refine pipeline must not invoke any mining subprocess.
+
+    After Task 4 the hook only runs `claude --print /mnemos-refine-transcripts`
+    on each picked JSONL — no Phase A unmined-Sessions mine, no Phase B mine
+    chain, no legacy `mnemos.cli mine` regex fallback. mine_mode is irrelevant;
+    refine-only is the invariant regardless of yaml content.
+    """
+    from mnemos.auto_refine import run
+
     projects = tmp_path / "projects"
-    projects.mkdir()
+    a = _write_jsonl(projects, "a.jsonl", 1_000_000, user_turns=5)
+    b = _write_jsonl(projects, "b.jsonl", 2_000_000, user_turns=5)
+
+    # Set mine_mode: skill in mnemos.yaml — under v0.4 this would have triggered
+    # _run_skill_pipeline; under v1.0 it must be a no-op for the runner.
+    (tmp_path / "mnemos.yaml").write_text("mine_mode: skill\n", encoding="utf-8")
+    (tmp_path / "Sessions").mkdir()
+    (tmp_path / "Mnemos").mkdir()
+
+    # An unmined Session md — under v0.4 Phase A would mine this; under v1.0
+    # the refine-only path must ignore it entirely.
+    (tmp_path / "Sessions" / "2026-04-25-stale.md").write_text("x", encoding="utf-8")
+
+    ledger = tmp_path / "ledger.tsv"
+    ledger.touch()
 
     calls: list[list[str]] = []
 
-    def fake_runner(cmd):
+    def recording_runner(cmd):
         calls.append([str(c) for c in cmd])
-        # Simulate mine OK — append to mine_ledger
-        if "/mnemos-mine-llm" in cmd[-1]:
-            parts = cmd[-1].split()
-            session_path = parts[1]
-            palace = parts[2]
-            with mine_ledger.open("a", encoding="utf-8") as fh:
-                fh.write(f"{session_path}\t{palace}\t3\t2026-04-22T10:00:00Z\n")
         return 0
 
-    _run_skill_pipeline(
-        vault=vault, projects_dir=projects,
-        refine_ledger_path=refine_ledger, mine_ledger_path=mine_ledger,
-        runner=fake_runner, cap=10,
+    run(
+        vault=tmp_path,
+        projects_dir=projects,
+        ledger_path=ledger,
+        picked=[a, b],
+        reminder_active=False,
+        started_at="2026-04-25T10:00:00+00:00",
+        runner=recording_runner,
     )
 
-    # Two /mnemos-mine-llm calls, no /mnemos-refine-transcripts
-    mine_calls = [c for c in calls if any("/mnemos-mine-llm" in s for s in c)]
+    # Every recorded subprocess invocation must be a refine call. No mining.
+    for cmd in calls:
+        cmd_str = " ".join(cmd)
+        assert "/mnemos-mine-llm" not in cmd_str, f"mining subprocess invoked: {cmd_str}"
+        assert "mnemos.cli" not in cmd_str or "mine" not in cmd, (
+            f"legacy `mnemos mine` fallback invoked: {cmd_str}"
+        )
+        assert "Phase A" not in cmd_str
+        assert "Phase B" not in cmd_str
+
+    # And refine actually fired for both picked JSONLs.
     refine_calls = [c for c in calls if any("/mnemos-refine-transcripts" in s for s in c)]
-    assert len(mine_calls) == 2
-    assert refine_calls == []
-
-
-def test_run_skill_pipeline_cap_allocation(tmp_path):
-    """Phase A fills cap first; remaining slots go to Phase B."""
-    from mnemos.auto_refine import _run_skill_pipeline
-
-    vault = tmp_path
-    (vault / "Sessions").mkdir()
-    (vault / "Mnemos").mkdir()
-    # 7 unmined Sessions + 15 unrefined JSONLs + cap=10 ⇒ 7 Phase A + 3 Phase B.
-    for i in range(7):
-        (vault / "Sessions" / f"2026-04-1{i}-s.md").write_text("x", encoding="utf-8")
-    mine_ledger = tmp_path / "mined.tsv"
-    mine_ledger.touch()
-    refine_ledger = tmp_path / "refine.tsv"
-    refine_ledger.touch()
-    projects = tmp_path / "projects"
-    for i in range(15):
-        _write_jsonl(projects, f"s{i}.jsonl", 1_000_000 + i)
-
-    calls: list[str] = []
-
-    def fake_runner(cmd):
-        calls.append(cmd[-1])
-        if "/mnemos-refine-transcripts" in cmd[-1]:
-            jsonl_path = cmd[-1].split(maxsplit=1)[1]
-            name = Path(jsonl_path).stem + ".md"
-            (vault / "Sessions" / name).write_text("x", encoding="utf-8")
-            with refine_ledger.open("a", encoding="utf-8") as fh:
-                fh.write(f"{jsonl_path}\tOK\t{name}\n")
-        elif "/mnemos-mine-llm" in cmd[-1]:
-            parts = cmd[-1].split()
-            with mine_ledger.open("a", encoding="utf-8") as fh:
-                fh.write(f"{parts[1]}\t{parts[2]}\t1\t2026-04-22T10:00:00Z\n")
-        return 0
-
-    _run_skill_pipeline(
-        vault=vault, projects_dir=projects,
-        refine_ledger_path=refine_ledger, mine_ledger_path=mine_ledger,
-        runner=lambda c: fake_runner(c), cap=10,
+    assert len(refine_calls) == 2, (
+        f"expected 2 refine calls (one per picked); got {len(refine_calls)}: {calls}"
     )
-
-    # Phase A = 7 mine calls; Phase B = 3 JSONL × (1 refine + 1 mine) = 6 calls.
-    # Total: 7 + 6 = 13 subprocess invocations.
-    refine_calls = [c for c in calls if "/mnemos-refine-transcripts" in c]
-    mine_calls = [c for c in calls if "/mnemos-mine-llm" in c]
-    assert len(refine_calls) == 3
-    assert len(mine_calls) == 7 + 3  # A + B

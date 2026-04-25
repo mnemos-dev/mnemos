@@ -1,4 +1,10 @@
-"""Mnemos CLI — init, mine, search, status commands."""
+"""Mnemos CLI — init, search, status, import, install-hook commands.
+
+v1.0 narrative-first pivot removed the mining subcommands (`mine`, `catch-up`,
+`migrate`, `processing-log`, `import claude-code`). Their parsers remain as
+no-arg sentinels that route to a friendly "removed in v1.0" message — see
+`REMOVED_COMMANDS` and the dispatch in `main()`.
+"""
 from __future__ import annotations
 
 import argparse
@@ -223,9 +229,12 @@ def cmd_init(args: argparse.Namespace) -> None:
         yaml_path.write_text(yaml.dump(config_data, allow_unicode=True), encoding="utf-8")
         print(f"\n  Wrote: {yaml_path}")
 
-    # --- Create palace structure ---
+    # --- Create vault structure ---
+    # v1.0: mnemos.palace was removed; we just ensure the canonical
+    # directories exist (Sessions/ for refined transcripts, Mnemos/ for
+    # the identity placeholder hierarchy, plus the runtime data dirs that
+    # config.py promises). Task 27 (mnemos init v2) will redesign this.
     from mnemos.config import MnemosConfig
-    from mnemos.palace import Palace
 
     cfg = MnemosConfig(
         vault_path=vault_path,
@@ -233,9 +242,10 @@ def cmd_init(args: argparse.Namespace) -> None:
         use_llm=use_llm,
         search_backend=search_backend,
     )
-    palace = Palace(cfg)
-    palace.ensure_structure()
-    print(f"  Created palace structure at: {cfg.palace_dir}")
+    cfg.palace_dir.mkdir(parents=True, exist_ok=True)
+    (Path(cfg.vault_path) / "Sessions").mkdir(parents=True, exist_ok=True)
+    cfg.identity_full_path.mkdir(parents=True, exist_ok=True)
+    print(f"  Created vault structure at: {cfg.palace_dir}")
 
     # --- Identity placeholder ---
     identity_file = cfg.identity_full_path / "L0-identity.md"
@@ -464,13 +474,29 @@ def _mine_and_record(cfg, source_id: str, kind: str, root_path: str,
 
 
 def cmd_import(args: argparse.Namespace) -> None:
-    """Dispatch `mnemos import <kind>` to the right handler."""
+    """Dispatch `mnemos import <kind>` to the right handler.
+
+    v1.0: ``import claude-code`` was removed (use /mnemos-refine-transcripts
+    skill directly instead). The remaining kinds are still mining-related and
+    funnel through ``MnemosApp.handle_mine`` — Task 5/6 will revisit them.
+    """
+    if args.import_kind == "claude-code":
+        print(
+            "Error: `mnemos import claude-code` was removed in v1.0.\n"
+            "Use the /mnemos-refine-transcripts skill in a Claude Code\n"
+            "session — it scans ~/.claude/projects directly and produces\n"
+            "Sessions/<YYYY-MM-DD>-<slug>.md notes without a separate import\n"
+            "step. See https://github.com/mnemos-dev/mnemos/tree/legacy/atomic-paradigm\n"
+            "for the previous import paradigm.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
     vault_path = _resolve_vault(args.vault)
     _require_vault(vault_path, "import")
     cfg = load_config(vault_path)
 
     handler = {
-        "claude-code": _import_claude_code,
         "chatgpt": _import_chatgpt,
         "slack": _import_slack,
         "markdown": _import_markdown,
@@ -480,50 +506,10 @@ def cmd_import(args: argparse.Namespace) -> None:
     if handler is None:
         sys.exit(
             f"[mnemos import] Unknown source kind: {args.import_kind!r}.\n"
-            "Available: claude-code, chatgpt, slack, markdown, memory."
+            "Available: chatgpt, slack, markdown, memory."
         )
 
     handler(cfg, args)
-
-
-def _import_claude_code(cfg, args: argparse.Namespace) -> None:  # type: ignore[no-untyped-def]
-    """Register Claude Code JSONL transcripts as pending → user runs refine skill."""
-    from mnemos import onboarding
-
-    if args.projects_dir:
-        projects = Path(args.projects_dir).expanduser().resolve()
-    else:
-        default = onboarding.default_claude_projects_dir()
-        if default is None:
-            sys.exit(
-                "[mnemos import claude-code] Could not find ~/.claude/projects.\n"
-                "Pass --projects-dir <path> explicitly."
-            )
-        projects = default
-
-    if not projects.is_dir():
-        sys.exit(f"[mnemos import claude-code] Not a directory: {projects}")
-
-    jsonls = list(projects.rglob("*.jsonl"))
-    if args.limit:
-        jsonls = jsonls[: args.limit]
-
-    if not jsonls:
-        print(f"No .jsonl files under {projects}.")
-        return
-
-    onboarding.register_pending(
-        cfg.vault_path, source_id="claude-code-jsonl", kind="raw-jsonl",
-        root_path=str(projects), file_count=len(jsonls),
-        last_action="awaiting-refine-skill",
-    )
-    print(
-        f"Registered {len(jsonls)} JSONL transcripts under {projects}.\n"
-        "Next step:\n"
-        "  In a Claude Code session, run /mnemos-refine-transcripts to\n"
-        "  convert these into Sessions/<YYYY-MM-DD>-<slug>.md notes,\n"
-        "  then run `mnemos import markdown <vault>/Sessions` to mine them."
-    )
 
 
 def _import_single_file_export(cfg, args: argparse.Namespace,
@@ -688,230 +674,22 @@ def _install_recall_hook_prompt(lang: str = "en", vault: Path = Path(".")) -> No
 
 
 # ---------------------------------------------------------------------------
-# cmd_mine
+# Removed-command shim — friendly error for v1.0-deleted subcommands.
 # ---------------------------------------------------------------------------
 
 
-def cmd_mine(args: argparse.Namespace) -> None:
-    """Mine a file or directory, or do a full atomic rebuild."""
-    vault_path = _resolve_vault(args.vault)
-    _require_vault(vault_path, "mine")
-
-    cfg = load_config(vault_path)
-
-    if args.pilot_llm:
-        _run_pilot_llm(vault_path, args)
-        return
-
-    if args.from_palace:
-        _run_from_palace(vault_path, cfg, args.from_palace)
-        return
-
-    if args.rebuild:
-        from mnemos.rebuild import rebuild_vault, RebuildError
-        try:
-            result = rebuild_vault(
-                cfg,
-                explicit_path=args.path if args.path else None,
-                dry_run=args.dry_run,
-                yes=args.yes,
-                backup=not args.no_backup,
-            )
-            print(json.dumps(result, indent=2, ensure_ascii=False))
-        except RebuildError as e:
-            print(f"Rebuild error: {e}", file=sys.stderr)
-            sys.exit(2)
-        return
-
-    from mnemos.server import MnemosApp
-
-    with MnemosApp(cfg) as app:
-        result = app.handle_mine(
-            path=args.path,
-            use_llm=args.llm,
-        )
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-
-
-def _run_from_palace(vault_path: Path, cfg, palace_path: str) -> None:
-    """Frontmatter-authoritative re-index: read drawers from an existing
-    palace root, drop + bulk-insert the mined collection. No mining.
-    """
-    from mnemos.palace_indexer import index_palace
-    from mnemos.search import SearchEngine
-
-    palace = Path(palace_path)
-    if not palace.is_absolute():
-        palace = vault_path / palace
-    if not palace.exists():
-        print(f"Palace root does not exist: {palace}", file=sys.stderr)
-        sys.exit(2)
-
-    print(f"Re-indexing from palace: {palace}")
-    with SearchEngine(cfg) as backend:
-        stats = index_palace(backend, palace)
-
-    print(f"  Dropped mined+raw collections: {stats.dropped_first}")
-    print(f"  Drawers indexed:               {stats.indexed}")
-    if stats.skipped:
-        print(f"  Skipped (bad frontmatter):     {stats.skipped}")
-    if stats.errors:
-        for e in stats.errors[:5]:
-            print(f"    - {e}")
-        if len(stats.errors) > 5:
-            print(f"    - ...and {len(stats.errors) - 5} more")
-
-    print()
-    print("Note: raw collection is empty. Re-run `mnemos mine Sessions/`")
-    print("to repopulate raw if your search workflow relies on it.")
-
-
-def _format_duration_estimate(seconds: int) -> str:
-    """Render a duration for the Pilot plan display.
-
-    Under 60 min → minutes; else hours with 1 decimal. Always prefixed with ``~``.
-    """
-    if seconds < 60:
-        return f"~{seconds}s"
-    minutes = seconds // 60
-    if minutes < 60:
-        return f"~{minutes} min"
-    return f"~{minutes/60:.1f}h"
-
-
-def _run_pilot_llm(vault_path: Path, args: argparse.Namespace) -> None:
-    """Drive the skill-mine pilot: plan, confirm, run, report, hand-off."""
-    from mnemos.pilot import (
-        PilotError,
-        build_plan,
-        run_pilot,
-        source_breakdown,
-        write_pilot_report,
-    )
-
-    try:
-        plan = build_plan(vault_path, limit=args.pilot_limit)
-    except PilotError as e:
-        print(f"Pilot error: {e}", file=sys.stderr)
-        sys.exit(2)
-
-    limit_label = "all" if plan.limit == 0 else str(plan.limit)
-    breakdown = source_breakdown(plan.vault, plan.sources)
-    breakdown_str = " + ".join(f"{n} {label}" for label, n in breakdown if n > 0)
-    sources_line = f"{plan.source_count} files"
-    if breakdown_str:
-        sources_line += f" ({breakdown_str})"
-
-    print(f"Pilot plan:")
-    print(f"  Vault:          {plan.vault}")
-    print(f"  Sources:        {sources_line} (limit={limit_label})")
-    print(f"  Script palace:  {plan.script_palace}")
-    print(f"  Skill palace:   {plan.skill_palace}")
-    # Empirical per-source latency from 2026-04-19 kasamd pilot: ~260s
-    # sequential (long sessions, multi-drawer write + LLM reasoning). Spec
-    # originally estimated 25s which was 10x off. See docs/pilots/
-    # 2026-04-19-v0.4-phase1-real-vault-pilot.md Finding 1.
-    est_sec_seq = plan.source_count * 260
-    parallel = max(1, getattr(args, "parallel", 1) or 1)
-    est_sec_par = est_sec_seq // parallel if parallel > 1 else est_sec_seq
-    if parallel > 1:
-        est_line = (
-            f"  Estimated time: {_format_duration_estimate(est_sec_seq)} sequential "
-            f"/ {_format_duration_estimate(est_sec_par)} paralel-{parallel}"
-        )
-    else:
-        est_line = (
-            f"  Estimated time: {_format_duration_estimate(est_sec_seq)} sequential "
-            f"(pass --parallel N for N-way concurrency)"
-        )
-    print(est_line)
-    print()
-
-    if not args.yes:
-        try:
-            ans = input("Proceed? [y/N] ").strip().lower()
-        except EOFError:
-            ans = ""
-        if ans not in ("y", "yes"):
-            print("Aborted.")
-            return
-
-    mode_word = f"parallel-{parallel}" if parallel > 1 else "sequential"
-    print(f"Running skill-mine against each source ({mode_word})...")
-
-    progress_state = {"last_milestone": 0}
-
-    def _fmt_tok(n: int) -> str:
-        """Compact token count: 842000 → '842k', 1200000 → '1.2M'."""
-        if n >= 1_000_000:
-            return f"{n/1_000_000:.1f}M"
-        if n >= 1_000:
-            return f"{n//1_000}k"
-        return str(n)
-
-    def _on_progress(ev: dict) -> None:
-        idx = ev["index"]
-        total = ev["total"]
-        src_name = Path(ev["source"]).name
-        outcome = ev["outcome"]
-        drawers = ev["drawer_count"]
-        reason = ev.get("reason") or ""
-        usage = ev.get("usage")
-        cum = ev.get("cumulative_tokens", 0)
-        # Per-line: source token + running total side-by-side. Σ = sum of
-        # all completed sources so far (updates atomically with this row).
-        if usage is not None:
-            tok_str = f" · {_fmt_tok(usage.total())} tok (Σ {_fmt_tok(cum)})"
-        else:
-            tok_str = ""
-        if outcome == "ok":
-            line = f"[{idx}/{total}] OK    {src_name} → {drawers} drawers{tok_str}"
-            if reason:
-                line += f" ({reason})"
-        elif outcome == "skip":
-            line = f"[{idx}/{total}] SKIP  {src_name}{tok_str} — {reason or 'no reason'}"
-        else:
-            line = f"[{idx}/{total}] ERROR {src_name}{tok_str} — {reason or 'unknown'}"
-        print(line, flush=True)
-
-        # Every 10 completed, emit a monitor-friendly summary line with ETA
-        # and running token burn — lets you track both pace and budget.
-        if idx - progress_state["last_milestone"] >= 10 or idx == total:
-            progress_state["last_milestone"] = idx
-            elapsed = ev["elapsed_sec"]
-            eta_str = "?"
-            if idx > 0:
-                eta_sec = (total - idx) * elapsed / idx
-                eta_str = f"~{_format_duration_estimate(int(eta_sec))}"
-            cum = ev.get("cumulative_tokens", 0)
-            print(
-                f"Progress: {idx}/{total} done · OK={ev['ok_count']} "
-                f"SKIP={ev['skip_count']} ERROR={ev['error_count']} · "
-                f"{_fmt_tok(cum)} tok · {elapsed/60:.1f}min elapsed · ETA {eta_str}",
-                flush=True,
-            )
-
-    result = run_pilot(plan, parallel=parallel, on_progress=_on_progress)
-    path = write_pilot_report(result)
-
-    print()
+def cmd_removed(args: argparse.Namespace) -> None:
+    """Print a friendly removal message for any v1.0-removed subcommand."""
+    cmd_name = getattr(args, "command", None) or "<unknown>"
     print(
-        f"Pilot complete: OK={result.ok_count}, SKIP={result.skip_count}, "
-        f"ERROR={result.error_count}, drawers={result.total_drawers}"
+        f"Error: `mnemos {cmd_name}` was removed in v1.0.\n"
+        f"The mining/drawer paradigm is gone — Sessions/<date>-<slug>.md is\n"
+        f"now the canonical memory unit. See\n"
+        f"https://github.com/mnemos-dev/mnemos/tree/legacy/atomic-paradigm\n"
+        f"for the previous paradigm.",
+        file=sys.stderr,
     )
-    print(
-        f"Tokens consumed: {result.skill_total_tokens.total():,} "
-        f"(input={result.skill_total_tokens.input_tokens:,}, "
-        f"output={result.skill_total_tokens.output_tokens:,})"
-    )
-    print(f"Elapsed: {result.skill_elapsed_sec:.1f}s")
-    print(f"Report: {path}")
-    print()
-    print("Next:")
-    print("  1. Review the report and run /mnemos-compare-palaces in Claude Code")
-    print("  2. Pick one mode:")
-    print("       mnemos pilot --accept script   # keep script-mine")
-    print("       mnemos pilot --accept skill    # switch to skill-mine")
+    sys.exit(2)
 
 
 # ---------------------------------------------------------------------------
@@ -956,101 +734,6 @@ def cmd_search(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 # cmd_status
 # ---------------------------------------------------------------------------
-
-
-def cmd_migrate(args: argparse.Namespace) -> None:
-    """Migrate the vault's vector backend (3.14b)."""
-    vault_path = _resolve_vault(args.vault)
-    _require_vault(vault_path, "migrate")
-
-    cfg = load_config(vault_path)
-
-    from mnemos.migrate import migrate as run_migrate
-
-    if args.dry_run:
-        result = run_migrate(cfg, new_backend=args.backend, dry_run=True)
-    else:
-        if cfg.search_backend != args.backend:
-            print(
-                f"Migrating {cfg.search_backend} → {args.backend}. "
-                f"Rebuild may take several minutes. Do not Ctrl+C."
-            )
-        result = run_migrate(
-            cfg,
-            new_backend=args.backend,
-            no_rebuild=args.no_rebuild,
-        )
-
-    _print_migration_result(result, cfg)
-
-
-def cmd_catch_up(args: argparse.Namespace) -> None:
-    """`mnemos catch-up` — run the skill-mine pipeline in foreground for backlog."""
-    from mnemos.catch_up import run_catch_up, CatchUpError
-    from mnemos.auto_refine import resolve_ledger_path, resolve_mine_ledger_path
-
-    vault_path = _resolve_vault(args.vault)
-    _require_vault(vault_path, "catch-up")
-
-    projects_dir = Path(os.environ.get("CLAUDE_PROJECTS_DIR", Path.home() / ".claude" / "projects"))
-
-    try:
-        result = run_catch_up(
-            vault=vault_path,
-            projects_dir=projects_dir,
-            refine_ledger_path=resolve_ledger_path(),
-            mine_ledger_path=resolve_mine_ledger_path(),
-            limit=args.limit,
-            parallel=args.parallel,
-            dry_run=args.dry_run,
-            yes=args.yes,
-        )
-    except CatchUpError as e:
-        print(f"catch-up error: {e}", file=sys.stderr)
-        sys.exit(2)
-
-    print()
-    print(f"Summary: {result.processed} processed · {result.errors} errors · {result.deferred} deferred")
-
-
-def _print_migration_result(result, cfg: "MnemosConfig") -> None:  # type: ignore[name-defined]
-    """Render a MigrationResult in a human-readable block."""
-    if result.status == "noop":
-        print(f"Already on backend '{result.to_backend}'. Nothing to do.")
-        return
-
-    if result.status == "dry-run":
-        plan = result.plan
-        src_list = ", ".join(f"{d}/" for d in plan.source_dirs) or "(none found)"
-        print("Migration plan (dry-run, no files changed):")
-        print(f"  From:         {plan.from_backend}")
-        print(f"  To:           {plan.to_backend}")
-        print(f"  Drawers now:  {plan.current_drawers}")
-        print(f"  Source files: {plan.source_files} .md in {src_list}")
-        if plan.current_drawers == 0:
-            print("  Note:         current index is empty — rebuild will start from scratch.")
-        elif plan.source_files == 0:
-            print("  Warning:      no source .md files found under Sessions/, Topics/, memory/.")
-            print("                Rebuild would produce an empty index. Pass --no-rebuild to")
-            print("                update yaml only, or restore your source files before running.")
-        print(f"  Time est.:    {plan.format_estimate()} (based on 0.46 s/drawer ±30%)")
-        return
-
-    # migrated
-    delta = result.drawers_after - result.drawers_before
-    sign = "+" if delta >= 0 else ""
-    print(f"Migrated {result.from_backend} → {result.to_backend}.")
-    print(f"  Drawers: {result.drawers_before} → {result.drawers_after}  ({sign}{delta})")
-    if result.backup_path:
-        print(f"  Backup:  {result.backup_path}")
-    if (
-        result.drawers_before > 0
-        and result.drawers_after < int(result.drawers_before * 0.8)
-    ):
-        print(
-            f"  Warning: rebuild produced fewer drawers than before. "
-            f"Missing source files? Backup preserved so you can restore."
-        )
 
 
 def _format_bytes(n: int) -> str:
@@ -1143,38 +826,6 @@ def cmd_install_statusline(args: argparse.Namespace) -> None:
         print(f"script backup: {result.script_backup_path}")
 
 
-def cmd_pilot(args: argparse.Namespace) -> None:
-    """`mnemos pilot --accept <script|skill>` — promote a pilot outcome."""
-    from mnemos.pilot import PilotError, accept_script, accept_skill
-
-    vault_path = _resolve_vault(args.vault)
-    _require_vault(vault_path, "pilot")
-
-    try:
-        if args.accept == "script":
-            result = accept_script(vault_path)
-        elif args.accept == "skill":
-            result = accept_skill(vault_path)
-        else:  # pragma: no cover — argparse choices guard this
-            raise PilotError(f"Unknown --accept value: {args.accept}")
-    except PilotError as e:
-        print(f"Pilot error: {e}", file=sys.stderr)
-        sys.exit(2)
-
-    print(f"Accepted mode: {result.mode}")
-    for rp in result.recycled_paths:
-        print(f"  Recycled: {rp}")
-    if result.promoted_from is not None:
-        print(f"  Promoted: {result.promoted_from.name} → Mnemos/")
-    if result.yaml_updated:
-        print(f"  mnemos.yaml updated: mine_mode = {result.mode}")
-    if result.indexed_drawers:
-        print(f"  Index rebuilt: {result.indexed_drawers} drawers")
-    if result.index_stale_warning:
-        print()
-        print(f"WARNING: {result.index_stale_warning}")
-
-
 def cmd_benchmark(args: argparse.Namespace) -> None:
     """Run a recall benchmark and print aggregated metrics as JSON."""
     if args.dataset != "longmemeval":
@@ -1238,83 +889,17 @@ def main() -> None:
     parser_init.set_defaults(func=cmd_init)
 
     # ------------------------------------------------------------------
-    # mine
+    # mine — REMOVED in v1.0 (narrative-first pivot)
+    # Sentinel subparser: any extra args are slurped and discarded so the
+    # friendly error fires instead of argparse's "unrecognized arguments".
     # ------------------------------------------------------------------
     parser_mine = subparsers.add_parser(
         "mine",
-        help="Mine a file or directory and extract memory fragments",
+        help="[REMOVED in v1.0 — see error message]",
+        add_help=False,
     )
-    parser_mine.add_argument(
-        "path",
-        nargs="?",
-        default=None,
-        help="File or directory to mine (optional when --rebuild is used)",
-    )
-    parser_mine.add_argument(
-        "--llm",
-        action="store_true",
-        default=False,
-        help="Use LLM-assisted extraction (requires anthropic package)",
-    )
-    parser_mine.add_argument(
-        "--rebuild",
-        action="store_true",
-        default=False,
-        help="Drop and rebuild the entire palace atomically (backs up first)",
-    )
-    parser_mine.add_argument(
-        "--dry-run",
-        action="store_true",
-        default=False,
-        help="With --rebuild: print the plan and exit without touching anything",
-    )
-    parser_mine.add_argument(
-        "--yes",
-        action="store_true",
-        default=False,
-        help="With --rebuild: skip the 'Proceed? [y/N]' confirmation",
-    )
-    parser_mine.add_argument(
-        "--no-backup",
-        action="store_true",
-        default=False,
-        help="With --rebuild: skip wings/index/graph backup (dangerous)",
-    )
-    parser_mine.add_argument(
-        "--pilot-llm",
-        action="store_true",
-        default=False,
-        help="Run a skill-mine pilot on the most recent source files "
-        "(Sessions/ + Topics/ + mining_sources — produces Mnemos-pilot/ "
-        "alongside Mnemos/ for side-by-side review)",
-    )
-    parser_mine.add_argument(
-        "--pilot-limit",
-        type=int,
-        default=10,
-        help="With --pilot-llm: number of most-recent source files to pilot "
-        "(default 10; use 0 for all sources — full batch mine, ~4 min per file)",
-    )
-    parser_mine.add_argument(
-        "--parallel",
-        type=int,
-        default=1,
-        metavar="N",
-        help="With --pilot-llm: run N `claude --print` skill invocations in "
-        "parallel (default 1 = sequential; 3 is the tested ceiling for full "
-        "batch mine — each worker holds ~200K tokens context). Each worker is "
-        "a fresh subprocess; progress lines are emitted per-completion and a "
-        "monitor-friendly `Progress:` summary every 10 sources.",
-    )
-    parser_mine.add_argument(
-        "--from-palace",
-        default=None,
-        metavar="PATH",
-        help="Re-index drawers from an existing palace root (frontmatter-"
-        "authoritative; no mining, no classification). Used after "
-        "`mnemos pilot --accept skill` to refresh the vector index.",
-    )
-    parser_mine.set_defaults(func=cmd_mine)
+    parser_mine.add_argument("_args", nargs=argparse.REMAINDER)
+    parser_mine.set_defaults(func=cmd_removed)
 
     # ------------------------------------------------------------------
     # search
@@ -1355,20 +940,15 @@ def main() -> None:
     parser_status.set_defaults(func=cmd_status)
 
     # ------------------------------------------------------------------
-    # pilot — accept a skill-mine pilot outcome
+    # pilot — REMOVED in v1.0 (narrative-first pivot)
     # ------------------------------------------------------------------
     parser_pilot = subparsers.add_parser(
         "pilot",
-        help="Promote a skill-mine pilot outcome (recycle loser, keep winner)",
+        help="[REMOVED in v1.0 — see error message]",
+        add_help=False,
     )
-    parser_pilot.add_argument(
-        "--accept",
-        required=True,
-        choices=["script", "skill"],
-        help="Which mode to keep: 'script' recycles Mnemos-pilot/; "
-        "'skill' recycles Mnemos/ and promotes Mnemos-pilot/ → Mnemos/",
-    )
-    parser_pilot.set_defaults(func=cmd_pilot)
+    parser_pilot.add_argument("_args", nargs=argparse.REMAINDER)
+    parser_pilot.set_defaults(func=cmd_removed)
 
     # ------------------------------------------------------------------
     # import — bring an external knowledge source into the palace
@@ -1381,14 +961,16 @@ def main() -> None:
         dest="import_kind", metavar="<kind>", required=True,
     )
 
+    # `import claude-code` — REMOVED in v1.0. The /mnemos-refine-transcripts
+    # skill scans ~/.claude/projects directly; no separate registration step.
+    # Sentinel parser keeps the subcommand discoverable so cmd_import can
+    # surface the friendly removal message.
     p_cc = import_subs.add_parser(
         "claude-code",
-        help="Register Claude Code JSONL transcripts (refine via skill afterward)",
+        help="[REMOVED in v1.0 — use /mnemos-refine-transcripts skill]",
+        add_help=False,
     )
-    p_cc.add_argument("--projects-dir", default=None,
-                      help="Override ~/.claude/projects path")
-    p_cc.add_argument("--limit", type=int, default=0,
-                      help="Limit number of JSONLs to register (0 = all)")
+    p_cc.add_argument("_args", nargs=argparse.REMAINDER)
     p_cc.set_defaults(func=cmd_import)
 
     p_chat = import_subs.add_parser("chatgpt", help="Mine a ChatGPT JSON export file")
@@ -1441,43 +1023,26 @@ def main() -> None:
     parser_install_statusline.set_defaults(func=cmd_install_statusline)
 
     # ------------------------------------------------------------------
-    # migrate
+    # migrate — REMOVED in v1.0 (narrative-first pivot)
     # ------------------------------------------------------------------
     parser_migrate = subparsers.add_parser(
         "migrate",
-        help="Switch vector backend (chromadb ↔ sqlite-vec) safely",
+        help="[REMOVED in v1.0 — see error message]",
+        add_help=False,
     )
-    parser_migrate.add_argument(
-        "--backend",
-        required=True,
-        choices=["chromadb", "sqlite-vec"],
-        help="Target backend — the vault's mnemos.yaml will be updated and the index rebuilt.",
-    )
-    parser_migrate.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print the migration plan (drawers, source files, time estimate) without changing anything.",
-    )
-    parser_migrate.add_argument(
-        "--no-rebuild",
-        action="store_true",
-        help="Update yaml + back up old storage but skip the rebuild (advanced; you re-mine manually later).",
-    )
-    parser_migrate.set_defaults(func=cmd_migrate)
+    parser_migrate.add_argument("_args", nargs=argparse.REMAINDER)
+    parser_migrate.set_defaults(func=cmd_removed)
 
+    # ------------------------------------------------------------------
+    # catch-up — REMOVED in v1.0 (narrative-first pivot)
+    # ------------------------------------------------------------------
     parser_catchup = subparsers.add_parser(
         "catch-up",
-        help="Process backlog of unrefined/unmined sources (requires mine_mode: skill)",
+        help="[REMOVED in v1.0 — see error message]",
+        add_help=False,
     )
-    parser_catchup.add_argument("--limit", type=int, default=None,
-                                help="Max sources to process (default: unlimited)")
-    parser_catchup.add_argument("--parallel", type=int, default=1,
-                                help="Number of concurrent claude subprocesses (default: 1)")
-    parser_catchup.add_argument("--dry-run", action="store_true",
-                                help="Print plan and exit")
-    parser_catchup.add_argument("--yes", action="store_true",
-                                help="Skip confirmation")
-    parser_catchup.set_defaults(func=cmd_catch_up)
+    parser_catchup.add_argument("_args", nargs=argparse.REMAINDER)
+    parser_catchup.set_defaults(func=cmd_removed)
 
     # ------------------------------------------------------------------
     # benchmark
@@ -1532,15 +1097,11 @@ def main() -> None:
         sys.exit(0)
 
     from mnemos.errors import BackendInitError
-    from mnemos.migrate import MigrateError
 
     try:
         args.func(args)
     except BackendInitError as exc:
         print(str(exc), file=sys.stderr)
-        sys.exit(2)
-    except MigrateError as exc:
-        print(f"Migration failed: {exc}", file=sys.stderr)
         sys.exit(2)
 
 
