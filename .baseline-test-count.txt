@@ -1,0 +1,30 @@
+# v1.0 pivot baseline test count snapshot
+# Captured on feature/v1.0-pivot at commit fbf4655 (Task 0 marker only,
+# zero production deltas vs main 649bd8f)
+#
+# Source: pytest tests/ --co -q | tail -5
+# Plus: full pytest tests/ -v run for pass/fail breakdown
+
+## Collection summary
+645/648 tests collected (3 deselected) in 3.36s
+
+## Full run results
+642 passed, 1 failed, 2 skipped, 3 deselected, 1 warning in 169.16s
+
+## Notes on the 1 failure
+The single failure (test_mnemos_recall_skill_junction_zero_drift) is a
+worktree line-ending artifact, NOT a real regression:
+  - The junction at ~/.claude/skills/mnemos-recall points to
+    C:/Projeler/mnemos/skills/mnemos-recall (CRLF on Windows).
+  - The v1.0 worktree's checkout of skills/mnemos-recall/SKILL.md uses LF.
+  - The byte-equality test fails purely on \r\n vs \n.
+  - Same test passes against C:/Projeler/mnemos (main) — verified.
+
+## Effective baseline against main
+643 passed, 2 skipped, 3 deselected (matches STATUS.md as of 649bd8f)
+
+## How to use
+After v1.0 deletions in Phases 2-3, run:
+  pytest tests/ --co -q | tail -5
+The collected count should drop by ~200 (drawer-bound tests deleted) and
+rise by ~50 (new identity / briefing-v2 tests added). Net target: ~495.
