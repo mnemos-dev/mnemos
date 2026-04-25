@@ -27,7 +27,7 @@ Dosya slug kuralı: küçük harf, tire ayıracı, maksimum 60 karakter, Türkç
 date: YYYY-MM-DD
 project: <Wing — aşağıdaki mapping'e göre>
 cwd: <absolute Windows path, transcript'in kaynaklandığı çalışma dizini>
-tags: [session-log, <2-6 alakalı teknik tag, küçük harf>]
+tags: [session-log, proj/<wing-slug>, tool/<svc>, person/<name>, file/<repeating>, skill/<cmd>]
 duration: <~Xs / ~Xm / ~Xh — kaba tahmin, transcript uzunluğundan>
 ---
 
@@ -55,6 +55,38 @@ duration: <~Xs / ~Xm / ~Xh — kaba tahmin, transcript uzunluğundan>
 ## See Also
 <İlgili diğer session note'u veya doküman varsa Obsidian wikilink ile; yoksa boş bırak>
 ```
+
+## TAG PREFIX KATEGORİLERİ (v1.0)
+
+Her Session frontmatter'ına `tags: [session-log, ...]` eklenir. Diğer tag'ler şu prefix sözlüğünden:
+
+- `proj/<name>` — proje (wing eşdeğeri): `proj/mnemos`, `proj/procuretrack`, `proj/gyp`
+- `tool/<name>` — araç/servis: `tool/supabase`, `tool/outlook`, `tool/chromadb`, `tool/claude-code`
+- `person/<name>` — kişi: `person/tugra`, `person/safa-clutch`
+- `file/<name>` — kaynak dosya **sadece tekrar eden, ≥2 Session'da geçen**: `file/test_orchestrator`
+- `skill/<name>` — skill/CLI komut: `skill/po-olusturma`, `skill/mnemos-catch-up`
+
+`session-log` etiketi tip filter için her Session'da kalır.
+
+## PROSE İÇİNDE WIKILINK
+
+Prose'da geçen entity'leri **ilk geçtiği yerde** wikilink olarak sar.
+
+**Wikilink olur:**
+- Proje/wing adları (Mnemos, ProcureTrack, GYP)
+- Tutarlı araç/servis isimleri (Supabase, Outlook, ChromaDB, Claude Code)
+- Skill/CLI komut isimleri (po-olusturma, mnemos-catch-up)
+- İnsan/şirket isimleri (Tugra, Safa Clutch, GYP Energy)
+- Tekrar eden konsept hub'ları (auto-refine-hook, sqlite-vec)
+
+**Wikilink olmaz:**
+- Tek-kullanımlık dosya isimleri (test_orchestrator.py)
+- Generic teknoloji (Python, JSON, Excel)
+- Kod blok içindeki tüm isimler
+- Versiyon numaraları (3.12, v0.4.0)
+- Tarih/sayı
+
+LLM yargısı için kural: "Bu entity başka bir Session'da da geçer mi?" Eğer evet (tekrar eden hub) → wikilink. Eğer hayır (tek-kullanım) → düz metin.
 
 ## WING MAPPING (transcript yolundan)
 
@@ -171,6 +203,9 @@ Bitirdikten sonra kendine sor:
 - [ ] Özet okununca "ne oldu, neden, sonuç" üçü de geliyor mu?
 - [ ] Bir başkası bunu okusa konuyu anlar mı?
 - [ ] Gereksiz tool output veya kod kalabalığı var mı?
+- [ ] En az 1 `proj/*` tag'i frontmatter'da var mı?
+- [ ] En az 1 wikilink prose içinde geçiyor mu?
+- [ ] Tag-prose tutarlılığı: tag'de `tool/supabase` varsa prose'da `[[Supabase]]` var mı?
 
 Bir madde takılıyorsa düzelt.
 
