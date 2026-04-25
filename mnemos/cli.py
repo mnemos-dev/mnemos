@@ -716,6 +716,113 @@ def cmd_install_statusline(args: argparse.Namespace) -> None:
         print(f"script backup: {result.script_backup_path}")
 
 
+def cmd_identity(args: argparse.Namespace) -> int:
+    """Dispatch ``mnemos identity {bootstrap,refresh,rollback,show}``.
+
+    All sub-actions surface :class:`mnemos.identity.IdentityError` as a
+    friendly stderr message + exit code 1, matching the rest of the CLI's
+    UX (see ``BackendInitError`` handling in :func:`main`).
+    """
+    from mnemos.identity import bootstrap, refresh, rollback, show, IdentityError
+
+    vault = Path(args.vault) if args.vault else _resolve_vault_from_yaml()
+    try:
+        if args.identity_action == "bootstrap":
+            path = bootstrap(vault, model=args.model)
+            print(f"Identity layer created: {path}")
+        elif args.identity_action == "refresh":
+            if args.check:
+                _print_refresh_trigger_status(vault)
+                return 0
+            result = refresh(vault, force=args.force, model=args.model)
+            if result is None:
+                print("Refresh skipped: trigger conditions not met (use --force to override).")
+            else:
+                print(f"Identity layer refreshed: {result}")
+        elif args.identity_action == "rollback":
+            if not args.yes:
+                _confirm_rollback(vault, args.target)
+            path = rollback(vault, target=args.target, confirm=True)
+            print(f"Restored: {path}")
+        elif args.identity_action == "show":
+            print(show(vault))
+        else:
+            # No subcommand → print help
+            print("Usage: mnemos identity {bootstrap,refresh,rollback,show}", file=sys.stderr)
+            return 1
+    except IdentityError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def _resolve_vault_from_yaml() -> Path:
+    """Find mnemos.yaml in cwd or vault env var; return its ``vault:`` path.
+
+    Falls back to ``MNEMOS_VAULT`` env var (looking for ``<env>/mnemos.yaml``).
+    Exits with a friendly message if no yaml is locatable so identity
+    subcommands degrade gracefully when the user forgot ``--vault``.
+    """
+    yaml_path = Path.cwd() / "mnemos.yaml"
+    if not yaml_path.exists():
+        env_vault = os.environ.get("MNEMOS_VAULT")
+        if env_vault:
+            yaml_path = Path(env_vault) / "mnemos.yaml"
+    if not yaml_path.exists():
+        print("Error: no mnemos.yaml in cwd; pass --vault explicitly", file=sys.stderr)
+        sys.exit(1)
+    data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+    # Support both `vault:` (test fixtures, simple yaml) and `vault_path:`
+    # (the canonical key written by `mnemos init`).
+    vault_value = data.get("vault") or data.get("vault_path")
+    if not vault_value:
+        print(f"Error: mnemos.yaml at {yaml_path} has no `vault` or `vault_path`", file=sys.stderr)
+        sys.exit(1)
+    return Path(vault_value)
+
+
+def _print_refresh_trigger_status(vault: Path) -> None:
+    """Dry-run: show whether refresh trigger conditions would fire."""
+    from mnemos.identity import _parse_frontmatter, _has_identity_relevant_new_tags
+    identity_path = vault / "_identity" / "L0-identity.md"
+    if not identity_path.exists():
+        print("Trigger: no identity bootstrapped")
+        return
+    existing = identity_path.read_text(encoding="utf-8")
+    fm = _parse_frontmatter(existing)
+    last_count = int(fm.get("session_count_at_refresh", 0))
+    sessions = sorted((vault / "Sessions").glob("*.md"), key=lambda p: p.name)
+    new_count = len(sessions) - last_count
+    quantity_ok = new_count >= 10
+    relevance_ok = (
+        _has_identity_relevant_new_tags(existing, sessions[last_count:])
+        if quantity_ok
+        else False
+    )
+    print(f"Quantity gate: {new_count} new sessions ({'OK' if quantity_ok else 'NEED >=10'})")
+    print(f"Relevance gate: {'OK' if relevance_ok else 'no new entities'}")
+    print(f"Would fire: {quantity_ok and relevance_ok}")
+
+
+def _confirm_rollback(vault: Path, target: Optional[str]) -> None:
+    """Show preview and prompt y/n. Raises IdentityError on n."""
+    from mnemos.identity import IdentityError
+    identity_dir = vault / "_identity"
+    baks = sorted(identity_dir.glob("L0-identity.md.bak-*"))
+    if not baks:
+        raise IdentityError(f"no backup snapshots in {identity_dir}")
+    chosen = (
+        baks[-1] if target is None
+        else next((b for b in baks if b.name.endswith(target)), None)
+    )
+    if chosen is None:
+        raise IdentityError(f"no backup matching {target}")
+    print(f"Will restore from: {chosen.name}")
+    answer = input("Continue? [y/N] ").strip().lower()
+    if answer != "y":
+        raise IdentityError("rollback canceled by user")
+
+
 def cmd_benchmark(args: argparse.Namespace) -> None:
     """Run a recall benchmark and print aggregated metrics as JSON."""
     if args.dataset != "longmemeval":
@@ -884,6 +991,34 @@ def main(argv: list[str] | None = None) -> int:
     parser_install_statusline.set_defaults(func=cmd_install_statusline)
 
     # ------------------------------------------------------------------
+    # identity — bootstrap / refresh / rollback / show (v1.0 Identity Layer)
+    # ------------------------------------------------------------------
+    sub_identity = subparsers.add_parser("identity", help="Manage Identity Layer")
+    identity_actions = sub_identity.add_subparsers(dest="identity_action")
+
+    p_bootstrap = identity_actions.add_parser(
+        "bootstrap", help="Generate L0-identity.md from all Sessions"
+    )
+    p_bootstrap.add_argument("--vault", help="Vault path (default: from mnemos.yaml)")
+    p_bootstrap.add_argument("--model", default="sonnet", choices=["sonnet", "opus"])
+
+    p_refresh = identity_actions.add_parser("refresh", help="Incremental update")
+    p_refresh.add_argument("--vault")
+    p_refresh.add_argument("--force", action="store_true", help="Bypass trigger conditions")
+    p_refresh.add_argument("--check", action="store_true", help="Dry-run trigger evaluation")
+    p_refresh.add_argument("--model", default="sonnet", choices=["sonnet", "opus"])
+
+    p_rollback = identity_actions.add_parser("rollback", help="Restore from .bak snapshot")
+    p_rollback.add_argument("--vault")
+    p_rollback.add_argument("target", nargs="?", help="Snapshot suffix (default: latest)")
+    p_rollback.add_argument("--yes", action="store_true", help="Skip confirmation")
+
+    p_show = identity_actions.add_parser("show", help="Print current Identity Layer")
+    p_show.add_argument("--vault")
+    # Dispatch is special-cased in `main()` below — `cmd_identity` returns
+    # an int so we can't slot it into the generic `args.func(args)` flow.
+
+    # ------------------------------------------------------------------
     # migrate / catch-up — REMOVED in v1.0 (pre-dispatched by `main()`).
     # ------------------------------------------------------------------
 
@@ -934,6 +1069,10 @@ def main(argv: list[str] | None = None) -> int:
     # Dispatch
     # ------------------------------------------------------------------
     args = parser.parse_args(argv)
+
+    # Special-case: identity returns an int directly (not via args.func).
+    if getattr(args, "command", None) == "identity":
+        return cmd_identity(args)
 
     if not hasattr(args, "func"):
         parser.print_help()
