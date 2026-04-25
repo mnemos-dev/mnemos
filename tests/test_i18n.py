@@ -37,12 +37,19 @@ class TestLookup:
 
 class TestFormatting:
     def test_format_substitution_en(self) -> None:
-        out = t("outcome.mining", "en", sid="vault-sessions", n=42)
+        # per_source.header has all four substitution slots (sid, n, est, cls).
+        out = t(
+            "per_source.header", "en",
+            sid="vault-sessions", n=42, est="2 min", cls="raw",
+        )
         assert "vault-sessions" in out
         assert "42 files" in out
 
     def test_format_substitution_tr(self) -> None:
-        out = t("outcome.mining", "tr", sid="vault-sessions", n=42)
+        out = t(
+            "per_source.header", "tr",
+            sid="vault-sessions", n=42, est="2 dk", cls="raw",
+        )
         assert "vault-sessions" in out
         assert "42 dosya" in out
 

@@ -122,7 +122,10 @@ def save_state(vault: Path, state: CwdState) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Mode yaml inline read (mirror of auto_refine._read_mine_mode)
+# recall_mode yaml inline read
+#
+# Mirrors the lightweight scalar-only yaml read used elsewhere in the
+# auto-refine path so we don't pull in pyyaml on the hot SessionStart path.
 # ---------------------------------------------------------------------------
 
 def read_recall_mode(vault: Path) -> str:

@@ -134,14 +134,9 @@ _STRINGS: Dict[str, Dict[str, str]] = {
         "en": "    [later] {sid} registered as pending.",
         "tr": "    [sonra] {sid} pending olarak kaydedildi.",
     },
-    "outcome.mining": {
-        "en": "    [mining] {sid} — {n} files...",
-        "tr": "    [mine] {sid} — {n} dosya...",
-    },
-    "outcome.done": {
-        "en": "    [done] {sid} — scanned: {scanned}, drawers: {drawers}, entities: {entities}",
-        "tr": "    [bitti] {sid} — taranan: {scanned}, çekmece: {drawers}, varlık: {entities}",
-    },
+    # v1.0: outcome.mining + outcome.done removed — they were emitted by the
+    # deleted mining-pipeline path. Init wizard text overhaul deferred to
+    # Task 27 (mnemos init v2).
     # ---------------- Hook install (v0.3 task 3.7) ----------------
     "hook_install_prompt": {
         "en": "Install the auto-refine SessionStart hook so future Claude Code sessions mine themselves? [Y/n]: ",

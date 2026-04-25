@@ -23,17 +23,18 @@ WATCHER_IGNORE_DEFAULT: List[str] = [
 
 
 # ---------------------------------------------------------------------------
-# Sub-dataclasses
+# v1.0 narrative-first pivot — legacy yaml keys silently dropped
 # ---------------------------------------------------------------------------
 
-
-@dataclass
-class MiningSource:
-    """A source path to mine for memory fragments."""
-
-    path: str
-    mode: str = "session"  # session | topic | chat
-    external: bool = False  # True = outside vault, read-only, no watcher
+# Stale yaml keys from the pre-v1.0 mining/drawer paradigm. Users with old
+# mnemos.yaml files in their vaults must keep loading without errors; these
+# keys are popped before the dataclass is constructed and never restored.
+_LEGACY_YAML_KEYS = (
+    "mine_mode",         # v0.4: routed to script-mine vs skill-mine; gone in v1.0
+    "mining_sources",    # pre-v1.0 MiningSource list; mining pipeline retired
+    "chunk_max_size",    # mining-specific chunking parameter
+    "min_confidence",    # mining heuristic threshold
+)
 
 
 # ---------------------------------------------------------------------------
@@ -58,17 +59,10 @@ class MnemosConfig:
     use_llm: bool = False
     llm_model: str = "claude-3-5-haiku-20241022"
 
-    # Mining
-    mining_sources: List[MiningSource] = field(default_factory=list)
-
     # Search
     search_limit: int = 10
     rerank: bool = False
     rerank_model: str = ""
-
-    # Mining tuning
-    chunk_max_size: int = 3000
-    min_confidence: float = 0.3
 
     # Watcher
     watcher_enabled: bool = True
@@ -88,6 +82,10 @@ class MnemosConfig:
     # Recall mode: "script" (AI auto-calls mnemos_search) or "skill"
     # (SessionStart briefing hook injects context; AI doesn't auto-search).
     recall_mode: str = "script"
+
+    # v1.0 narrative-first pivot — auto-refresh _identity on session boundaries
+    # (default off; opt-in via yaml or `mnemos identity refresh --auto`).
+    auto_identity_refresh: bool = False
 
     # ---------------------------------------------------------------------------
     # Derived path properties
@@ -139,6 +137,10 @@ def load_config(vault_path: Optional[str] = None) -> MnemosConfig:
 
     Falls back to defaults when the file does not exist or a key is absent.
 
+    Legacy mining/drawer-paradigm keys (``mine_mode``, ``mining_sources``,
+    ``chunk_max_size``, ``min_confidence``) are silently dropped — existing
+    user yaml files keep loading without errors after the v1.0 pivot.
+
     Args:
         vault_path: Explicit vault path. If None, reads MNEMOS_VAULT env var,
                     then falls back to an empty string (tests supply it later).
@@ -158,6 +160,10 @@ def load_config(vault_path: Optional[str] = None) -> MnemosConfig:
     with yaml_path.open("r", encoding="utf-8") as fh:
         raw: dict = yaml.safe_load(fh) or {}
 
+    # v1.0: silently drop legacy mining/drawer-paradigm keys before applying.
+    for legacy in _LEGACY_YAML_KEYS:
+        raw.pop(legacy, None)
+
     # Scalar fields
     for scalar in (
         "palace_root",
@@ -174,6 +180,7 @@ def load_config(vault_path: Optional[str] = None) -> MnemosConfig:
         "mine_log_path",
         "search_backend",
         "recall_mode",
+        "auto_identity_refresh",
     ):
         if scalar in raw:
             setattr(cfg, scalar, raw[scalar])
@@ -187,17 +194,5 @@ def load_config(vault_path: Optional[str] = None) -> MnemosConfig:
 
     if "watcher_ignore" in raw:
         cfg.watcher_ignore = list(raw["watcher_ignore"])
-
-    # Mining sources
-    if "mining_sources" in raw:
-        cfg.mining_sources = [
-            MiningSource(
-                path=src.get("path", ""),
-                mode=src.get("mode", "session"),
-                external=src.get("external", False),
-            )
-            for src in raw["mining_sources"]
-            if isinstance(src, dict)
-        ]
 
     return cfg
