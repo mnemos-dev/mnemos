@@ -82,17 +82,27 @@ def test_app_status_lists_wings_from_disk(config: MnemosConfig) -> None:
 
 
 def test_app_recall(config: MnemosConfig) -> None:
-    """L1 recall surfaces wing summary content via MemoryStack."""
-    _seed_wing(config, "ProcureTrack",
-               body="ProcureTrack handles supplier onboarding.")
+    """v1.0: L0 recall surfaces Identity Layer content via MemoryStack.
+
+    The drawer paradigm (L1 wings, L2 rooms) was retired in the
+    narrative-first pivot — see ``test_recall_l1_returns_deprecated_marker``
+    in ``test_mcp_v1.py`` for the deprecation contract.
+    """
+    from pathlib import Path
+
+    identity_dir = Path(config.vault_path) / "_identity"
+    identity_dir.mkdir(parents=True, exist_ok=True)
+    (identity_dir / "L0-identity.md").write_text(
+        "# User Identity\n\nWorking on ProcureTrack.\n",
+        encoding="utf-8",
+    )
 
     app = MnemosApp(config, chromadb_in_memory=True)
 
-    result = app.handle_recall(level="L1")
+    result = app.handle_recall(level="L0")
 
-    assert "level" in result
-    assert "content" in result
-    assert "ProcureTrack" in result["content"]
+    assert "identity" in result
+    assert "ProcureTrack" in result["identity"]
 
 
 # ---------------------------------------------------------------------------
@@ -158,26 +168,24 @@ def test_app_timeline(config: MnemosConfig) -> None:
 
 
 def test_app_wake_up(config: MnemosConfig) -> None:
-    """wake_up returns identity + wings_summary loaded from disk."""
-    # Identity placeholder
-    config.identity_full_path.mkdir(parents=True, exist_ok=True)
-    identity_file = config.identity_full_path / "L0-identity.md"
-    write_drawer_file(
-        identity_file,
-        metadata={"type": "identity"},
-        body="I am Mnemos. I remember everything.",
-    )
+    """v1.0: wake_up returns the Identity Layer body only.
 
-    # One wing with a summary body
-    _seed_wing(config, "ProcureTrack",
-               body="ProcureTrack — supplier onboarding.")
+    The wings_summary key was removed when the drawer paradigm was retired
+    in the narrative-first pivot. Identity now lives at
+    ``<vault>/_identity/L0-identity.md`` (vault root, not palace_root).
+    """
+    from pathlib import Path
+
+    identity_dir = Path(config.vault_path) / "_identity"
+    identity_dir.mkdir(parents=True, exist_ok=True)
+    (identity_dir / "L0-identity.md").write_text(
+        "# User Identity\n\nI am Mnemos. I remember everything.\n",
+        encoding="utf-8",
+    )
 
     app = MnemosApp(config, chromadb_in_memory=True)
     result = app.handle_wake_up()
 
     assert "identity" in result
-    assert "wings_summary" in result
     assert "token_count" in result
-
     assert "Mnemos" in result["identity"]
-    assert "ProcureTrack" in result["wings_summary"]

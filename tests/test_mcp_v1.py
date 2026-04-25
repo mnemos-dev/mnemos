@@ -122,3 +122,40 @@ def test_search_both_collection_falls_back_to_raw(tmp_path: Path) -> None:
         )
     finally:
         app.close()
+
+
+# ---------------------------------------------------------------------------
+# Task 19: mnemos_wake_up — return Identity Layer (L0-only)
+# ---------------------------------------------------------------------------
+
+
+def test_wake_up_returns_identity_when_present(tmp_path: Path) -> None:
+    """v1.0: mnemos_wake_up reads _identity/L0-identity.md and returns its body."""
+    vault = tmp_path / "vault"
+    (vault / "Sessions").mkdir(parents=True)
+    (vault / "_identity").mkdir()
+    (vault / "_identity" / "L0-identity.md").write_text(
+        "---\nlast_refreshed: 2026-04-25\n---\n\n# User Identity\n\nTestUser content.\n",
+        encoding="utf-8",
+    )
+    cfg = MnemosConfig(vault_path=str(vault), languages=["en"])
+    app = MnemosApp(cfg, chromadb_in_memory=True)
+    try:
+        result = app.handle_wake_up()
+        assert "identity" in result
+        assert "TestUser content" in result["identity"]
+    finally:
+        app.close()
+
+
+def test_wake_up_returns_empty_when_no_identity(tmp_path: Path) -> None:
+    """v1.0: mnemos_wake_up returns empty identity if L0-identity.md missing."""
+    vault = tmp_path / "vault"
+    (vault / "Sessions").mkdir(parents=True)
+    cfg = MnemosConfig(vault_path=str(vault), languages=["en"])
+    app = MnemosApp(cfg, chromadb_in_memory=True)
+    try:
+        result = app.handle_wake_up()
+        assert result.get("identity", "") == ""
+    finally:
+        app.close()
