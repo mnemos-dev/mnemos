@@ -131,13 +131,16 @@ def test_get_stats_storage_bytes_is_zero_in_memory(tmp_path: Path) -> None:
 
 
 def test_handle_status_includes_backend_block(tmp_path: Path) -> None:
-    """MnemosApp.handle_status() returns a `backend` dict with name/path/bytes."""
+    """MnemosApp.handle_status() returns a `backend` dict with name/path/bytes.
+
+    v1.0: ``palace.ensure_structure`` is gone (Palace was deleted in Task 3);
+    we just seed the search index directly to produce non-zero storage bytes.
+    """
     from mnemos.server import MnemosApp
 
     cfg = MnemosConfig(vault_path=str(tmp_path), search_backend="sqlite-vec")
     app = MnemosApp(cfg)
     try:
-        app.palace.ensure_structure()
         app.search_engine.index_drawer(
             drawer_id="s1",
             text="seed the index to produce non-zero storage bytes",
@@ -163,7 +166,6 @@ def test_cmd_status_prints_backend_summary_line(tmp_path: Path, capsys) -> None:
     cfg = MnemosConfig(vault_path=str(tmp_path), search_backend="sqlite-vec")
     app = MnemosApp(cfg)
     try:
-        app.palace.ensure_structure()
         app.search_engine.index_drawer(
             drawer_id="s1",
             text="seed drawer",

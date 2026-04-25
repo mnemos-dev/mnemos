@@ -1,11 +1,14 @@
-"""Mnemos CLI — init, search, status, import, install-hook commands.
+"""Mnemos CLI — init, search, status, install-hook commands.
 
-v1.0 narrative-first pivot removed the mining subcommands (`mine`, `catch-up`,
-`migrate`, `processing-log`, `import claude-code`). They are pre-dispatched
-in :func:`main` BEFORE argparse so any flags the user types (e.g.
-``mnemos mine --rebuild``) are slurped into a friendly "removed in v1.0"
+v1.0 narrative-first pivot removed the mining subcommands (``mine``,
+``catch-up``, ``migrate``, ``processing-log``) and the entire ``import``
+command family (``claude-code``, ``chatgpt``, ``slack``, ``markdown``,
+``memory``). They are pre-dispatched in :func:`main` BEFORE argparse so any
+flags the user types (e.g. ``mnemos mine --rebuild`` or ``mnemos import
+chatgpt /tmp/x.json``) are slurped into a friendly "removed in v1.0"
 message instead of producing argparse "unrecognized arguments" errors.
-See :data:`LEGACY_REMOVED` and :func:`cmd_removed`.
+See :data:`LEGACY_REMOVED`, :data:`LEGACY_IMPORT_KINDS`, and
+:func:`cmd_removed`.
 """
 from __future__ import annotations
 
@@ -408,7 +411,14 @@ def _ask_per_source(src, estimate: str, lang: str = "en") -> str:  # type: ignor
 
 
 def _apply_decision(cfg, src, decision: str, lang: str = "en") -> None:  # type: ignore[no-untyped-def]
-    """Carry out user decision for one source + record it in pending.json."""
+    """Carry out user decision for one source + record it in pending.json.
+
+    v1.0: the "curated source, process now" branch used to call
+    ``_mine_and_record`` which routed through ``MnemosApp.handle_mine``.
+    With mining gone, curated sources are now registered as ``pending``
+    just like deferred sources — Task 27 (``mnemos init`` v2) will redesign
+    onboarding around the Sessions paradigm.
+    """
     from mnemos import onboarding
     from mnemos.i18n import t
 
@@ -438,172 +448,24 @@ def _apply_decision(cfg, src, decision: str, lang: str = "en") -> None:  # type:
             print(t("outcome.later", lang, sid=src.id))
         return
 
-    # Curated source, process now
-    _mine_and_record(cfg, src.id, src.kind, src.root_path, src.file_count,
-                     "mined-during-init", lang=lang)
-
-
-def _mine_and_record(cfg, source_id: str, kind: str, root_path: str,
-                     file_count: int, last_action: str,
-                     lang: str = "en") -> dict:  # type: ignore[no-untyped-def]
-    """Shared mining flow: in-progress → handle_mine → done."""
-    from mnemos import onboarding
-    from mnemos.i18n import t
-    from mnemos.server import MnemosApp
-
-    onboarding.mark_in_progress(
-        cfg.vault_path, source_id=source_id, kind=kind,
-        root_path=root_path, file_count=file_count,
+    # Curated source — v1.0: register as pending (mining is gone). Task 27
+    # will replace this with a Sessions-aware onboarding flow.
+    onboarding.register_pending(
+        cfg.vault_path, **common, last_action="awaiting-v1-onboarding",
     )
-    print(t("outcome.mining", lang, sid=source_id, n=file_count))
-
-    with MnemosApp(cfg) as app:
-        result = app.handle_mine(path=root_path, use_llm=cfg.use_llm)
-
-    onboarding.mark_done(
-        cfg.vault_path, source_id=source_id, kind=kind,
-        root_path=root_path, file_count=file_count,
-        processed=result.get("files_scanned", file_count),
-        last_action=last_action,
-    )
-    print(t("outcome.done", lang,
-            sid=source_id,
-            scanned=result.get("files_scanned", 0),
-            drawers=result.get("drawers_created", 0),
-            entities=result.get("entities_found", 0)))
-    return result
+    print(t("outcome.later", lang, sid=src.id))
 
 
 # ---------------------------------------------------------------------------
-# Import command family
+# Import command family — REMOVED in v1.0
 # ---------------------------------------------------------------------------
-
-
-def cmd_import(args: argparse.Namespace) -> None:
-    """Dispatch `mnemos import <kind>` to the right handler.
-
-    v1.0: ``import claude-code`` was removed (use /mnemos-refine-transcripts
-    skill directly instead) — pre-dispatched in :func:`main` before argparse.
-    The remaining kinds are still mining-related and funnel through
-    ``MnemosApp.handle_mine`` — Task 5/6 will revisit them.
-    """
-    vault_path = _resolve_vault(args.vault)
-    _require_vault(vault_path, "import")
-    cfg = load_config(vault_path)
-
-    # TODO(v1.0 Task 5/6): mnemos import chatgpt|slack|markdown|memory currently
-    # routes to MnemosApp.handle_mine which still references deleted mining
-    # modules in server.py (broken at runtime). Decide in Task 5 whether to:
-    #   (a) shim these as cmd_removed pending v1.x re-implementation, OR
-    #   (b) revive them as refine-only (no mining) on the new Sessions paradigm.
-    handler = {
-        "chatgpt": _import_chatgpt,
-        "slack": _import_slack,
-        "markdown": _import_markdown,
-        "memory": _import_memory,
-    }.get(args.import_kind)
-
-    if handler is None:
-        sys.exit(
-            f"[mnemos import] Unknown source kind: {args.import_kind!r}.\n"
-            "Available: chatgpt, slack, markdown, memory."
-        )
-
-    handler(cfg, args)
-
-
-def _import_single_file_export(cfg, args: argparse.Namespace,
-                                source_id: str, kind: str) -> None:  # type: ignore[no-untyped-def]
-    """Shared logic for ChatGPT / Slack JSON exports (single-file inputs)."""
-    path = Path(args.path).expanduser().resolve()
-    if not path.is_file():
-        sys.exit(f"[mnemos import] Not a file: {path}")
-    _mine_and_record(cfg, source_id, kind, str(path), 1, f"imported-via-{source_id}")
-
-
-def _import_chatgpt(cfg, args: argparse.Namespace) -> None:  # type: ignore[no-untyped-def]
-    _import_single_file_export(cfg, args, source_id="chatgpt-export", kind="raw-json")
-
-
-def _import_slack(cfg, args: argparse.Namespace) -> None:  # type: ignore[no-untyped-def]
-    _import_single_file_export(cfg, args, source_id="slack-export", kind="raw-json")
-
-
-def _append_mining_source(vault_path: Path, source_path: str,
-                          mode: str = "curated",
-                          external: bool = True) -> bool:
-    """Append *source_path* to mnemos.yaml's mining_sources list.
-
-    Idempotent — if a normalized-path match already exists in the list,
-    does nothing. Preserves every other yaml key (search_backend, use_llm,
-    etc.). Creates mnemos.yaml if missing.
-
-    Returns True if a new entry was added, False otherwise.
-
-    Called from `mnemos import` so re-runs of `mnemos mine --rebuild`
-    pick up the imported source automatically — pre-v0.3.2 the import
-    only landed in .mnemos-pending.json and was silently dropped on
-    rebuild.
-    """
-    import os
-
-    import yaml
-
-    yaml_path = Path(vault_path) / "mnemos.yaml"
-    if yaml_path.exists():
-        with yaml_path.open("r", encoding="utf-8") as fh:
-            data = yaml.safe_load(fh) or {}
-    else:
-        data = {}
-
-    normalized = os.path.normpath(source_path)
-    existing = data.get("mining_sources") or []
-    for entry in existing:
-        if not isinstance(entry, dict):
-            continue
-        if os.path.normpath(entry.get("path", "")) == normalized:
-            return False
-
-    new_entry: dict = {"path": source_path, "mode": mode}
-    if external:
-        new_entry["external"] = True
-    existing.append(new_entry)
-    data["mining_sources"] = existing
-
-    with yaml_path.open("w", encoding="utf-8") as fh:
-        yaml.safe_dump(data, fh, allow_unicode=True, sort_keys=False)
-    return True
-
-
-def _import_dir(cfg, args: argparse.Namespace,
-                source_id: str, kind: str) -> None:  # type: ignore[no-untyped-def]
-    """Shared logic for markdown / memory directory imports."""
-    path = Path(args.path).expanduser().resolve()
-    if not path.is_dir():
-        sys.exit(f"[mnemos import] Not a directory: {path}")
-    md_files = list(path.glob("*.md"))
-    if not md_files:
-        sys.exit(f"[mnemos import] No .md files in {path}")
-    _mine_and_record(cfg, source_id, kind, str(path), len(md_files),
-                     f"imported-via-{source_id}")
-    # Persist to mnemos.yaml so future `mnemos mine --rebuild` includes
-    # this source — without this, the imported drawers would vanish on
-    # rebuild (pre-v0.3.2 bug).
-    added = _append_mining_source(
-        Path(cfg.vault_path), source_path=str(path), mode="curated",
-    )
-    if added:
-        print(f"  Added to mnemos.yaml mining_sources: {path}")
-    else:
-        print(f"  Already tracked in mnemos.yaml: {path}")
-
-
-def _import_markdown(cfg, args: argparse.Namespace) -> None:  # type: ignore[no-untyped-def]
-    _import_dir(cfg, args, source_id="markdown-import", kind="curated-md")
-
-
-def _import_memory(cfg, args: argparse.Namespace) -> None:  # type: ignore[no-untyped-def]
-    _import_dir(cfg, args, source_id="memory-import", kind="curated-md")
+#
+# ``mnemos import <kind>`` was the entry point for funnelling external sources
+# (ChatGPT/Slack JSON exports, curated markdown directories, Claude memory
+# dirs) into the palace via ``MnemosApp.handle_mine``. The mining/drawer
+# paradigm is gone in v1.0, so all four kinds are pre-dispatched as
+# ``cmd_removed`` in :func:`main` (see :data:`LEGACY_IMPORT_KINDS`).
+# v1.x may re-implement them on the Sessions paradigm.
 
 
 def _install_hook_prompt(lang: str = "en", vault: Path = Path(".")) -> None:
@@ -684,6 +546,13 @@ def _install_recall_hook_prompt(lang: str = "en", vault: Path = Path(".")) -> No
 # errors. See Issue C1 in the Task 4 review.
 LEGACY_REMOVED = frozenset({"mine", "pilot", "migrate", "catch-up", "processing-log"})
 
+# v1.0: every kind of ``mnemos import`` was retired alongside the mining
+# pipeline that backed it. ``claude-code`` already had its own pre-dispatch
+# branch (it pointed users at the refine skill); the remaining four kinds
+# (``chatgpt``, ``slack``, ``markdown``, ``memory``) all funnelled through
+# ``MnemosApp.handle_mine`` and are now pre-dispatched the same way.
+LEGACY_IMPORT_KINDS = frozenset({"chatgpt", "slack", "markdown", "memory"})
+
 
 def cmd_removed(command_name: str, remaining_args: list[str] | None = None) -> int:
     """Print a friendly removal message for a v1.0-removed (sub)command.
@@ -702,6 +571,12 @@ def cmd_removed(command_name: str, remaining_args: list[str] | None = None) -> i
         msg += (
             "\nUse the /mnemos-refine-transcripts skill to convert Claude Code"
             "\nJSONLs to Sessions notes."
+        )
+    elif command_name.startswith("import "):
+        kind = command_name.split(" ", 1)[1]
+        msg += (
+            f"\nv1.x may re-implement `import {kind}` on the Sessions"
+            "\nparadigm; for now there is no replacement command."
         )
     print(msg, file=sys.stderr)
     return 2
@@ -888,8 +763,16 @@ def main(argv: list[str] | None = None) -> int:
     # argparse.REMAINDER cannot reliably slurp `--flag` tokens).
     if argv and argv[0] in LEGACY_REMOVED:
         return cmd_removed(argv[0], argv[1:])
-    if len(argv) >= 2 and argv[0] == "import" and argv[1] == "claude-code":
-        return cmd_removed("import claude-code", argv[2:])
+    # ``mnemos import <kind>`` — every kind was retired in v1.0. Pre-dispatch
+    # before argparse so flags like ``--projects-dir`` don't trip argparse.
+    if len(argv) >= 2 and argv[0] == "import":
+        if argv[1] == "claude-code":
+            return cmd_removed("import claude-code", argv[2:])
+        if argv[1] in LEGACY_IMPORT_KINDS:
+            return cmd_removed(f"import {argv[1]}", argv[2:])
+    # Bare ``mnemos import`` (no kind) — redirect to the same friendly message.
+    if len(argv) == 1 and argv[0] == "import":
+        return cmd_removed("import", [])
 
     parser = argparse.ArgumentParser(
         prog="mnemos",
@@ -965,38 +848,10 @@ def main(argv: list[str] | None = None) -> int:
     # ------------------------------------------------------------------
 
     # ------------------------------------------------------------------
-    # import — bring an external knowledge source into the palace
-    # ------------------------------------------------------------------
-    parser_import = subparsers.add_parser(
-        "import",
-        help="Import a knowledge source (chatgpt / slack / markdown / memory)",
-    )
-    import_subs = parser_import.add_subparsers(
-        dest="import_kind", metavar="<kind>", required=True,
-    )
-
-    # `import claude-code` — REMOVED in v1.0. Pre-dispatched by `main()` so
-    # any flags (e.g. ``--projects-dir``) get the friendly removal message
-    # instead of an argparse error. Not registered as a subparser at all.
-
-    p_chat = import_subs.add_parser("chatgpt", help="Mine a ChatGPT JSON export file")
-    p_chat.add_argument("path", help="Path to the chatgpt export .json")
-    p_chat.set_defaults(func=cmd_import)
-
-    p_slack = import_subs.add_parser("slack", help="Mine a Slack JSON export file")
-    p_slack.add_argument("path", help="Path to the slack export .json")
-    p_slack.set_defaults(func=cmd_import)
-
-    p_md = import_subs.add_parser("markdown", help="Mine a directory of curated .md files")
-    p_md.add_argument("path", help="Directory containing .md files")
-    p_md.set_defaults(func=cmd_import)
-
-    p_mem = import_subs.add_parser(
-        "memory", help="Mine a Claude memory export directory (.md files)",
-    )
-    p_mem.add_argument("path", help="Directory containing memory .md files")
-    p_mem.set_defaults(func=cmd_import)
-
+    # import — REMOVED in v1.0 (every kind: claude-code / chatgpt / slack /
+    # markdown / memory). All variants are pre-dispatched by `main()` so any
+    # flags (e.g. ``--projects-dir``, file paths) get the friendly removal
+    # message instead of an argparse error. Not registered as a subparser.
     # ------------------------------------------------------------------
     # install-hook
     # ------------------------------------------------------------------

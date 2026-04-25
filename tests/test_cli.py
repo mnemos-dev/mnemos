@@ -57,6 +57,54 @@ def test_cli_import_claude_code_with_flags_prints_removal_message(capsys):
     assert "/mnemos-refine-transcripts" in captured.err
 
 
+# ---------------------------------------------------------------------------
+# v1.0 Task 5 — every `mnemos import <kind>` is now pre-dispatched as removed.
+# The four kinds below all routed through MnemosApp.handle_mine which is gone;
+# the shim keeps `mnemos import chatgpt /tmp/x.json` from blowing up with a
+# stack trace.
+# ---------------------------------------------------------------------------
+
+
+def test_cli_import_chatgpt_prints_removal_message(capsys):
+    from mnemos.cli import main
+
+    rc = main(["import", "chatgpt", "/tmp/x.json"])
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "removed in v1.0" in captured.err.lower()
+    assert "legacy/atomic-paradigm" in captured.err
+
+
+def test_cli_import_slack_prints_removal_message(capsys):
+    from mnemos.cli import main
+
+    rc = main(["import", "slack", "/tmp/x.json"])
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "removed in v1.0" in captured.err.lower()
+    assert "legacy/atomic-paradigm" in captured.err
+
+
+def test_cli_import_markdown_prints_removal_message(capsys):
+    from mnemos.cli import main
+
+    rc = main(["import", "markdown", "/tmp/some-dir"])
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "removed in v1.0" in captured.err.lower()
+    assert "legacy/atomic-paradigm" in captured.err
+
+
+def test_cli_import_memory_prints_removal_message(capsys):
+    from mnemos.cli import main
+
+    rc = main(["import", "memory", "/tmp/some-dir"])
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "removed in v1.0" in captured.err.lower()
+    assert "legacy/atomic-paradigm" in captured.err
+
+
 def test_cli_bare_mine_prints_removal_message(capsys):
     """Bare `mnemos mine` (no flags) should also print the friendly removal message."""
     from mnemos.cli import main

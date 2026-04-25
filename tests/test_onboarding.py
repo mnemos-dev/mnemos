@@ -228,41 +228,10 @@ class TestPendingHelpers:
 # legacy subcommand.
 
 
-class TestImportPathValidation:
-    """test_import_path_validation — file vs directory checks for non-mining paths."""
-
-    def test_chatgpt_rejects_directory(
-        self, config, tmp_path: Path,
-    ) -> None:
-        import argparse
-        from mnemos.cli import _import_chatgpt
-
-        target_dir = tmp_path / "not-a-file"
-        target_dir.mkdir()
-        with pytest.raises(SystemExit, match="Not a file"):
-            _import_chatgpt(config, argparse.Namespace(vault=None, path=str(target_dir)))
-
-    def test_markdown_rejects_file(
-        self, config, tmp_path: Path,
-    ) -> None:
-        import argparse
-        from mnemos.cli import _import_markdown
-
-        f = tmp_path / "actual-file.md"
-        f.write_text("# x", encoding="utf-8")
-        with pytest.raises(SystemExit, match="Not a directory"):
-            _import_markdown(config, argparse.Namespace(vault=None, path=str(f)))
-
-    def test_markdown_rejects_empty_directory(
-        self, config, tmp_path: Path,
-    ) -> None:
-        import argparse
-        from mnemos.cli import _import_markdown
-
-        empty = tmp_path / "empty-dir"
-        empty.mkdir()
-        with pytest.raises(SystemExit, match="No .md files"):
-            _import_markdown(config, argparse.Namespace(vault=None, path=str(empty)))
+# TestImportPathValidation (was: file vs directory rejection for the
+# `_import_chatgpt` / `_import_markdown` helpers) was REMOVED in v1.0
+# alongside the entire `mnemos import` command family. See test_cli.py
+# for the removal-message regressions that lock the friendly shim down.
 
 
 class TestDiscoveryOrdering:
