@@ -31,6 +31,8 @@ from mnemos.config import load_config, HALLS_DEFAULT, WATCHER_IGNORE_DEFAULT
 # ---------------------------------------------------------------------------
 
 HOOK_MARKER = "mnemos-auto-refine"
+RECALL_HOOK_MARKER = "mnemos-recall-briefing"
+HOOK_VERSION_V1 = "v1.0"
 
 
 @dataclass
@@ -42,6 +44,76 @@ class HookInstallResult:
 
 def _utc_date_str() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def _user_settings_path() -> Path:
+    """Return path to user's Claude Code settings.json."""
+    return Path.home() / ".claude" / "settings.json"
+
+
+def _install_hook_v1(vault: Path) -> None:
+    """Atomically install v1.0 SessionStart hooks (auto-refine + recall-briefing).
+
+    Replaces any existing mnemos-managed entries (any ``_version``) with v1.0
+    ones. Idempotent: running twice produces the same final state. Untouched
+    third-party entries (any ``_managed_by`` other than the two mnemos
+    markers) are preserved.
+
+    Layout written:
+        hooks.SessionStart[]:
+          {matcher: *, _managed_by: mnemos-auto-refine,    _version: v1.0, hooks: [...]}
+          {matcher: *, _managed_by: mnemos-recall-briefing, _version: v1.0, hooks: [...]}
+
+    The vault path is forward-slashed on Windows so Claude Code's hook
+    dispatcher (which eats backslash escape sequences like ``\\P``, ``\\m``,
+    ``\\s``, ``\\a``) doesn't corrupt the command. Mirrors the Windows path
+    handling in the v0.x ``install_hook`` helper.
+    """
+    settings_path = _user_settings_path()
+    settings: dict
+    if settings_path.exists():
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    else:
+        settings = {}
+    settings.setdefault("hooks", {})
+    hooks_list = list(settings["hooks"].get("SessionStart", []))
+
+    # Drop any existing mnemos-managed entries (any version). Third-party
+    # entries pass through untouched.
+    managed_markers = {HOOK_MARKER, RECALL_HOOK_MARKER}
+    hooks_list = [h for h in hooks_list if h.get("_managed_by") not in managed_markers]
+
+    # Forward-slash path for Windows hook dispatcher reliability.
+    vault_str = str(vault).replace("\\", "/")
+
+    hooks_list.append({
+        "matcher": "*",
+        "_managed_by": HOOK_MARKER,
+        "_version": HOOK_VERSION_V1,
+        "hooks": [{
+            "type": "command",
+            "command": f'python -m mnemos.auto_refine_hook "{vault_str}"',
+            "timeout": 30000,
+        }],
+    })
+    hooks_list.append({
+        "matcher": "*",
+        "_managed_by": RECALL_HOOK_MARKER,
+        "_version": HOOK_VERSION_V1,
+        "hooks": [{
+            "type": "command",
+            "command": f'python -m mnemos.recall_briefing "{vault_str}"',
+            "timeout": 600000,
+        }],
+    })
+
+    settings["hooks"]["SessionStart"] = hooks_list
+
+    # Atomic write — temp file in the same directory, then os.replace.
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = settings_path.with_suffix(settings_path.suffix + ".tmp")
+    tmp.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, settings_path)
 
 
 def install_hook(vault: Path, uninstall: bool = False) -> HookInstallResult:
@@ -544,7 +616,12 @@ def _install_recall_hook_prompt(lang: str = "en", vault: Path = Path(".")) -> No
 # Pre-dispatched in :func:`main` BEFORE argparse so trailing flags (e.g.
 # ``mnemos mine --rebuild``) don't trigger argparse "unrecognized arguments"
 # errors. See Issue C1 in the Task 4 review.
-LEGACY_REMOVED = frozenset({"mine", "pilot", "migrate", "catch-up", "processing-log"})
+LEGACY_REMOVED = frozenset({
+    "mine", "pilot", "migrate", "catch-up", "processing-log",
+    # v1.0: install-recall-hook merged into `install-hook --v1`. Pre-dispatch
+    # so ``mnemos install-recall-hook --vault X`` gets the friendly nudge.
+    "install-recall-hook",
+})
 
 # v1.0: every kind of ``mnemos import`` was retired alongside the mining
 # pipeline that backed it. ``claude-code`` already had its own pre-dispatch
@@ -674,28 +751,26 @@ def cmd_status(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 
-def cmd_install_hook(args: argparse.Namespace) -> None:
-    """Install or uninstall the SessionStart auto-refine hook."""
-    vault_path = _resolve_vault(args.vault)
-    if not vault_path:
-        vault_path = str(Path.cwd())
+def cmd_install_hook(args: argparse.Namespace) -> int:
+    """Install v1.0 SessionStart hooks (auto-refine + recall-briefing).
 
-    result = install_hook(vault=Path(vault_path), uninstall=args.uninstall)
-    print(f"{result.status}: {result.settings_path}")
-    if result.backup_path:
-        print(f"backup: {result.backup_path}")
-
-
-def cmd_install_recall_hook(args: argparse.Namespace) -> None:
-    """Install or uninstall the SessionStart recall-briefing hook."""
-    from mnemos.recall_briefing import install_recall_hook
-
-    vault_path = _resolve_vault(args.vault)
-    if not vault_path:
-        vault_path = str(Path.cwd())
-
-    result = install_recall_hook(vault=Path(vault_path), uninstall=args.uninstall)
-    print(f"{result.status}: {result.settings_path}")
+    v1.0 narrative-first pivot: the v0.x install-hook (auto-refine only) and
+    install-recall-hook (recall-briefing only) commands are merged into a
+    single atomic ``mnemos install-hook --v1``. Without ``--v1`` we print a
+    friendly migration nudge — the v0.x dual-command flow is gone.
+    """
+    if not getattr(args, "v1", False):
+        print(
+            "Error: --v1 flag is required. v0.x install-hook is removed in v1.0.\n"
+            "Run `mnemos install-hook --v1` to install the v1.0 SessionStart\n"
+            "hooks (auto-refine + recall-briefing) atomically.",
+            file=sys.stderr,
+        )
+        return 1
+    vault = Path(args.vault) if getattr(args, "vault", None) else _resolve_vault_from_yaml()
+    _install_hook_v1(vault)
+    print(f"v1.0 hooks installed: {_user_settings_path()}")
+    return 0
 
 
 def cmd_install_statusline(args: argparse.Namespace) -> None:
@@ -980,25 +1055,24 @@ def main(argv: list[str] | None = None) -> int:
     # flags (e.g. ``--projects-dir``, file paths) get the friendly removal
     # message instead of an argparse error. Not registered as a subparser.
     # ------------------------------------------------------------------
-    # install-hook
+    # install-hook (v1.0: --v1 flag, atomic auto-refine + recall-briefing)
     # ------------------------------------------------------------------
     parser_install_hook = subparsers.add_parser(
         "install-hook",
-        help="Install/uninstall the SessionStart auto-refine hook",
+        help="Install v1.0 SessionStart hooks (auto-refine + recall-briefing) atomically",
     )
-    parser_install_hook.add_argument("--uninstall", action="store_true")
+    parser_install_hook.add_argument(
+        "--v1", action="store_true",
+        help="Install v1.0 hooks (atomic, idempotent). Required in v1.0; the dual-command v0.x flow is gone.",
+    )
+    parser_install_hook.add_argument("--vault", default=None)
     parser_install_hook.set_defaults(func=cmd_install_hook)
 
     # ------------------------------------------------------------------
-    # install-recall-hook
+    # install-recall-hook — REMOVED in v1.0 (merged into install-hook --v1).
+    # Pre-dispatched in main() so any flags (e.g. ``--vault``) get the
+    # friendly "removed in v1.0" message instead of an argparse error.
     # ------------------------------------------------------------------
-    parser_install_recall_hook = subparsers.add_parser(
-        "install-recall-hook",
-        help="Install the SessionStart recall-briefing hook in ~/.claude/settings.json",
-    )
-    parser_install_recall_hook.add_argument("--vault")
-    parser_install_recall_hook.add_argument("--uninstall", action="store_true")
-    parser_install_recall_hook.set_defaults(func=cmd_install_recall_hook)
 
     # ------------------------------------------------------------------
     # install-statusline
@@ -1120,6 +1194,10 @@ def main(argv: list[str] | None = None) -> int:
     # Special-case: reindex also returns an int directly.
     if getattr(args, "command", None) == "reindex":
         return cmd_reindex(args)
+
+    # Special-case: install-hook returns an int (1 when --v1 missing in v1.0).
+    if getattr(args, "command", None) == "install-hook":
+        return cmd_install_hook(args)
 
     if not hasattr(args, "func"):
         parser.print_help()
