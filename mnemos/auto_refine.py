@@ -213,7 +213,7 @@ def _read_ledger_paths(ledger_path: Path) -> set[str]:
         return set()
 
     paths: set[str] = set()
-    for line in ledger_path.read_text(encoding="utf-8").splitlines():
+    for line in ledger_path.read_text(encoding="utf-8", errors="replace").splitlines():
         cols = line.split("\t")
         if not cols or not cols[0].strip():
             continue
@@ -395,7 +395,7 @@ def _latest_outcome_for_path(ledger_path: Path, target: Path) -> str | None:
         return None
     target_norm = str(Path(target))
     latest: str | None = None
-    for line in ledger_path.read_text(encoding="utf-8").splitlines():
+    for line in ledger_path.read_text(encoding="utf-8", errors="replace").splitlines():
         cols = line.split("\t")
         if len(cols) < 2 or not cols[0].strip():
             continue
