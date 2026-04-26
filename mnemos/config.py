@@ -38,6 +38,20 @@ _LEGACY_YAML_KEYS = (
 
 
 # ---------------------------------------------------------------------------
+# v1.1 nested config dataclasses
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class RefineConfig:
+    """Refinement pipeline knobs — how many JSONLs per session, direction, gate."""
+
+    per_session: int = 3
+    direction: str = "newest"  # "newest" | "oldest"
+    min_user_turns: int = 3
+
+
+# ---------------------------------------------------------------------------
 # Main config dataclass
 # ---------------------------------------------------------------------------
 
@@ -90,6 +104,9 @@ class MnemosConfig:
     # v1.0 narrative-first pivot — auto-refresh _identity on session boundaries
     # (default off; opt-in via yaml or `mnemos identity refresh --auto`).
     auto_identity_refresh: bool = False
+
+    # v1.1 nested config sections
+    refine: RefineConfig = field(default_factory=RefineConfig)
 
     # ---------------------------------------------------------------------------
     # Derived path properties
@@ -201,5 +218,14 @@ def load_config(vault_path: Optional[str] = None) -> MnemosConfig:
 
     if "watcher_ignore" in raw:
         cfg.watcher_ignore = list(raw["watcher_ignore"])
+
+    # v1.1 nested config sections
+    refine_raw = raw.get("refine", {})
+    if isinstance(refine_raw, dict):
+        cfg.refine = RefineConfig(
+            per_session=int(refine_raw.get("per_session", 3)),
+            direction=str(refine_raw.get("direction", "newest")),
+            min_user_turns=int(refine_raw.get("min_user_turns", 3)),
+        )
 
     return cfg

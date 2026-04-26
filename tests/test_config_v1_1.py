@@ -29,3 +29,24 @@ def test_yaml_with_schema_version_2_loads_directly(tmp_path: Path) -> None:
     )
     cfg = load_config(str(tmp_path))
     assert cfg.schema_version == 2
+
+
+def test_refine_config_defaults(tmp_path: Path) -> None:
+    yaml_path = tmp_path / "mnemos.yaml"
+    yaml_path.write_text("search_backend: chromadb\n", encoding="utf-8")
+    cfg = load_config(str(tmp_path))
+    assert cfg.refine.per_session == 3
+    assert cfg.refine.direction == "newest"
+    assert cfg.refine.min_user_turns == 3
+
+
+def test_refine_config_from_yaml(tmp_path: Path) -> None:
+    yaml_path = tmp_path / "mnemos.yaml"
+    yaml_path.write_text(
+        "schema_version: 2\nrefine:\n  per_session: 15\n  direction: oldest\n  min_user_turns: 5\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(str(tmp_path))
+    assert cfg.refine.per_session == 15
+    assert cfg.refine.direction == "oldest"
+    assert cfg.refine.min_user_turns == 5
