@@ -1,7 +1,7 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-24 (4.3.1 shipped: explicit `/mnemos-recall` skill — in-session narrative synthesis + Sessions grep rescue when drawer match is weak + soft fallback listing; 5 commits `e1ab0e4`…`166809c`; threshold empirically calibrated 0.5 → 0.015 for k=60 RRF; **643 test pass +2 new**; sonraki: 4.5 settings TUI + 4.6 benchmark + 4.7 PyPI v0.4.0)
-**Stable PyPI version:** `v0.3.3` · **Next:** `v0.4.0` (AI Boost / Phase 1 — 4.3.1 + 4.5 + 4.6 + 4.7 remaining)
+**Last updated:** 2026-04-26 (v1.1.0 design + 55-task implementation plan complete + bg-catchup re-entry guard hotfix shipped to v1.0; 3 commits `a19cfb9` `10fa3ca` `2e428e3`; **455 test pass +2 new** from hotfix; sonraki: G1 Task 1.1'den implementation başlangıç, fresh session ile)
+**Stable PyPI version:** `v0.3.3` · **Alpha:** `v1.0.0a1` (shipped 2026-04-26, narrative-first pivot) · **Next:** `v1.1.0` (SessionEnd-driven memory, plan ready)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
 This file is the single-glance answer to: *why does Mnemos exist, what can it
@@ -325,30 +325,66 @@ gap.
   preview → Edit → upload `assets/social-preview.png`*). Done once,
   sticks forever.
 
-### Next session starts here
+### Next session starts here (2026-04-26)
 
-**4.3.1 explicit `/mnemos-recall` skill shipped (2026-04-24).**
+**v1.1.0 design + implementation plan COMPLETE. Implementation NOT started.**
 
-Kasamd smoke'u rescue path'ini tam beklenen şekilde doğruladı (tavuklu
-oyun query'si farcry Sessions'ından evolution-aware narrative
-ürettirdi). Threshold 0.5 → 0.015 kalibrasyonu + Sessions grep rescue
-SKILL.md'ye ship sırasında smoke-driven iki polish commit olarak
-eklendi.
+Bugünkü oturumun sonunda:
+1. v1.0 bug fix shipped — `recall_briefing.py` re-entry guard `--catchup`
+   parsing'inden sonraya taşındı (`a19cfb9`). `HOOK_ACTIVE_ENV=1` artık
+   bg subprocess'i bloklamıyor. +2 regression test, 455 pass full suite.
+   Empirical doğrulama: kasamd procuretrack için 4128B briefing cache
+   üretildi — bug öncesi hiçbir cache yazılmıyordu.
 
-Sıradaki v0.4.0 ship blocker'ları:
+2. v1.1 design conversation tamam (5 issue brainstormed, all resolved):
+   - Issue 1: Refine pipeline configurability + Settings TUI
+   - Issue 2: Identity bootstrap eligibility gate + auto-refresh from SessionEnd
+   - Issue 3: Briefing readiness gate (default 60%)
+   - Issue 4: Briefing prompt v3 (smart-layered + revision-aware)
+   - Issue 5: In-session briefing UX (systemMessage + cross-check directive)
+   - Foundation: SessionEnd-driven worker pipeline (refine + brief + identity check)
+     with CREATE_BREAKAWAY_FROM_JOB for X-close survival
 
-- **4.5 Settings TUI** (~2.5h) — `mnemos settings` numbered menu
-  (backend / mine-mode / recall-mode / hooks / statusline / languages).
-  Tek panel altında fragmanlı komutları toparlayacak, i18n TR+EN.
-- **4.6 LongMemEval benchmark** (~3h) — S+S combo ölçümü, hedef
-  R@5 ≥ %93.
-- **4.7 PyPI release v0.4.0**.
+3. Spec written + committed (`10fa3ca`):
+   `docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md` — 818 satır,
+   15 bölüm. Hard invariant: NO Anthropic API calls anywhere (subscription only
+   via `claude --print` skill subprocess, `_child_env` strips API key).
 
-v0.4.1 polish candidate (isteğe bağlı, bu ship'e eklenmedi):
-- `/mnemos-recall` için EN + pure-noise smoke senaryoları (bu backend'de
-  drawer-direct path yeterince hit almıyor — ek gözlem v0.4.1'de).
-- `/mnemos-recall` threshold backend-parity (sqlite-vec vs ChromaDB)
-  smoke — spec §9.1 scenario 7, deferred.
+4. Implementation plan written + committed (`2e428e3`):
+   `docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md` — 4748 satır,
+   13 task group, 55 TDD task, ~275 step. Her task TDD pattern (failing test →
+   minimal impl → green → commit).
+
+5. Empirical SessionEnd smoke (2026-04-26 cycle on kasamd farcry):
+   - /exit graceful close: SessionEnd ateşler, worker `with_breakaway` yaşar ✓
+   - X-close idle: SessionEnd ateşler, worker BREAKAWAY ile 30s yaşar ✓
+   - X-close mid-stream: SessionEnd kaçırır → SessionStart sync fallback yakalar
+   - Test infra: `~/.claude/test-session-end/` (hook + worker + inspect script)
+     ve settings.json'da `mnemos-end-smoke-test` SessionEnd entry'si ŞU AN AKTİF.
+
+**Sıradaki oturum başlangıcı:**
+
+Plan'ı `superpowers:subagent-driven-development` veya `superpowers:executing-plans`
+skill'i ile uygula. Önerim subagent-driven (her task fresh subagent, two-stage
+review, paralel friendly). İlk task: **G1 Task 1.1 — Add schema_version field
+with backward-compat read** (`mnemos/config.py` + `tests/test_config_v1_1.py`,
+TDD pattern, ~5 step, ~15 dakika).
+
+Group sırası: G1 (config foundation) → G2 (refine config) → G3 (identity gate)
+→ G4 (refresh skill) → G5 (briefing v3) → G6 (SessionStart updates) → G7
+(SessionEnd worker) → G8 (install-end-hook CLI) → G9 (Settings TUI) → G10
+(init flow) → G11 (docs) → G12 (empirical validation, BLOCKING) → G13 (release).
+
+🟡 **Pending user actions (defer):**
+- Test infra cleanup: `~/.claude/test-session-end/` dir + settings.json'daki
+  `mnemos-end-smoke-test` SessionEnd entry. Implementation sırasında G7 için
+  reference olarak kalabilir, sonra cleanup.
+- Identity bootstrap (v1.0'dan beri pending): `mnemos identity bootstrap
+  --vault "C:/Users/tugrademirors/OneDrive/Masaüstü/kasamd"` — v1.1 G3 ile
+  birlikte threshold gate'e takılacak (~10% have, 25% need); --force ile
+  bypass mümkün. Implementation döneminde gerekirse force ile çalıştır.
+- PyPI publish v1.0.0a1 (deferred): `python -m twine upload dist/...` — v1.1
+  hazır olunca v1.1.0 doğrudan publish, v1.0.0a1 alpha tag GitHub'da kalır.
 
 ### Previous — 4.3.A session notes
 
@@ -571,71 +607,18 @@ fix'ler" + "Smoke doğrulandı" bloklarında.
 
 ---
 
-### ⏭ SIRADAKİ OTURUM — v0.4.0 Phase 1 kalanı
+### ⏭ Stale v0.4-era plan (superseded by v1.1 — see "Next session starts here" at top)
 
-4.3 first ship kapandı (2026-04-23). Sıradaki parçalar v0.4.0-final için:
+v0.4-era settings TUI / benchmark / PyPI plan v1.1.0'a entegre edildi:
+- 4.5 Settings TUI → v1.1 Issue 1 G9
+- 4.6 LongMemEval benchmark → v1.2 candidate (deferred, v1.1 manual smoke yeterli)
+- 4.7 PyPI release v0.4.0 → v1.0.0a1 alpha shipped 2026-04-26, v1.1.0 final ileride
 
-- **4.3.1 Explicit `/mnemos-recall <query>` skill** (~2h, second ship) —
-  cross-context edge case: farcry cwd'sinde çalışıyorum ama GYP satın alma
-  hatırlatması istiyorum. Brainstorm + spec + plan ayrı, v0.4.1 polish'ine
-  birleşmeden önce kendi ship'inde.
-- **4.5 Settings TUI** (~2.5h) — `mnemos settings` numbered menu
-  (backend / mine-mode / recall-mode / hooks / statusline / languages).
-  Fragmanlı komutları tek panel altında topla. i18n TR+EN.
-- **4.6 LongMemEval benchmark** (~3h) — S+S combo (script-mine +
-  script-recall) ölçüm. Hedef Recall@5 ≥ %93. Skill modları kalitatif
-  (pilot raporu) — benchmark sadece baseline.
-- **4.7 PyPI release v0.4.0** — version bump, CHANGELOG, wheel+sdist,
-  GitHub release. 3.10a pre-release wheel inspection paterni tekrarla
-  (skill path'leri package'da mı, --model sonnet hardcode mu vb.).
-
-**Opsiyonel v0.4.1 polish:**
-- `.gitkeep*` filter zaten `6e8a3e3`'te eklendi → bir sonraki pilot'ta
-  discovery'de hiç çıkmayacak. **Picker'lar hâlâ kapsamıyor** —
-  `_pick_unmined_sessions` + `_pick_unprocessed_jsonls` için de aynı
-  filter (hook / catch-up akışında `.gitkeep.md` ve `MEMORY.md` sessiz
-  düşsün). 2026-04-22 dry-run'ında kasamd'de Phase A'ya `.gitkeep.md`
-  girdi.
-- Script miner section-header kaçışı ("Özet/Sonraki Adımlar/Yapılanlar
-  /Alınan Kararlar/See Also" filename'e sızıyor) — script-mine canlı
-  olmasa bile benchmark ve geri dönüş senaryoları için temizlemek iyi
-- `mnemos mine --raw-only` (4.2.9 follow-up)
-- **Ledger/palace reconcile komutu** — `mnemos processing-log repair`
-  veya `mnemos mine --reconcile-ledger`. Palace frontmatter'ını tarar,
-  skill-mine ledger'ına eksik OK satırlarını filesystem fallback'tan
-  backfill eder, `_processing.xlsx`'i günceller. 2026-04-22 kasamd
-  bulgusu: palace'ta 593 drawer, ledger accounting 516 (77 gap =
-  pilot raporu Finding 2 "ledger-skipped; recovered from filesystem"
-  birikmesi). `mnemos processing-log --rebuild` ile birlikte aynı
-  modülde (`mnemos/processing_log.py` command surface genişletmesi).
-- **Skill-mine-llm source field absolute-path discipline** —
-  `skills/mnemos-mine-llm/SKILL.md` frontmatter şema bölümünde
-  `source:` alanının **daima absolute path** olduğunu vurgula + canonical
-  prompt'a input path'i kaybetmeden kopyalama talimatı. 2026-04-22 audit:
-  3 drawer relative path ile yazılmış (`source: memory/user_profile.md`).
-- **Legacy corrupt ledger rows cleanup** — refine ledger satır 128
-  (`C:\Users<TAB>ugrademirors\.claude\...`) + 4 UUID-prefix-kesik satır
-  + eski `palace=Mnemos-pilot` satırları. Harmless, ama STATUS'taki
-  Pending user actions maddesini kapatır.
-- **Hook ledger-skip koruması** — `_run_skill_pipeline` Phase B
-  sonunda refine skill ledger'ı `OK` yazmadıysa ama `Sessions/`'ta
-  yeni md oluştuysa filesystem fallback çağır (pilot.py pattern).
-  Plan'da Spec §8'de bu durum "Refine OK ama skill ledger'da session
-  path bulunamıyor → filesystem fallback" olarak not edilmişti ama
-  implementation'da `_latest_session_for_jsonl is None → ERROR` oluyor.
-
----
-
-**🟡 Pending user actions:**
-
-- Social-preview PNG → GitHub Settings (tek tıklık; v0.4.0 ship'i
-  bloklamıyor)
-- Skill-mine ledger'ında legacy 2 pilot-2 row'u + corrupted bash-escape
-  row'u kalıntı var (`~/.claude/skills/mnemos-mine-llm/state/mined.tsv`).
-  Harmless (path-match'te tutmazlar) ama one-liner cleanup düşünebiliriz.
-- Mnemos MCP server şu oturum için kill edildi (accept anında graph.json
-  SQLite lock tutuyordu). Bir sonraki Claude Code restart'ında otomatik
-  respawn eder, yeni skill palace'ı + yeni ChromaDB'yi kullanır.
+v0.4.1 polish kalemleri (.gitkeep filter, script miner section-header escape,
+ledger reconcile, source absolute-path discipline, legacy corrupt ledger rows)
+v1.0 narrative-first pivot ile alakasız hale geldi (mining pipeline silindi).
+v1.1 implementation sırasında auto-refine hook touch edildiğinde minor lint'ler
+ekleyebiliriz ama explicit v1.1 plan task'ı yok.
 
 ### Released — 4.3.1 second ship: explicit /mnemos-recall skill (2026-04-24)
 

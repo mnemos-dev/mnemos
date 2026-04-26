@@ -4,7 +4,7 @@
 Eski `docs/specs/2026-04-*` ve `docs/plans/2026-04-*` dosyaları historical
 archive; burada çelişki olursa bu dosya geçerlidir.
 
-**Son güncelleme:** 2026-04-19 (4.2.1-9 ship, v0.4.2-alpha batch hand-off)
+**Son güncelleme:** 2026-04-26 (v1.0.0a1 alpha shipped + bg-catchup hotfix; v1.1 design + 55-task plan ready)
 
 ---
 
@@ -18,10 +18,70 @@ archive; burada çelişki olursa bu dosya geçerlidir.
 | v0.3.1 | Backend UX (keşif + migrate + recovery) | ✅ | ✅ |
 | v0.3.2 | Palace Hygiene (pipeline fixes + atomic rebuild) | ✅ | ✅ |
 | v0.3.3 | Post-v0.3.2 cleanup (migrate rollback+lock, score parity, slow-tests) | ✅ | ✅ |
-| **v0.4.0** | **AI Boost / Phase 1 — skill-first (mine + recall + pilot + settings TUI)** | **🔄 spec done** | — |
-| v0.4.1 | Polish batch (picker noise filter, ledger reconcile, source-path discipline, etc.) | ⏸ | — |
-| v0.5.0 | Automation / Phase 2 (+ contradiction hygiene v0.4'ten) | ⏸ | — |
-| v0.6.0 | Community & Ecosystem | ⏸ | — |
+| ~~v0.4.0~~ | ~~AI Boost / Phase 1~~ — superseded by v1.0 narrative-first pivot | 🗄️ archived | — |
+| **v1.0.0a1** | **Narrative-first pivot (atomic-fragmentation dropped, Sessions = unit, Identity Layer)** | ✅ shipped 2026-04-26 | ⏸ deferred |
+| **v1.1.0** | **SessionEnd-driven memory (refine+brief+identity-refresh worker, settings TUI, briefing v3, readiness gates, in-session cross-check)** | **🔄 plan ready** | — |
+| v1.2.0 | Polish + LongMemEval benchmark (R@5 ≥ %93 baseline, JSONL-direct identity bootstrap?) | ⏸ | — |
+| v0.5.0 | Automation / Phase 2 — superseded by v1.1 SessionEnd hook | 🗄️ archived | — |
+| v0.6.0 | Community & Ecosystem (Obsidian plugin, multi-language markers, demo video) | ⏸ | — |
+
+**v1.1.0 spec:** [`docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md`](specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md)
+**v1.1.0 plan:** [`docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md`](plans/2026-04-26-v1.1.0-sessionend-driven-memory.md) (55 TDD task, 13 group)
+
+---
+
+## v1.1.0 — SessionEnd-Driven Memory 🔄 *(plan ready 2026-04-26)*
+
+13 task group, 55 task. Subagent-driven implementation önerilir.
+
+### Görevler (group-level checkpoints; full TDD step list plan'da)
+
+- [ ] **G1** — Config schema foundation (5 task) — schema_version + nested RefineConfig/BriefingConfig/IdentityConfig + atomic save w/ backup
+- [ ] **G2** — Refine pipeline configurability (6 task) — pick_jsonls(cfg), direction newest/oldest, min_user_turns from config, caller updates
+- [ ] **G3** — Identity eligibility helpers + bootstrap gate (5 task) — readiness pct, threshold gate, --force flag, refresh trigger from config
+- [ ] **G4** — Identity refresh skill (3 task) — `mnemos-identity-refresh` scaffold + junction + zero-drift test
+- [ ] **G5** — Briefing prompt v3 (3 task) — smart-layered (anchor + all-decisions + recent 5) + revision-aware rewrite + tests
+- [ ] **G6** — SessionStart updates (5 task) — readiness gate, systemMessage, cross-check directive, sync fallback, vault-aware first-visit
+- [ ] **G7** — SessionEnd hook + worker (6 task) — module skeleton, detached spawn w/ CREATE_BREAKAWAY_FROM_JOB+fallback, 3-stage worker, re-entry guard regression, hook entry schema, stale-hook detection
+- [ ] **G8** — install-end-hook CLI (4 task) — atomic install, --uninstall, argparse wiring, roundtrip test
+- [ ] **G9** — Settings TUI (7 task) — render_menu + validators + apply_field_change + cmd_settings + per-cwd readiness + progress display + i18n
+- [ ] **G10** — Init flow integration (3 task) — refine quota dialog, install-end-hook prompt, i18n
+- [ ] **G11** — Documentation (5 task) — README hero+quota, CHANGELOG, identity-bootstrap v2 prompt, CONTRIBUTING no-API rule, CI grep
+- [ ] **G12** — Empirical validation (3 task) — farcry/procuretrack/mid-stream X-close smoke on real kasamd vault. **BLOCKING for G13.**
+- [ ] **G13** — Release prep (4 task) — version bump, build, pre-release inspection, PyPI+GitHub publish (DEFERRED — user-triggered)
+
+### Hard invariants (spec §2)
+
+- ❌ **NO Anthropic API calls anywhere** — `claude --print` subscription only, `_child_env()` strips API key, CI grep enforces
+- 📁 Obsidian master, vault is source of truth
+- ⚛️ Idempotent hooks, atomic file ops
+- 🔓 SessionEnd worker survives parent termination (CREATE_BREAKAWAY_FROM_JOB)
+- 🚫 No silent failure on user-actionable conditions
+
+### Başarı kriterleri
+
+- [ ] All G1-G11 task-level tests pass (target ≥520 total, was 455)
+- [ ] No-API CI grep passes (zero violations)
+- [ ] G12 empirical smoke 3 cwd × full lifecycle on kasamd green
+- [ ] User reviews + approves implementation before G13 release
+
+---
+
+## v1.0.0a1 — Narrative-First Pivot ✅ *(2026-04-26)*
+
+Atomic-fragmentation paradigm dropped. Sessions/.md = canonical memory unit.
+Identity Layer scaffold introduced. Mining pipeline (~3K LOC + ~200 test)
+silindi. 33 commit + 2 hotfix on main. Tag `v1.0.0a1` pushed; PyPI publish
+deferred per staged rollout strategy.
+
+**Hotfix (2026-04-26):** `recall_briefing.py` re-entry guard moved to AFTER
+`--catchup`/`--brief-and-cache` arg parsing. Pre-fix: bg subprocess inherited
+HOOK_ACTIVE_ENV=1 → guard at top of main() bloks --catchup → no cache ever
+written for any cwd since v1.0 went live. Fix + 2 regression test, full suite
+455 pass. Empirically validated by producing fresh procuretrack briefing cache
+(4128B, 18 sessions) — pre-fix had no cache file at all.
+
+(Full release notes: STATUS.md "v1.0.0a1 alpha shipped" section + git log)
 
 ---
 
