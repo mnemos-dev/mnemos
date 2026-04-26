@@ -27,6 +27,14 @@
 
 ---
 
+> **Best practice (v1.1):** Close Claude Code with `/exit`. Mnemos uses your
+> session close as the trigger to refine and brief — graceful close means the
+> next session opens with fresh context. X-close while idle also works;
+> force-kill misses (a defensive SessionStart fallback catches up on the next
+> visit).
+
+---
+
 ## New here? Read this first
 
 If you're new to Claude Code skills, MCP tools, or Obsidian, here is the whole
@@ -125,6 +133,32 @@ plain text.
 **"Can I run this on an existing vault I already use for other notes?"** —
 Yes. Mnemos owns `<vault>/Sessions/` and `<vault>/_identity/`. Your
 existing `Topics/`, `memory/`, and any other folders are left alone.
+
+---
+
+## What to expect on first install (v1.1)
+
+Mnemos uses your **Claude Code subscription quota** for refinement (no
+Anthropic API calls, no extra spend). Each Claude Code transcript becomes one
+`claude --print` call when refined into a Session note.
+
+For users with deep history (200+ JSONLs), `mnemos init` shows a quota dialog:
+
+- How many JSONLs to refine per session start (default 3)
+- Direction (newest first or oldest first)
+- Noise floor (min user turns to count as refineable)
+
+You can adjust these any time via `mnemos settings`. The settings TUI also
+shows refinement progress (eligible / refined / skipped + percent).
+
+**Identity Layer** (your cross-project user profile) unlocks once a
+configurable percentage of your JSONL backlog is refined (default 25%). This
+avoids generating a thin profile from too-little data. Use `mnemos identity
+bootstrap --force` to override.
+
+**Briefing** (per-cwd project context) injects into Claude Code on session
+start once the cwd's readiness reaches a configurable threshold (default
+60%). Below the gate the brief stays silent — better than wrong context.
 
 ---
 
