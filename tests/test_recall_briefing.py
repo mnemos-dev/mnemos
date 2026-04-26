@@ -1424,3 +1424,40 @@ def test_handle_session_start_inject_when_readiness_above_threshold(tmp_path, mo
     )
     assert result.injected_context != ""
     assert "**Aktif durum:**" in result.injected_context
+
+
+def test_main_emits_systemmessage_when_briefing_show_enabled(tmp_path, monkeypatch, capsys):
+    from mnemos.recall_briefing import main
+    import json as _json
+    import io as _io
+
+    (tmp_path / "mnemos.yaml").write_text(
+        "schema_version: 2\nrecall_mode: skill\n"
+        "briefing:\n  show_systemmessage: true\n  readiness_pct: 0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MNEMOS_VAULT", str(tmp_path))
+    cache_dir = tmp_path / ".mnemos-briefings"
+    cache_dir.mkdir()
+    (cache_dir / "test-cwd.md").write_text(
+        "---\ncwd: C:/test\nsession_count_used: 5\n---\n**Aktif durum:** ProcureTrack ready.\n",
+        encoding="utf-8",
+    )
+    _make_state_file(tmp_path)
+    monkeypatch.setattr("mnemos.recall_briefing.cwd_to_slug", lambda c: "test-cwd")
+    monkeypatch.setattr(
+        "mnemos.recall_briefing._spawn_bg_catchup",
+        lambda cwd, vault: None,
+    )
+
+    hook_input = _json.dumps(
+        {"cwd": "C:/test", "source": "startup", "transcript_path": "/x.jsonl"}
+    )
+    monkeypatch.setattr("sys.stdin", _io.StringIO(hook_input))
+
+    main()
+    captured = capsys.readouterr()
+    out = _json.loads(captured.out)
+    assert "systemMessage" in out
+    assert "Mnemos" in out["systemMessage"] or "briefing loaded" in out["systemMessage"]
+    assert "additionalContext" in out["hookSpecificOutput"]

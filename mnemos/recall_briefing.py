@@ -894,12 +894,33 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if result.injected_context:
-        out = {
+        out: dict = {
             "hookSpecificOutput": {
                 "hookEventName": "SessionStart",
                 "additionalContext": result.injected_context,
             }
         }
+        # v1.1 Task 6.2: optional systemMessage display so the user sees a
+        # visible "briefing loaded" line in the Claude Code transcript.
+        try:
+            from mnemos.config import load_config
+            cfg = load_config(str(vault))
+            if cfg.briefing.show_systemmessage:
+                cache_p = cache_path_for(vault, cwd_to_slug(inp.cwd))
+                session_n = "?"
+                if cache_p.exists():
+                    text = cache_p.read_text(encoding="utf-8", errors="replace")
+                    import re as _re
+                    m = _re.search(r"session_count_used:\s*(\d+)", text)
+                    if m:
+                        session_n = m.group(1)
+                cwd_short = inp.cwd.rsplit("\\", 1)[-1].rsplit("/", 1)[-1]
+                out["systemMessage"] = (
+                    f"📋 Mnemos: {cwd_short} briefing loaded · {session_n} sessions"
+                )
+        except Exception:
+            # Never let the systemMessage assembly crash the hook
+            pass
         print(json.dumps(out, ensure_ascii=False))
 
     return 0
