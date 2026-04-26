@@ -682,6 +682,24 @@ def handle_session_start(
     cache_p = cache_path_for(vault, slug)
     cache_exists = cache_p.exists()
 
+    # v1.1 Task 6.4: sync fallback when SessionEnd worker missed (pending
+    # JSONLs exist but no cache landed). Refining + briefing here costs the
+    # user a few seconds at session start, but gives them a real briefing
+    # NOW instead of waiting until next session.
+    if pending and not cache_exists:
+        capped = pending[-SUB_B2_PENDING_CAP:]
+        for jsonl in capped:
+            run_refine_sync(jsonl)
+        brief_and_cache(inp.cwd, vault)
+        save_state(vault, state)
+        if cache_p.exists():
+            body = read_cache_body(cache_p)
+            return HandleOutcome(
+                outcome="sync_fallback_inject",
+                injected_context=body,
+            )
+        return HandleOutcome(outcome="sync_fallback_brief_failed")
+
     # Always fire bg catchup — it's a no-op refine loop when pending is empty,
     # just refreshes the cache body. Hook path stays <1s either way.
     bg_spawn(inp.cwd, vault)

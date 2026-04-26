@@ -667,27 +667,10 @@ def test_return_visit_pending_with_cache_injects_and_bg_catches_up(tmp_path: Pat
     assert bg_calls[0] == (cwd, tmp_path)
 
 
-def test_return_visit_pending_no_cache_silent_bg_catchup(tmp_path: Path) -> None:
-    """Pending>0 + no cache → silent (no inject), bg catchup fires to build
-    the cache. User sees briefing on the NEXT session opens."""
-    cwd = "C:\\Projects\\mnemos-new-cwd"
-    slug, _ = _setup_cwd_with_pending(tmp_path, cwd, with_cache=False)
-
-    bg_calls: list[tuple[str, Path]] = []
-    def fake_bg_spawn(cwd_arg, vault_arg):
-        bg_calls.append((cwd_arg, vault_arg))
-
-    inp = SessionStartInput(cwd=cwd, source="startup", transcript_path="live.jsonl")
-    result = handle_session_start(
-        inp,
-        vault=tmp_path,
-        projects_root=tmp_path / ".claude" / "projects",
-        ledger=tmp_path / "_nl.tsv",
-        bg_spawn=fake_bg_spawn,
-    )
-    assert result.outcome == "bg_catching_up"
-    assert result.injected_context == ""
-    assert len(bg_calls) == 1
+# v1.0 test_return_visit_pending_no_cache_silent_bg_catchup retired — the
+# v1.1 sync fallback (Task 6.4) now intercepts the (pending, no-cache) branch
+# with an inline refine + brief instead of the silent bg-catchup path. The
+# new semantic is covered by test_handle_session_start_sync_fallback_when_pending.
 
 
 def test_sub_b2_does_not_invoke_mine_skill(tmp_path: Path) -> None:
@@ -1525,3 +1508,62 @@ def test_inject_no_directive_when_disabled(tmp_path, monkeypatch, capsys):
     ctx = out["hookSpecificOutput"]["additionalContext"]
     assert "MNEMOS BRIEFING" not in ctx
     assert "**Aktif durum:** body" in ctx
+
+
+def test_handle_session_start_sync_fallback_when_pending(tmp_path, monkeypatch):
+    """CASE B: pending JSONLs + cache absent → SYNC refine + brief, inject fresh body.
+
+    Simulates the SessionEnd-was-missed scenario. The mock brief_and_cache
+    actually writes the cache file (the way the real one does), so the
+    fallback's post-brief cache_p.exists() check sees it.
+    """
+    from mnemos.recall_briefing import handle_session_start, SessionStartInput
+    from pathlib import Path as _P
+
+    (tmp_path / "mnemos.yaml").write_text(
+        "schema_version: 2\nrecall_mode: skill\nbriefing:\n  readiness_pct: 0\n",
+        encoding="utf-8",
+    )
+    _make_state_file(tmp_path)
+    monkeypatch.setattr("mnemos.recall_briefing.cwd_to_slug", lambda c: "test-cwd")
+
+    pending_jsonls = [_P("fake.jsonl")]
+    monkeypatch.setattr(
+        "mnemos.recall_briefing.find_unrefined_jsonls_for_cwd",
+        lambda **kw: pending_jsonls,
+    )
+    refine_called: list = []
+    monkeypatch.setattr(
+        "mnemos.recall_briefing.run_refine_sync",
+        lambda jsonl, runner=None: refine_called.append(jsonl),
+    )
+    brief_called: list = []
+
+    def fake_brief(cwd, vault, brief_runner=None):
+        brief_called.append(cwd)
+        cache_dir = vault / ".mnemos-briefings"
+        cache_dir.mkdir(exist_ok=True)
+        (cache_dir / "test-cwd.md").write_text(
+            "---\ncwd: C:/test\n---\nfresh body\n", encoding="utf-8"
+        )
+        return True
+
+    monkeypatch.setattr("mnemos.recall_briefing.brief_and_cache", fake_brief)
+    bg_called: list = []
+    monkeypatch.setattr(
+        "mnemos.recall_briefing._spawn_bg_catchup",
+        lambda c, v: bg_called.append((c, v)),
+    )
+
+    inp = SessionStartInput(cwd="C:/test", source="startup", transcript_path="")
+    result = handle_session_start(
+        inp, vault=tmp_path,
+        projects_root=tmp_path / "projects",
+        ledger=tmp_path / "ledger.tsv",
+    )
+    assert len(refine_called) == 1
+    assert len(brief_called) == 1
+    assert "fresh body" in result.injected_context
+    assert "sync_fallback" in result.outcome
+    # bg should NOT fire in sync path — sync already did the work
+    assert bg_called == []
