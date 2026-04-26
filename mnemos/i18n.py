@@ -259,6 +259,35 @@ _STRINGS: Dict[str, Dict[str, str]] = {
         "en": "Skipped recall-briefing hook. You can install later with: mnemos install-recall-hook",
         "tr": "Recall-briefing hook atlandı. Sonra kurmak için: mnemos install-recall-hook",
     },
+    # ---------------- Settings TUI (v1.1 G9 task 9.7) ----------------
+    "settings.title": {
+        "en": "Mnemos Settings",
+        "tr": "Mnemos Ayarları",
+    },
+    "settings.refine_section": {
+        "en": "Refine pipeline:",
+        "tr": "Refine pipeline:",
+    },
+    "settings.briefing_section": {
+        "en": "Briefing:",
+        "tr": "Briefing:",
+    },
+    "settings.identity_section": {
+        "en": "Identity:",
+        "tr": "Identity:",
+    },
+    "settings.hooks_section": {
+        "en": "Hooks (settings.json managed):",
+        "tr": "Hooks (settings.json yönetilen):",
+    },
+    "settings.backend_section": {
+        "en": "Backend & locale:",
+        "tr": "Backend & dil:",
+    },
+    "settings.progress_section": {
+        "en": "--- Refinement Progress ---",
+        "tr": "--- Refine ilerlemesi ---",
+    },
 }
 
 

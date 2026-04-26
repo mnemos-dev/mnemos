@@ -15,6 +15,7 @@ import json
 from pathlib import Path
 
 from mnemos.config import load_config
+from mnemos.i18n import resolve_lang, t
 
 
 # ---------------------------------------------------------------------------
@@ -48,44 +49,93 @@ def _check_hook_installed(managed_by: str) -> bool:
     return False
 
 
+def _compute_global_progress(vault: Path, cfg) -> dict:
+    """Walk the user's projects + vault Sessions + refine ledger to compute
+    overall refinement progress: how many JSONLs passed the user-turn filter,
+    how many produced Session notes, how many were SKIPed by the refine
+    skill, and the resulting readiness percentage."""
+    from mnemos.readiness import (
+        count_eligible_jsonls,
+        count_refined_sessions,
+        compute_readiness_pct,
+    )
+
+    projects = Path.home() / ".claude" / "projects"
+    eligible = count_eligible_jsonls(
+        projects, min_user_turns=cfg.refine.min_user_turns
+    )
+    refined = count_refined_sessions(vault)
+
+    ledger = Path.home() / ".claude/skills/mnemos-refine-transcripts/state/processed.tsv"
+    skipped = 0
+    if ledger.exists():
+        try:
+            with ledger.open("r", encoding="utf-8", errors="replace") as fh:
+                for raw in fh:
+                    parts = raw.rstrip("\r\n").split("\t")
+                    if len(parts) >= 2 and parts[1] == "SKIP":
+                        skipped += 1
+        except OSError:
+            pass
+
+    return {
+        "eligible": eligible,
+        "refined": refined,
+        "skipped": skipped,
+        "pct": compute_readiness_pct(refined, eligible),
+    }
+
+
 def render_menu(vault: Path) -> str:
     cfg = load_config(str(vault))
+    lang = resolve_lang(cfg)
     lines: list[str] = []
     lines.append("=" * 68)
-    lines.append("Mnemos Settings")
+    lines.append(t("settings.title", lang))
     lines.append(f"Vault: {vault}")
     lines.append("=" * 68)
     lines.append("")
-    lines.append("Refine pipeline:")
+    lines.append(t("settings.refine_section", lang))
     lines.append(_format_field_line(1, "JSONLs per session start", str(cfg.refine.per_session)))
     lines.append(_format_field_line(2, "Direction", cfg.refine.direction))
     lines.append(_format_field_line(3, "Min user turns (noise floor)", str(cfg.refine.min_user_turns)))
     lines.append("")
-    lines.append("Briefing:")
+    lines.append(t("settings.briefing_section", lang))
     lines.append(_format_field_line(4, "Readiness gate (%)", str(cfg.briefing.readiness_pct)))
     lines.append(_format_field_line(5, "Show systemMessage display", str(cfg.briefing.show_systemmessage).lower()))
     lines.append(_format_field_line(6, "Enforce consistency check", str(cfg.briefing.enforce_consistency).lower()))
     lines.append("")
-    lines.append("Identity:")
+    lines.append(t("settings.identity_section", lang))
     lines.append(_format_field_line(7, "Bootstrap unlock threshold (%)", str(cfg.identity.bootstrap_threshold_pct)))
     lines.append(_format_field_line(8, "Auto-refresh", str(cfg.identity.auto_refresh).lower()))
     lines.append(_format_field_line(9, "Refresh session delta", str(cfg.identity.refresh_session_delta)))
     lines.append(_format_field_line(10, "Refresh min days", str(cfg.identity.refresh_min_days)))
     lines.append("")
-    lines.append("Hooks (settings.json managed):")
+    lines.append(t("settings.hooks_section", lang))
     lines.append(_format_hook_line(11, "auto-refine SessionStart", _check_hook_installed("mnemos-auto-refine")))
     lines.append(_format_hook_line(12, "recall-briefing SessionStart", _check_hook_installed("mnemos-recall-briefing")))
     lines.append(_format_hook_line(13, "session-end (NEW v1.1)", _check_hook_installed("mnemos-session-end")))
     lines.append(_format_hook_line(14, "statusline", False))
     lines.append("")
-    lines.append("Backend & locale:")
+    lines.append(t("settings.backend_section", lang))
     lines.append(_format_field_line(15, "Search backend", cfg.search_backend))
     lines.append(_format_field_line(16, "Languages", str(cfg.languages)))
     lines.append(_format_field_line(17, "Recall mode", cfg.recall_mode))
     lines.append("")
-    lines.append("--- Refinement Progress ---")
-    lines.append("  Eligible JSONLs:        ?")
-    lines.append("  Refined to Sessions:    ?")
+    lines.append(t("settings.progress_section", lang))
+    prog = _compute_global_progress(vault, cfg)
+    lines.append(f"  Eligible JSONLs:        {prog['eligible']}")
+    lines.append(
+        f"  Refined to Sessions:    {prog['refined']}  ({prog['pct']:.1f}%)"
+    )
+    if prog["pct"] >= cfg.identity.bootstrap_threshold_pct:
+        bootstrap_status = "[unlocked]"
+    else:
+        bootstrap_status = (
+            f"[locked] need {cfg.identity.bootstrap_threshold_pct}%, "
+            f"have {prog['pct']:.1f}%"
+        )
+    lines.append(f"  Identity bootstrap:     {bootstrap_status}")
     lines.append("  18) Per-cwd briefing readiness breakdown")
     lines.append("  19) Run identity bootstrap manually")
     lines.append("  20) Run identity refresh now")

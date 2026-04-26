@@ -112,3 +112,29 @@ def test_per_cwd_readiness_breakdown_handles_no_state(tmp_path):
 
     output = format_per_cwd_breakdown(vault=tmp_path)
     assert "No per-cwd state" in output or "no" in output.lower()
+
+
+def test_render_menu_shows_real_refinement_progress(tmp_path, monkeypatch):
+    """render_menu reads _compute_global_progress and surfaces the numbers."""
+    (tmp_path / "mnemos.yaml").write_text("schema_version: 2\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "mnemos.settings_tui._compute_global_progress",
+        lambda v, c: {"eligible": 100, "refined": 47, "skipped": 18, "pct": 47.0},
+    )
+    from mnemos.settings_tui import render_menu
+
+    output = render_menu(tmp_path)
+    assert "100" in output
+    assert "47" in output
+    assert "47.0%" in output or "47%" in output
+
+
+def test_render_menu_uses_turkish_when_lang_tr(tmp_path):
+    """When languages: [tr], at least the title flips to the TR string."""
+    (tmp_path / "mnemos.yaml").write_text(
+        "schema_version: 2\nlanguages: [tr]\n", encoding="utf-8"
+    )
+    from mnemos.settings_tui import render_menu
+
+    output = render_menu(tmp_path)
+    assert "Mnemos Ayarları" in output
