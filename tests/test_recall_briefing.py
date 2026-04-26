@@ -1567,3 +1567,72 @@ def test_handle_session_start_sync_fallback_when_pending(tmp_path, monkeypatch):
     assert "sync_fallback" in result.outcome
     # bg should NOT fire in sync path — sync already did the work
     assert bg_called == []
+
+
+def test_handle_session_start_case_a_with_vault_sessions_sync_briefs(tmp_path, monkeypatch):
+    """CASE A first-visit: if vault already has Sessions for this cwd
+    (e.g. user opened the cwd before installing Mnemos), sync brief now."""
+    from mnemos.recall_briefing import handle_session_start, SessionStartInput
+
+    (tmp_path / "mnemos.yaml").write_text(
+        "schema_version: 2\nrecall_mode: skill\n", encoding="utf-8"
+    )
+    # No state file → first visit
+    sessions = tmp_path / "Sessions"
+    sessions.mkdir()
+    (sessions / "2026-01-01-foo.md").write_text(
+        "---\ndate: 2026-01-01\ncwd: C:/test\n---\nbody\n", encoding="utf-8"
+    )
+    monkeypatch.setattr("mnemos.recall_briefing.cwd_to_slug", lambda c: "test-cwd")
+
+    brief_called: list = []
+
+    def fake_brief(cwd, vault, brief_runner=None):
+        brief_called.append(cwd)
+        cache_dir = vault / ".mnemos-briefings"
+        cache_dir.mkdir(exist_ok=True)
+        (cache_dir / "test-cwd.md").write_text(
+            "---\n---\nfresh first-visit body\n", encoding="utf-8"
+        )
+        return True
+
+    monkeypatch.setattr("mnemos.recall_briefing.brief_and_cache", fake_brief)
+    monkeypatch.setattr(
+        "mnemos.recall_briefing._spawn_bg_catchup",
+        lambda c, v: None,
+    )
+
+    inp = SessionStartInput(cwd="C:/test", source="startup", transcript_path="")
+    result = handle_session_start(
+        inp, vault=tmp_path,
+        projects_root=tmp_path / "projects",
+        ledger=tmp_path / "ledger.tsv",
+    )
+    assert len(brief_called) == 1
+    assert "fresh first-visit body" in result.injected_context
+    assert "first_visit" in result.outcome and "inject" in result.outcome
+
+
+def test_handle_session_start_case_a_no_vault_sessions_silent(tmp_path, monkeypatch):
+    """CASE A first-visit: empty vault → silent first_visit, no brief."""
+    from mnemos.recall_briefing import handle_session_start, SessionStartInput
+
+    (tmp_path / "mnemos.yaml").write_text(
+        "schema_version: 2\nrecall_mode: skill\n", encoding="utf-8"
+    )
+    monkeypatch.setattr("mnemos.recall_briefing.cwd_to_slug", lambda c: "fresh-cwd")
+    brief_called: list = []
+    monkeypatch.setattr(
+        "mnemos.recall_briefing.brief_and_cache",
+        lambda *a, **kw: brief_called.append(a) or True,
+    )
+
+    inp = SessionStartInput(cwd="C:/fresh", source="startup", transcript_path="")
+    result = handle_session_start(
+        inp, vault=tmp_path,
+        projects_root=tmp_path / "projects",
+        ledger=tmp_path / "ledger.tsv",
+    )
+    assert brief_called == []
+    assert result.injected_context == ""
+    assert "first_visit" in result.outcome

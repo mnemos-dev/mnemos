@@ -649,6 +649,11 @@ def handle_session_start(
 
     cwd_info = state.cwds.get(slug)
 
+    # cfg threading: pick up cfg.refine.min_user_turns + cfg.briefing.* from yaml.
+    # Loaded BEFORE CASE A so the vault-aware first-visit gate has access.
+    from mnemos.config import load_config
+    cfg = load_config(str(vault))
+
     # CASE A — first visit ever
     if cwd_info is None:
         state.cwds[slug] = {
@@ -659,16 +664,32 @@ def handle_session_start(
             "last_session_id": None,
         }
         save_state(vault, state)
+
+        # v1.1 Task 6.5: vault-aware first-visit. The user may have a vault
+        # full of Sessions for this cwd from before they installed Mnemos /
+        # before the cwd was tracked in state. If so, brief now instead of
+        # waiting one more session for a silent reset.
+        readiness = per_cwd_readiness(
+            vault=vault,
+            cwd=inp.cwd,
+            cwd_slug=slug,
+            projects_root=projects_root,
+            min_user_turns=cfg.refine.min_user_turns,
+        )
+        if readiness["refined"] >= 1:
+            brief_and_cache(inp.cwd, vault)
+            cache_p = cache_path_for(vault, slug)
+            if cache_p.exists():
+                body = read_cache_body(cache_p)
+                return HandleOutcome(
+                    outcome="first_visit_sync_inject",
+                    injected_context=body,
+                )
         return HandleOutcome(outcome="first_visit")
 
     # CASE B — return visit
     cwd_info["last_seen"] = now
     cwd_info["visit_count"] = cwd_info.get("visit_count", 1) + 1
-
-    # Check for unrefined JSONLs in this cwd (live session excluded).
-    # cfg threading (Task 2.6): pick up cfg.refine.min_user_turns from yaml.
-    from mnemos.config import load_config
-    cfg = load_config(str(vault))
     pending = find_unrefined_jsonls_for_cwd(
         cwd_slug=slug,
         projects_root=projects_root,
