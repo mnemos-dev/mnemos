@@ -844,7 +844,7 @@ def cmd_identity(args: argparse.Namespace) -> int:
     vault = Path(args.vault) if args.vault else _resolve_vault_from_yaml()
     try:
         if args.identity_action == "bootstrap":
-            path = bootstrap(vault, model=args.model)
+            path = bootstrap(vault, model=args.model, force=args.force)
             print(f"Identity layer created: {path}")
         elif args.identity_action == "refresh":
             if args.check:
@@ -1136,6 +1136,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_bootstrap.add_argument("--vault", help="Vault path (default: from mnemos.yaml)")
     p_bootstrap.add_argument("--model", default="sonnet", choices=["sonnet", "opus"])
+    p_bootstrap.add_argument(
+        "--force",
+        action="store_true",
+        help="Bypass eligibility threshold (use cautiously)",
+    )
 
     p_refresh = identity_actions.add_parser("refresh", help="Incremental update")
     p_refresh.add_argument("--vault")
