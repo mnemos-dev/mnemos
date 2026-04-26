@@ -35,3 +35,29 @@ def test_briefing_prompt_junction_zero_drift():
         import pytest
         pytest.skip("junction not installed")
     assert repo.read_bytes() == junction.read_bytes()
+
+
+# Carried over from the retired test_briefing_v2.py — assertions still
+# relevant to v3 (recency/relevance scoring is retained in STEP 3, the user
+# profile section persists in STEP 5 output, and SKILL.md still references
+# the layered flow).
+
+
+def test_prompt_documents_recency_relevance_sorting():
+    text = PROMPT.read_text(encoding="utf-8")
+    assert "recency" in text.lower() or "date desc" in text.lower()
+    assert "relevance" in text.lower() or "overlap" in text.lower()
+
+
+def test_prompt_output_includes_user_profile_section():
+    text = PROMPT.read_text(encoding="utf-8")
+    assert "Kullanıcı profili" in text
+
+
+SKILL_PATH = Path(__file__).parent.parent / "skills" / "mnemos-briefing" / "SKILL.md"
+
+
+def test_skill_md_references_layered_flow():
+    text = SKILL_PATH.read_text(encoding="utf-8")
+    assert "Identity" in text
+    assert "Cross-context" in text or "cross-context" in text
