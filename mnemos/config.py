@@ -46,6 +46,10 @@ _LEGACY_YAML_KEYS = (
 class MnemosConfig:
     """All configuration for a Mnemos instance."""
 
+    # Schema version — v1 yaml (no field) silently treated as v2 at load time;
+    # the on-disk file is never rewritten just to inject this field.
+    schema_version: int = 2
+
     # Core paths
     vault_path: str = ""
     palace_root: str = "Mnemos"
@@ -163,6 +167,9 @@ def load_config(vault_path: Optional[str] = None) -> MnemosConfig:
     # v1.0: silently drop legacy mining/drawer-paradigm keys before applying.
     for legacy in _LEGACY_YAML_KEYS:
         raw.pop(legacy, None)
+
+    # Schema version: missing field → v1 yaml, treat as v2 (defaults stand).
+    cfg.schema_version = int(raw.get("schema_version", 2))
 
     # Scalar fields
     for scalar in (
