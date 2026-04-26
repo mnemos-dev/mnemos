@@ -616,7 +616,12 @@ def test_recall_mode_not_skill_exits(tmp_path: Path) -> None:
 def _setup_cwd_with_pending(tmp_path: Path, cwd: str, with_cache: bool) -> tuple[str, Path]:
     """Shared scaffolding: state has the cwd, projects dir has 1 pending JSONL.
     Returns (slug, pending_jsonl_path)."""
-    (tmp_path / "mnemos.yaml").write_text("recall_mode: skill\n", encoding="utf-8")
+    # readiness_pct: 0 bypasses the v1.1 inject gate so these legacy tests
+    # continue to exercise their target behavior (bg catchup, cache inject)
+    # rather than the readiness path covered by the dedicated v1.1 tests.
+    (tmp_path / "mnemos.yaml").write_text(
+        "recall_mode: skill\nbriefing:\n  readiness_pct: 0\n", encoding="utf-8"
+    )
     (tmp_path / "Sessions").mkdir(exist_ok=True)
     slug = cwd_to_slug(cwd)
     state = CwdState()
@@ -1324,3 +1329,98 @@ def test_find_unrefined_jsonls_for_cwd_uses_config_min_user_turns(tmp_path):
     cfg.refine.min_user_turns = 1
     found = find_unrefined_jsonls_for_cwd(cwd_slug, projects_root, ledger, cfg=cfg)
     assert len(found) == 2
+
+
+# ---------------------------------------------------------------------------
+# v1.1 Group 6 — SessionStart updates
+# ---------------------------------------------------------------------------
+
+
+def _make_state_file(tmp_path, slug="test-cwd", cwd="C:/test"):
+    """Helper: write a CASE B state file with one cwd entry."""
+    import json as _json
+    state_file = tmp_path / ".mnemos-cwd-state.json"
+    state_file.write_text(
+        _json.dumps({
+            "version": 1,
+            "cwds": {
+                slug: {
+                    "cwd": cwd,
+                    "first_seen": 1.0,
+                    "last_seen": 2.0,
+                    "visit_count": 1,
+                    "last_session_id": None,
+                }
+            },
+        }),
+        encoding="utf-8",
+    )
+    return state_file
+
+
+def test_handle_session_start_silent_when_readiness_below_threshold(tmp_path, monkeypatch):
+    """CASE B return-visit: cache exists but readiness < cfg threshold → silent."""
+    from mnemos.recall_briefing import handle_session_start, SessionStartInput
+
+    (tmp_path / "mnemos.yaml").write_text(
+        "schema_version: 2\nrecall_mode: skill\nbriefing:\n  readiness_pct: 60\n",
+        encoding="utf-8",
+    )
+    _make_state_file(tmp_path)
+    cache_dir = tmp_path / ".mnemos-briefings"
+    cache_dir.mkdir()
+    (cache_dir / "test-cwd.md").write_text(
+        "---\ncwd: C:/test\n---\nbody\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        "mnemos.recall_briefing.per_cwd_readiness",
+        lambda **kw: {"refined": 3, "eligible": 10, "pct": 30.0},
+    )
+    monkeypatch.setattr("mnemos.recall_briefing.cwd_to_slug", lambda c: "test-cwd")
+    monkeypatch.setattr(
+        "mnemos.recall_briefing._spawn_bg_catchup",
+        lambda cwd, vault: None,
+    )
+
+    inp = SessionStartInput(cwd="C:/test", source="startup", transcript_path="")
+    result = handle_session_start(
+        inp, vault=tmp_path,
+        projects_root=tmp_path / "projects",
+        ledger=tmp_path / "ledger.tsv",
+    )
+    assert result.injected_context == "", "must be silent below threshold"
+    assert "readiness" in result.outcome.lower() or "silent" in result.outcome.lower()
+
+
+def test_handle_session_start_inject_when_readiness_above_threshold(tmp_path, monkeypatch):
+    """CASE B: readiness ≥ cfg threshold → inject."""
+    from mnemos.recall_briefing import handle_session_start, SessionStartInput
+
+    (tmp_path / "mnemos.yaml").write_text(
+        "schema_version: 2\nrecall_mode: skill\nbriefing:\n  readiness_pct: 60\n",
+        encoding="utf-8",
+    )
+    _make_state_file(tmp_path)
+    cache_dir = tmp_path / ".mnemos-briefings"
+    cache_dir.mkdir()
+    (cache_dir / "test-cwd.md").write_text(
+        "---\ncwd: C:/test\n---\n**Aktif durum:** test\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        "mnemos.recall_briefing.per_cwd_readiness",
+        lambda **kw: {"refined": 8, "eligible": 10, "pct": 80.0},
+    )
+    monkeypatch.setattr("mnemos.recall_briefing.cwd_to_slug", lambda c: "test-cwd")
+    monkeypatch.setattr(
+        "mnemos.recall_briefing._spawn_bg_catchup",
+        lambda cwd, vault: None,
+    )
+
+    inp = SessionStartInput(cwd="C:/test", source="startup", transcript_path="")
+    result = handle_session_start(
+        inp, vault=tmp_path,
+        projects_root=tmp_path / "projects",
+        ledger=tmp_path / "ledger.tsv",
+    )
+    assert result.injected_context != ""
+    assert "**Aktif durum:**" in result.injected_context

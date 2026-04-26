@@ -577,6 +577,9 @@ def _spawn_bg_catchup(cwd: str, vault: Path) -> None:
 _spawn_bg_brief = _spawn_bg_catchup
 
 
+from mnemos.readiness import per_cwd_readiness
+
+
 def handle_session_start(
     inp: SessionStartInput,
     vault: Path,
@@ -660,6 +663,20 @@ def handle_session_start(
     save_state(vault, state)
 
     if cache_exists:
+        # v1.1 Task 6.1: readiness gate — refuse to inject a partial-history
+        # briefing that could anchor the AI's mental model on incomplete memory.
+        readiness = per_cwd_readiness(
+            vault=vault,
+            cwd=inp.cwd,
+            cwd_slug=slug,
+            projects_root=projects_root,
+            min_user_turns=cfg.refine.min_user_turns,
+        )
+        if readiness["pct"] < cfg.briefing.readiness_pct:
+            return HandleOutcome(
+                outcome=f"silent_readiness_below_threshold_{readiness['pct']:.0f}"
+            )
+
         body = read_cache_body(cache_p)
         if pending:
             return HandleOutcome(outcome="fast_path_injected_with_catchup", injected_context=body)
