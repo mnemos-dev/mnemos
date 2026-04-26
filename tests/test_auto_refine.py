@@ -1151,3 +1151,84 @@ def test_auto_refine_only_refines_no_mining_call(tmp_path):
     assert len(refine_calls) == 2, (
         f"expected 2 refine calls (one per picked); got {len(refine_calls)}: {calls}"
     )
+
+
+# ---------------------------------------------------------------------------
+# v1.1 task 2.1-2.3 — pick_jsonls config-driven picker
+# ---------------------------------------------------------------------------
+
+
+def _write_v11_jsonl(path: Path, user_turns: int) -> None:
+    lines = [
+        '{"type":"user","message":{"role":"user","content":"hi"}}'
+        for _ in range(user_turns)
+    ]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+@pytest.mark.parametrize("per_session,expected_count", [(1, 1), (3, 3), (10, 5)])
+def test_pick_jsonls_respects_per_session(tmp_path, per_session, expected_count):
+    """pick_jsonls returns up to cfg.refine.per_session candidates."""
+    from mnemos.auto_refine import pick_jsonls
+    from mnemos.config import MnemosConfig
+
+    projects = tmp_path / "projects"
+    for i in range(5):
+        _write_v11_jsonl(projects / f"sess-{i}.jsonl", user_turns=3)
+
+    ledger = tmp_path / "ledger.tsv"
+    ledger.write_text("", encoding="utf-8")
+
+    cfg = MnemosConfig(vault_path=str(tmp_path))
+    cfg.refine.per_session = per_session
+    picked = pick_jsonls(cfg, projects, ledger)
+    assert len(picked) == expected_count
+
+
+def test_pick_jsonls_direction_oldest_returns_oldest_first(tmp_path):
+    import time
+
+    from mnemos.auto_refine import pick_jsonls
+    from mnemos.config import MnemosConfig
+
+    projects = tmp_path / "projects"
+    paths = []
+    for i in range(3):
+        f = projects / f"sess-{i}.jsonl"
+        _write_v11_jsonl(f, user_turns=3)
+        ts = time.time() - (3 - i) * 100  # i=0 oldest
+        os.utime(f, (ts, ts))
+        paths.append(f)
+
+    ledger = tmp_path / "ledger.tsv"
+    ledger.write_text("", encoding="utf-8")
+
+    cfg = MnemosConfig(vault_path=str(tmp_path))
+    cfg.refine.per_session = 3
+    cfg.refine.direction = "oldest"
+    picked = pick_jsonls(cfg, projects, ledger)
+    assert picked[0].name == "sess-0.jsonl"
+    assert picked[-1].name == "sess-2.jsonl"
+
+
+def test_pick_jsonls_min_user_turns_respected(tmp_path):
+    from mnemos.auto_refine import pick_jsonls
+    from mnemos.config import MnemosConfig
+
+    projects = tmp_path / "projects"
+    _write_v11_jsonl(projects / "noise.jsonl", user_turns=1)
+    _write_v11_jsonl(projects / "real.jsonl", user_turns=5)
+
+    ledger = tmp_path / "ledger.tsv"
+    ledger.write_text("", encoding="utf-8")
+
+    cfg = MnemosConfig(vault_path=str(tmp_path))
+    cfg.refine.min_user_turns = 3
+    picked = pick_jsonls(cfg, projects, ledger)
+    assert len(picked) == 1
+    assert picked[0].name == "real.jsonl"
+
+    cfg.refine.min_user_turns = 1
+    picked = pick_jsonls(cfg, projects, ledger)
+    assert len(picked) == 2
