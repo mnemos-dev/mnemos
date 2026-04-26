@@ -148,6 +148,44 @@ def _spawn_detached_worker(transcript: str, cwd: str, vault: Path) -> None:
             pass
 
 
+def _user_settings_path() -> Path:
+    return Path.home() / ".claude" / "settings.json"
+
+
+def _detect_stale_hook_signature(managed_by: str) -> bool:
+    """Return True iff settings.json has a SessionEnd entry with the given
+    ``_managed_by`` whose ``_version`` is not ``v1.1``."""
+    settings_path = _user_settings_path()
+    if not settings_path.exists():
+        return False
+    try:
+        data = json.loads(settings_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    for entry in data.get("hooks", {}).get("SessionEnd", []):
+        if entry.get("_managed_by") == managed_by:
+            return entry.get("_version") != "v1.1"
+    return False
+
+
+def build_hook_entry(vault: str) -> dict:
+    """Schema for the SessionEnd entry written into ~/.claude/settings.json
+    by ``mnemos install-end-hook --v1`` (Task 8.1).
+    """
+    return {
+        "matcher": "*",
+        "_managed_by": "mnemos-session-end",
+        "_version": "v1.1",
+        "hooks": [
+            {
+                "type": "command",
+                "command": f'python -m mnemos.session_end_hook --vault "{vault}"',
+                "timeout": 5000,
+            }
+        ],
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
@@ -160,6 +198,17 @@ def main(argv: list[str] | None = None) -> int:
 
     # Hook mode re-entry guard
     if os.environ.get(HOOK_ACTIVE_ENV):
+        return 0
+
+    # v1.1 stale-hook guard: if our own settings.json entry is from a prior
+    # version (or missing _version), print guidance to stderr and exit 0
+    # so the SessionEnd event still completes cleanly.
+    if _detect_stale_hook_signature("mnemos-session-end"):
+        print(
+            "Mnemos v1.1 detected an outdated SessionEnd hook entry.\n"
+            "Run `mnemos install-end-hook --v1` to update.",
+            file=sys.stderr,
+        )
         return 0
 
     try:

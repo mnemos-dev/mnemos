@@ -114,3 +114,94 @@ def test_main_skips_when_transcript_missing(tmp_path, monkeypatch):
     rc = seh.main(["--vault", str(tmp_path)])
     assert rc == 0
     assert spawn_calls == []
+
+
+def test_worker_runs_despite_hook_active_env(tmp_path, monkeypatch):
+    """Re-entry guard MUST NOT block --worker mode. Lesson learned from the
+    v1.0 a19cfb9 hotfix where --catchup was wrongly blocked by a guard
+    placed before arg parsing."""
+    import mnemos.session_end_hook as seh
+
+    (tmp_path / "mnemos.yaml").write_text("recall_mode: skill\n", encoding="utf-8")
+    monkeypatch.setenv(seh.HOOK_ACTIVE_ENV, "1")
+
+    transcript = tmp_path / "x.jsonl"
+    transcript.write_text("y", encoding="utf-8")
+
+    refine_called: list = []
+    monkeypatch.setattr(
+        "mnemos.session_end_hook._run_refine",
+        lambda t: refine_called.append(t),
+    )
+    monkeypatch.setattr(
+        "mnemos.session_end_hook._run_brief_regen", lambda c: None,
+    )
+    monkeypatch.setattr(
+        "mnemos.session_end_hook._run_identity_refresh_if_due", lambda v: None,
+    )
+
+    rc = seh.main([
+        "--worker",
+        "--transcript", str(transcript),
+        "--cwd", "C:/test",
+        "--vault", str(tmp_path),
+    ])
+    assert rc == 0
+    assert len(refine_called) == 1, "worker must run despite re-entry marker"
+
+
+def test_main_hook_mode_blocks_when_hook_active_env(tmp_path, monkeypatch):
+    """Stdin/hook mode (no --worker) MUST be blocked by the guard."""
+    import mnemos.session_end_hook as seh
+
+    monkeypatch.setenv(seh.HOOK_ACTIVE_ENV, "1")
+    monkeypatch.setattr("sys.stdin", io.StringIO('{"session_id":"x"}'))
+
+    spawn_called: list = []
+    monkeypatch.setattr(
+        "mnemos.session_end_hook._spawn_detached_worker",
+        lambda *a, **kw: spawn_called.append(True),
+    )
+    rc = seh.main([])
+    assert rc == 0
+    assert spawn_called == [], "hook mode must NOT spawn when guard active"
+
+
+def test_session_end_hook_entry_schema_valid():
+    """build_hook_entry returns a settings.json-compatible dict for SessionEnd."""
+    from mnemos.session_end_hook import build_hook_entry
+
+    entry = build_hook_entry(vault="C:/test/vault")
+    assert entry["matcher"] == "*"
+    assert entry["_managed_by"] == "mnemos-session-end"
+    assert entry["_version"] == "v1.1"
+    assert len(entry["hooks"]) == 1
+    h = entry["hooks"][0]
+    assert h["type"] == "command"
+    assert "python -m mnemos.session_end_hook" in h["command"]
+    assert "--vault" in h["command"]
+    assert h["timeout"] == 5000
+
+
+def test_main_detects_stale_v0_session_end_entry(tmp_path, monkeypatch, capsys):
+    """If settings.json carries a SessionEnd entry whose _version != v1.1,
+    main() prints guidance to stderr and exits 0."""
+    import mnemos.session_end_hook as seh
+
+    settings_dir = tmp_path / "claude_home"
+    settings_dir.mkdir()
+    settings_path = settings_dir / "settings.json"
+    settings_path.write_text(
+        '{"hooks":{"SessionEnd":[{"_managed_by":"mnemos-session-end"}]}}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "mnemos.session_end_hook._user_settings_path",
+        lambda: settings_path,
+    )
+    monkeypatch.setattr("sys.stdin", io.StringIO('{"session_id":"x"}'))
+
+    rc = seh.main([])
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "outdated" in captured.err.lower() or "v1.1" in captured.err
