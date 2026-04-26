@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from mnemos.config import load_config
+from mnemos.config import load_config, save_config
 
 
 def test_yaml_without_schema_version_loads_as_v2(tmp_path: Path) -> None:
@@ -95,3 +95,24 @@ def test_identity_config_from_yaml(tmp_path: Path) -> None:
     assert cfg.identity.auto_refresh is False
     assert cfg.identity.refresh_session_delta == 25
     assert cfg.identity.refresh_min_days == 14
+
+
+def test_save_config_writes_v2_schema_with_backup(tmp_path: Path) -> None:
+    """save_config writes v2 schema, creates .bak-* backup, strips removed v0.x keys."""
+    yaml_path = tmp_path / "mnemos.yaml"
+    yaml_path.write_text(
+        "search_backend: sqlite-vec\nmine_mode: skill\n",
+        encoding="utf-8",
+    )
+
+    cfg = load_config(str(tmp_path))
+    cfg.refine.per_session = 15
+    save_config(cfg)
+
+    backups = list(tmp_path.glob("mnemos.yaml.bak-*"))
+    assert len(backups) == 1, f"expected 1 backup, got {[b.name for b in backups]}"
+
+    written = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+    assert written["schema_version"] == 2
+    assert written["refine"]["per_session"] == 15
+    assert "mine_mode" not in written

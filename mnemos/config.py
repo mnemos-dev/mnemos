@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import os
+import shutil
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
@@ -240,7 +242,7 @@ def load_config(vault_path: Optional[str] = None) -> MnemosConfig:
     if "watcher_ignore" in raw:
         cfg.watcher_ignore = list(raw["watcher_ignore"])
 
-    # v1.1 nested config sections
+    # ---- v1.1 nested config sections -------------------------------------
     refine_raw = raw.get("refine", {})
     if isinstance(refine_raw, dict):
         cfg.refine = RefineConfig(
@@ -267,3 +269,59 @@ def load_config(vault_path: Optional[str] = None) -> MnemosConfig:
         )
 
     return cfg
+
+
+# ---------------------------------------------------------------------------
+# Saver — atomic write + timestamped backup
+# ---------------------------------------------------------------------------
+
+
+def save_config(cfg: MnemosConfig) -> None:
+    """Atomic write of mnemos.yaml v2 schema with .bak-YYYY-MM-DD-HHMM backup.
+
+    Strips removed v0.x keys (mine_mode, mining_sources, etc.) — only v2 fields
+    are emitted. The pre-existing file (if any) is copied to mnemos.yaml.bak-<ts>
+    before the new content replaces it; if the same minute fires twice, the
+    backup name gets a .N suffix so no snapshot is lost.
+    """
+    vault_root = Path(cfg.vault_path)
+    yaml_path = vault_root / "mnemos.yaml"
+
+    if yaml_path.exists():
+        timestamp = datetime.now().strftime("%Y-%m-%d-%H%M")
+        candidate = vault_root / f"mnemos.yaml.bak-{timestamp}"
+        n = 0
+        while candidate.exists():
+            n += 1
+            candidate = vault_root / f"mnemos.yaml.bak-{timestamp}.{n}"
+        shutil.copy2(yaml_path, candidate)
+
+    data = {
+        "schema_version": 2,
+        "search_backend": cfg.search_backend,
+        "recall_mode": cfg.recall_mode,
+        "languages": list(cfg.languages),
+        "refine": {
+            "per_session": cfg.refine.per_session,
+            "direction": cfg.refine.direction,
+            "min_user_turns": cfg.refine.min_user_turns,
+        },
+        "briefing": {
+            "readiness_pct": cfg.briefing.readiness_pct,
+            "show_systemmessage": cfg.briefing.show_systemmessage,
+            "enforce_consistency": cfg.briefing.enforce_consistency,
+        },
+        "identity": {
+            "bootstrap_threshold_pct": cfg.identity.bootstrap_threshold_pct,
+            "auto_refresh": cfg.identity.auto_refresh,
+            "refresh_session_delta": cfg.identity.refresh_session_delta,
+            "refresh_min_days": cfg.identity.refresh_min_days,
+        },
+    }
+
+    tmp = yaml_path.with_suffix(".yaml.tmp")
+    tmp.write_text(
+        yaml.safe_dump(data, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+    tmp.replace(yaml_path)
