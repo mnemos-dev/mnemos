@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -814,6 +815,75 @@ def cmd_install_hook(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_install_end_hook(args: argparse.Namespace) -> int:
+    """Install or uninstall the mnemos SessionEnd hook entry atomically.
+
+    Behavior:
+      - --v1 (install): adds a SessionEnd entry built by
+        ``mnemos.session_end_hook.build_hook_entry`` to
+        ~/.claude/settings.json. Idempotent — any pre-existing entry with
+        ``_managed_by == "mnemos-session-end"`` is replaced rather than
+        duplicated. A timestamped backup
+        ``settings.json.bak-YYYY-MM-DD-HHMM`` is taken before writing.
+      - --uninstall: removes the managed entry, leaves all other settings
+        and SessionEnd entries from other tools untouched.
+
+    Atomicity: the new content is written to a sibling ``.tmp`` file and
+    then ``os.replace``-d into place so an interrupted run never leaves
+    a half-written settings.json.
+    """
+    settings_path = _user_settings_path()
+    if not settings_path.exists():
+        print(
+            f"Error: settings.json not found at {settings_path}",
+            file=sys.stderr,
+        )
+        return 1
+
+    timestamp = datetime.now().strftime("%Y-%m-%d-%H%M")
+    candidate = settings_path.parent / f"settings.json.bak-{timestamp}"
+    n = 0
+    while candidate.exists():
+        n += 1
+        candidate = settings_path.parent / f"settings.json.bak-{timestamp}.{n}"
+    shutil.copy2(settings_path, candidate)
+
+    try:
+        data = json.loads(settings_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        print(f"Error: settings.json malformed ({exc})", file=sys.stderr)
+        return 1
+    if not isinstance(data, dict):
+        data = {}
+
+    hooks = data.setdefault("hooks", {})
+    se = hooks.setdefault("SessionEnd", [])
+    se[:] = [e for e in se if e.get("_managed_by") != "mnemos-session-end"]
+
+    if getattr(args, "uninstall", False):
+        if not se:
+            del hooks["SessionEnd"]
+        tmp = settings_path.with_suffix(".json.tmp")
+        tmp.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        tmp.replace(settings_path)
+        print(f"SessionEnd hook removed. Backup: {candidate.name}")
+        return 0
+
+    from mnemos.session_end_hook import build_hook_entry
+    entry = build_hook_entry(vault=args.vault)
+    se.append(entry)
+
+    tmp = settings_path.with_suffix(".json.tmp")
+    tmp.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    tmp.replace(settings_path)
+    print(f"SessionEnd hook installed (v1.1). Backup: {candidate.name}")
+    return 0
+
+
 def cmd_install_statusline(args: argparse.Namespace) -> None:
     """Install or uninstall the mnemos statusline snippet."""
     from mnemos.install_statusline import install_statusline
@@ -1109,6 +1179,28 @@ def main(argv: list[str] | None = None) -> int:
     parser_install_hook.add_argument("--vault", default=None)
     parser_install_hook.set_defaults(func=cmd_install_hook)
 
+    # mnemos install-end-hook (v1.1) — atomic SessionEnd entry install/uninstall.
+    parser_install_end = subparsers.add_parser(
+        "install-end-hook",
+        help="Install/uninstall mnemos SessionEnd hook in ~/.claude/settings.json",
+    )
+    parser_install_end.add_argument(
+        "--vault",
+        default="",
+        help="Vault path (required for install; ignored for --uninstall)",
+    )
+    parser_install_end.add_argument(
+        "--v1",
+        action="store_true",
+        help="Install the v1.1 hook entry (explicit acknowledgement flag)",
+    )
+    parser_install_end.add_argument(
+        "--uninstall",
+        action="store_true",
+        help="Remove the managed entry instead of installing",
+    )
+    parser_install_end.set_defaults(func=cmd_install_end_hook)
+
     # ------------------------------------------------------------------
     # install-recall-hook — REMOVED in v1.0 (merged into install-hook --v1).
     # Pre-dispatched in main() so any flags (e.g. ``--vault``) get the
@@ -1244,6 +1336,11 @@ def main(argv: list[str] | None = None) -> int:
     # Special-case: install-hook returns an int (1 when --v1 missing in v1.0).
     if getattr(args, "command", None) == "install-hook":
         return cmd_install_hook(args)
+
+    # Special-case: install-end-hook returns an int (1 if settings.json absent
+    # or malformed; 0 on success).
+    if getattr(args, "command", None) == "install-end-hook":
+        return cmd_install_end_hook(args)
 
     if not hasattr(args, "func"):
         parser.print_help()
