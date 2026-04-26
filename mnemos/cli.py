@@ -92,7 +92,7 @@ def _install_hook_v1(vault: Path) -> None:
         "_version": HOOK_VERSION_V1,
         "hooks": [{
             "type": "command",
-            "command": f'python -m mnemos.auto_refine_hook "{vault_str}"',
+            "command": f'python -m mnemos.auto_refine_hook --vault "{vault_str}"',
             "timeout": 30000,
         }],
     })
@@ -102,7 +102,7 @@ def _install_hook_v1(vault: Path) -> None:
         "_version": HOOK_VERSION_V1,
         "hooks": [{
             "type": "command",
-            "command": f'python -m mnemos.recall_briefing "{vault_str}"',
+            "command": f'python -m mnemos.recall_briefing --vault "{vault_str}"',
             "timeout": 600000,
         }],
     })
