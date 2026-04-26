@@ -1286,3 +1286,41 @@ def test_main_brief_and_cache_runs_despite_reentry_marker(tmp_path: Path, monkey
     rc = main(["--brief-and-cache", "--cwd", "C:\\foo", "--vault", str(tmp_path)])
     assert rc == 0
     assert called == [("C:\\foo", tmp_path)]
+
+
+# ---------------------------------------------------------------------------
+# v1.1 task 2.5-2.6 — find_unrefined_jsonls_for_cwd accepts cfg
+# ---------------------------------------------------------------------------
+
+
+def test_find_unrefined_jsonls_for_cwd_uses_config_min_user_turns(tmp_path):
+    """find_unrefined_jsonls_for_cwd should respect cfg.refine.min_user_turns."""
+    from mnemos.recall_briefing import find_unrefined_jsonls_for_cwd
+    from mnemos.config import MnemosConfig
+
+    projects_root = tmp_path / "projects"
+    cwd_slug = "test-cwd"
+    proj_dir = projects_root / cwd_slug
+    proj_dir.mkdir(parents=True)
+
+    (proj_dir / "noise.jsonl").write_text(
+        '{"type":"user","message":{"role":"user","content":"hi"}}\n' * 2,
+        encoding="utf-8",
+    )
+    (proj_dir / "real.jsonl").write_text(
+        '{"type":"user","message":{"role":"user","content":"hi"}}\n' * 5,
+        encoding="utf-8",
+    )
+
+    ledger = tmp_path / "ledger.tsv"
+    ledger.write_text("", encoding="utf-8")
+
+    cfg = MnemosConfig(vault_path=str(tmp_path))
+    cfg.refine.min_user_turns = 3
+    found = find_unrefined_jsonls_for_cwd(cwd_slug, projects_root, ledger, cfg=cfg)
+    assert len(found) == 1
+    assert found[0].name == "real.jsonl"
+
+    cfg.refine.min_user_turns = 1
+    found = find_unrefined_jsonls_for_cwd(cwd_slug, projects_root, ledger, cfg=cfg)
+    assert len(found) == 2

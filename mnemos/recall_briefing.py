@@ -269,21 +269,27 @@ def find_unrefined_jsonls_for_cwd(
     cwd_slug: str,
     projects_root: Path,
     ledger: Path,
+    cfg: "object | None" = None,
 ) -> list[Path]:
     """List .jsonl files in ~/.claude/projects/<slug>/ NOT in refine ledger.
 
-    Sorted by mtime (oldest first). JSONLs with fewer than MIN_USER_TURNS
-    real user turns are filtered out — they're fork-bomb byproducts,
+    Sorted by mtime (oldest first). JSONLs with fewer than the configured
+    user-turn threshold are filtered out — they're fork-bomb byproducts,
     '/clear' resume sessions, or aborted sessions that the briefing skill
-    would just SKIP anyway. Matches auto_refine's picker behavior (v0.3.11
-    min-user-turns filter). Without this, SUB-B2 could sync-refine 3
-    fork-bomb JSONLs for every session start, wasting minutes.
+    would just SKIP anyway. The threshold comes from
+    ``cfg.refine.min_user_turns`` when ``cfg`` is supplied, otherwise it
+    falls back to auto_refine's MIN_USER_TURNS default for backward compat.
 
     The caller should also skip any JSONL whose PID marker indicates a
     live session (handled in handle_session_start via transcript_path).
     """
     # Local import to avoid shuffling module-level import ordering
     from mnemos.auto_refine import _count_user_turns, MIN_USER_TURNS
+
+    if cfg is not None and hasattr(cfg, "refine"):
+        threshold = int(getattr(cfg.refine, "min_user_turns", MIN_USER_TURNS))
+    else:
+        threshold = MIN_USER_TURNS
 
     proj_dir = projects_root / cwd_slug
     if not proj_dir.exists():
@@ -293,7 +299,7 @@ def find_unrefined_jsonls_for_cwd(
     for jsonl in proj_dir.glob("*.jsonl"):
         if str(jsonl) in processed:
             continue
-        if _count_user_turns(jsonl) < MIN_USER_TURNS:
+        if _count_user_turns(jsonl) < threshold:
             continue
         candidates.append(jsonl)
     return sorted(candidates, key=lambda p: p.stat().st_mtime)
@@ -518,8 +524,10 @@ def catchup_and_cache(
         ledger = DEFAULT_REFINE_LEDGER
 
     slug = cwd_to_slug(cwd)
+    from mnemos.config import load_config
+    cfg = load_config(str(vault))
     pending = find_unrefined_jsonls_for_cwd(
-        cwd_slug=slug, projects_root=projects_root, ledger=ledger,
+        cwd_slug=slug, projects_root=projects_root, ledger=ledger, cfg=cfg,
     )
     if len(pending) > SUB_B2_PENDING_CAP:
         pending = pending[-SUB_B2_PENDING_CAP:]
@@ -629,11 +637,15 @@ def handle_session_start(
     cwd_info["last_seen"] = now
     cwd_info["visit_count"] = cwd_info.get("visit_count", 1) + 1
 
-    # Check for unrefined JSONLs in this cwd (live session excluded)
+    # Check for unrefined JSONLs in this cwd (live session excluded).
+    # cfg threading (Task 2.6): pick up cfg.refine.min_user_turns from yaml.
+    from mnemos.config import load_config
+    cfg = load_config(str(vault))
     pending = find_unrefined_jsonls_for_cwd(
         cwd_slug=slug,
         projects_root=projects_root,
         ledger=ledger,
+        cfg=cfg,
     )
     live = Path(inp.transcript_path) if inp.transcript_path else None
     if live is not None:
