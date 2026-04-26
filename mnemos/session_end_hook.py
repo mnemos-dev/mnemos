@@ -78,6 +78,76 @@ def _resolve_vault(argv: list[str] | None = None) -> Path | None:
     return None
 
 
+def _child_env() -> dict:
+    """Build the env passed to the detached worker.
+
+    Strips ANTHROPIC_API_KEY so the worker's `claude --print` invocations
+    fall through to the user's Claude Code subscription quota. Sets the
+    HOOK_ACTIVE_ENV marker so any nested SessionStart hook fired inside
+    the worker's child claude processes short-circuits cleanly instead of
+    re-entering this module.
+    """
+    env = os.environ.copy()
+    env.pop("ANTHROPIC_API_KEY", None)
+    env[HOOK_ACTIVE_ENV] = "1"
+    return env
+
+
+def _spawn_detached_worker(transcript: str, cwd: str, vault: Path) -> None:
+    """Spawn the worker pipeline as a detached process.
+
+    Windows: combine DETACHED_PROCESS + CREATE_NEW_PROCESS_GROUP +
+    CREATE_BREAKAWAY_FROM_JOB so the worker outlives the Claude Code
+    process that spawned it (X-close survival). If the parent job
+    object refuses breakaway (rare), retry without that flag — partial
+    survival is better than nothing.
+
+    POSIX: start_new_session=True is enough.
+    """
+    cmd = [
+        sys.executable, "-m", "mnemos.session_end_hook", "--worker",
+        "--transcript", transcript,
+        "--cwd", cwd,
+        "--vault", str(vault),
+    ]
+    base_kwargs: dict = {
+        "env": _child_env(),
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "close_fds": True,
+    }
+    if os.name == "nt":
+        DETACHED_PROCESS = 0x00000008
+        CREATE_NEW_PROCESS_GROUP = 0x00000200
+        CREATE_BREAKAWAY_FROM_JOB = 0x01000000
+        try:
+            subprocess.Popen(
+                cmd,
+                creationflags=(
+                    DETACHED_PROCESS
+                    | CREATE_NEW_PROCESS_GROUP
+                    | CREATE_BREAKAWAY_FROM_JOB
+                ),
+                **base_kwargs,
+            )
+            return
+        except OSError:
+            try:
+                subprocess.Popen(
+                    cmd,
+                    creationflags=(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP),
+                    **base_kwargs,
+                )
+            except OSError:
+                pass
+    else:
+        try:
+            subprocess.Popen(cmd, start_new_session=True, **base_kwargs)
+        except OSError:
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
@@ -106,14 +176,13 @@ def main(argv: list[str] | None = None) -> int:
     if read_recall_mode(vault) != "skill":
         return 0
 
-    # Pre-validate transcript before spawning anything heavyweight
     if not inp.transcript_path:
         return 0
     transcript = Path(inp.transcript_path)
     if not transcript.exists():
         return 0
 
-    # TODO Task 7.2: spawn detached worker with breakaway flag
+    _spawn_detached_worker(str(transcript), inp.cwd, vault)
     return 0
 
 
