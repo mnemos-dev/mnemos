@@ -884,6 +884,122 @@ def cmd_install_end_hook(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_settings(args: argparse.Namespace) -> int:
+    """Numbered TUI for unified v1.1 configuration. Interactive edit loop.
+
+    Each iteration: render the menu, read a number (or 'q'), prompt for the
+    appropriate field input (with type-specific validation), apply via
+    apply_field_change, then save_config (which creates a timestamped
+    backup). Options 11-14 redirect to the dedicated install commands;
+    option 18 prints the per-cwd readiness breakdown; 19/20 trigger
+    identity bootstrap/refresh.
+    """
+    from mnemos.settings_tui import (
+        render_menu, validate_int, validate_bool, validate_choice,
+        apply_field_change,
+    )
+    from mnemos.config import load_config, save_config
+
+    vault = Path(args.vault) if getattr(args, "vault", None) else _resolve_vault_from_yaml()
+    if vault is None or not vault.exists():
+        print("Error: vault not found", file=sys.stderr)
+        return 1
+
+    while True:
+        print(render_menu(vault))
+        try:
+            choice = input("Choose option [1-20, q]: ").strip()
+        except EOFError:
+            return 0
+        if choice == "q":
+            return 0
+        try:
+            num = int(choice)
+        except ValueError:
+            print("Invalid input.")
+            continue
+        if num < 1 or num > 20:
+            print("Out of range.")
+            continue
+
+        cfg = load_config(str(vault))
+        ok, v, err = (False, None, "")
+
+        if num == 1:
+            ok, v, err = validate_int(input("New value (1-50): ").strip(), 1, 50)
+        elif num == 2:
+            ok, v, err = validate_choice(
+                input("Direction (newest/oldest): ").strip(), ["newest", "oldest"]
+            )
+        elif num == 3:
+            ok, v, err = validate_int(input("Min user turns (1-10): ").strip(), 1, 10)
+        elif num == 4:
+            ok, v, err = validate_int(input("Readiness % (0-100): ").strip(), 0, 100)
+        elif num in (5, 6, 8):
+            ok, v, err = validate_bool(input("true/false: ").strip())
+        elif num == 7:
+            ok, v, err = validate_int(input("Threshold % (0-100): ").strip(), 0, 100)
+        elif num == 9:
+            ok, v, err = validate_int(input("Session delta (1-100): ").strip(), 1, 100)
+        elif num == 10:
+            ok, v, err = validate_int(input("Min days (1-90): ").strip(), 1, 90)
+        elif num == 15:
+            ok, v, err = validate_choice(
+                input("Backend (chromadb/sqlite-vec): ").strip(),
+                ["chromadb", "sqlite-vec"],
+            )
+        elif num == 17:
+            ok, v, err = validate_choice(
+                input("Recall mode (script/skill): ").strip(), ["script", "skill"]
+            )
+        elif num in (11, 12, 13, 14):
+            print(
+                "Use mnemos install-hook / install-recall-hook / "
+                "install-end-hook / install-statusline."
+            )
+            continue
+        elif num == 16:
+            print("Languages are edited in mnemos.yaml directly.")
+            continue
+        elif num == 18:
+            from mnemos.settings_tui import format_per_cwd_breakdown
+            print(format_per_cwd_breakdown(vault))
+            try:
+                input("Press Enter to continue...")
+            except EOFError:
+                pass
+            continue
+        elif num == 19:
+            print("Running mnemos identity bootstrap --force ...")
+            from mnemos.identity import bootstrap
+            try:
+                p = bootstrap(vault, force=True)
+                print(f"Done: {p}")
+            except Exception as exc:
+                print(f"Error: {exc}")
+            continue
+        elif num == 20:
+            print("Running mnemos identity refresh --force ...")
+            from mnemos.identity import refresh
+            try:
+                p = refresh(vault, force=True)
+                print(f"Done: {p}" if p else "Refresh skipped.")
+            except Exception as exc:
+                print(f"Error: {exc}")
+            continue
+        else:
+            print(f"Field {num} not yet implemented.")
+            continue
+
+        if not ok:
+            print(f"Invalid: {err}")
+            continue
+
+        apply_field_change(cfg, num, v)
+        save_config(cfg)
+        print("Saved. (backup created)")
+
+
 def cmd_install_statusline(args: argparse.Namespace) -> None:
     """Install or uninstall the mnemos statusline snippet."""
     from mnemos.install_statusline import install_statusline
@@ -1201,6 +1317,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser_install_end.set_defaults(func=cmd_install_end_hook)
 
+    # mnemos settings (v1.1) — unified TUI for tuning all v1.1 config sections.
+    parser_settings = subparsers.add_parser(
+        "settings",
+        help="Numbered TUI for unified v1.1 configuration",
+    )
+    parser_settings.add_argument("--vault", default=None)
+    parser_settings.set_defaults(func=cmd_settings)
+
     # ------------------------------------------------------------------
     # install-recall-hook — REMOVED in v1.0 (merged into install-hook --v1).
     # Pre-dispatched in main() so any flags (e.g. ``--vault``) get the
@@ -1341,6 +1465,10 @@ def main(argv: list[str] | None = None) -> int:
     # or malformed; 0 on success).
     if getattr(args, "command", None) == "install-end-hook":
         return cmd_install_end_hook(args)
+
+    # Special-case: settings TUI returns an int (interactive loop).
+    if getattr(args, "command", None) == "settings":
+        return cmd_settings(args)
 
     if not hasattr(args, "func"):
         parser.print_help()
