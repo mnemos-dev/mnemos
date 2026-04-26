@@ -1242,3 +1242,47 @@ def test_main_brief_and_cache_mode_invokes_brief_and_cache(tmp_path: Path, monke
     rc = main(["--brief-and-cache", "--cwd", "C:\\Projects\\foo", "--vault", str(tmp_path)])
     assert rc == 0
     assert called == [("C:\\Projects\\foo", tmp_path)]
+
+
+def test_main_catchup_runs_despite_reentry_marker(tmp_path: Path, monkeypatch) -> None:
+    """Re-entry guard must NOT block --catchup. The bg subprocess spawned by
+    handle_session_start inherits HOOK_ACTIVE_ENV=1 from _child_env() so its
+    OWN claude --print SessionStart re-fires exit silently. Pre-fix bug: the
+    guard fired before --catchup parsing, so the bg subprocess returned 0
+    immediately and no cache was ever written for any cwd.
+    """
+    from mnemos.recall_briefing import HOOK_ACTIVE_ENV
+
+    called: list[tuple[str, Path]] = []
+
+    def fake_catchup_and_cache(cwd, vault, **kwargs):
+        called.append((cwd, vault))
+        return True
+
+    monkeypatch.setattr("mnemos.recall_briefing.catchup_and_cache", fake_catchup_and_cache)
+    monkeypatch.setenv(HOOK_ACTIVE_ENV, "1")
+
+    rc = main(["--catchup", "--cwd", "C:\\foo", "--vault", str(tmp_path)])
+    assert rc == 0
+    assert called == [("C:\\foo", tmp_path)], (
+        "catchup must run even with reentry marker set — otherwise bg cache "
+        "rebuild silently aborts on every hook fire"
+    )
+
+
+def test_main_brief_and_cache_runs_despite_reentry_marker(tmp_path: Path, monkeypatch) -> None:
+    """Same fix applies to --brief-and-cache (legacy bg entry path)."""
+    from mnemos.recall_briefing import HOOK_ACTIVE_ENV
+
+    called: list[tuple[str, Path]] = []
+
+    def fake_brief_and_cache(cwd, vault, brief_runner=None):
+        called.append((cwd, vault))
+        return True
+
+    monkeypatch.setattr("mnemos.recall_briefing.brief_and_cache", fake_brief_and_cache)
+    monkeypatch.setenv(HOOK_ACTIVE_ENV, "1")
+
+    rc = main(["--brief-and-cache", "--cwd", "C:\\foo", "--vault", str(tmp_path)])
+    assert rc == 0
+    assert called == [("C:\\foo", tmp_path)]
