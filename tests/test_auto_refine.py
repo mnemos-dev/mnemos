@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -1232,3 +1233,51 @@ def test_pick_jsonls_min_user_turns_respected(tmp_path):
     cfg.refine.min_user_turns = 1
     picked = pick_jsonls(cfg, projects, ledger)
     assert len(picked) == 2
+
+
+def test_auto_refine_hook_passes_cfg_to_pick_jsonls(tmp_path, monkeypatch):
+    """SessionStart hook must load mnemos.yaml and pass cfg to pick_jsonls.
+
+    Task 2.4 — config-driven caller. We monkeypatch the picker in the
+    auto_refine namespace to capture what the hook hands to it.
+    """
+    import io
+
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "mnemos.yaml").write_text(
+        "schema_version: 2\nrefine:\n  per_session: 7\n", encoding="utf-8"
+    )
+
+    home = tmp_path / "home"
+    proj = home / ".claude" / "projects" / "proj"
+    proj.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.delenv("MNEMOS_VAULT", raising=False)
+    monkeypatch.setenv("MNEMOS_REFINE_LEDGER", str(tmp_path / "ledger.tsv"))
+
+    captured: dict = {}
+
+    def fake_pick(cfg, projects_dir, ledger_path, exclude=None):
+        captured["per_session"] = cfg.refine.per_session
+        return []
+
+    import mnemos.auto_refine
+
+    monkeypatch.setattr(mnemos.auto_refine, "pick_jsonls", fake_pick)
+
+    import mnemos.auto_refine_hook as hook
+
+    payload = json.dumps(
+        {
+            "session_id": "sess-x",
+            "transcript_path": str(proj / "x.jsonl"),
+            "hook_event_name": "SessionStart",
+            "source": "startup",
+        }
+    )
+    monkeypatch.setattr(sys, "stdin", io.StringIO(payload))
+    rc = hook.main(["--vault", str(vault)])
+    assert rc == 0
+    assert captured.get("per_session") == 7
