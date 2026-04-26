@@ -4,7 +4,7 @@
 Eski `docs/specs/2026-04-*` ve `docs/plans/2026-04-*` dosyaları historical
 archive; burada çelişki olursa bu dosya geçerlidir.
 
-**Son güncelleme:** 2026-04-19 (4.2.1-9 ship, v0.4.2-alpha batch hand-off)
+**Son güncelleme:** 2026-04-26 — **v1.0.0a1 alpha shipped to git** (NOT yet on PyPI). 31-task narrative-first pivot complete + 2 post-tag hotfixes. v0.4.x roadmap superseded.
 
 ---
 
@@ -18,10 +18,64 @@ archive; burada çelişki olursa bu dosya geçerlidir.
 | v0.3.1 | Backend UX (keşif + migrate + recovery) | ✅ | ✅ |
 | v0.3.2 | Palace Hygiene (pipeline fixes + atomic rebuild) | ✅ | ✅ |
 | v0.3.3 | Post-v0.3.2 cleanup (migrate rollback+lock, score parity, slow-tests) | ✅ | ✅ |
-| **v0.4.0** | **AI Boost / Phase 1 — skill-first (mine + recall + pilot + settings TUI)** | **🔄 spec done** | — |
-| v0.4.1 | Polish batch (picker noise filter, ledger reconcile, source-path discipline, etc.) | ⏸ | — |
-| v0.5.0 | Automation / Phase 2 (+ contradiction hygiene v0.4'ten) | ⏸ | — |
-| v0.6.0 | Community & Ecosystem | ⏸ | — |
+| ~~v0.4.0~~ | **SUPERSEDED** by v1.0 narrative-first pivot (atomic-fragmentation paradigm dropped) | 🚫 | — |
+| ~~v0.4.1~~ | SUPERSEDED | 🚫 | — |
+| **v1.0.0a1** | **Narrative-First Pivot — Alpha** (Identity Layer + 3-katman briefing + reindex + install-hook --v1) | ✅ git tag | — pending validation |
+| v1.0.0 | Narrative-First Pivot — Stable (post-2-week alpha validation) | ⏳ | — |
+| v1.1.0 | Wikilink resolution intelligence + tag/project fallback in briefing | ⏸ | — |
+| v1.2.0 | Cross-vault recall | ⏸ | — |
+| v1.3.0 | Obsidian plugin | ⏸ | — |
+| v2.0.0 | Self-maintaining memory (stale flagging, decay, contradiction) | ⏸ | — |
+
+**Pivot context:** v0.x'in atomic-fragmentation (drawer mining) paradigması ölçümle çürüdü (RRF skor bandı 0.014–0.017'de takıldı, 600-node graph kullanılmıyor). v1.0 narrative-first paradigmaya geçti — Sessions tek memory unit, refine prompt v2 tag+wikilink hibrit, Identity Layer kalıcı user profile, briefing 3-katman. Mining kodu (~3K LOC + ~200 test) silindi. Geri dönüş için `legacy/atomic-paradigm` branch + `v0.4.0-archived` tag korunuyor.
+
+**v1.0 detayları:**
+- Spec: `docs/specs/2026-04-25-v1.0-narrative-pivot-design.md`
+- Plan: `docs/plans/2026-04-25-v1.0-narrative-pivot.md` (31 task, hepsi tamam)
+- Git: 33 commit + 2 hotfix (`d579362` install-hook --vault, `04e6d03` ledger UTF-8 errors=replace)
+- Test: 452 pass / 1 EOL artifact (mechanical, mild)
+
+**Şu an pending:**
+1. `mnemos identity bootstrap` — kasamd'de ~5-10 dk LLM call, kalıcı user profile üret
+2. 1-2 hafta gerçek-dünya alpha test (farcry ✅, procuretrack 1st visit, daha fazla cwd)
+3. `python -m twine upload dist/mnemos_dev-1.0.0a1*` (PyPI publish — validation sonrası)
+4. `gh release create v1.0.0a1 --prerelease ...` (GitHub pre-release)
+
+---
+
+## v1.0.0a1 — Narrative-First Pivot Alpha ✅ *(git only, 2026-04-26)*
+
+Atomic-fragmentation paradigmadan narrative-first paradigmaya clean-break geçiş.
+
+### Spec & Plan
+- Spec: [`docs/specs/2026-04-25-v1.0-narrative-pivot-design.md`](specs/2026-04-25-v1.0-narrative-pivot-design.md)
+- Plan: [`docs/plans/2026-04-25-v1.0-narrative-pivot.md`](plans/2026-04-25-v1.0-narrative-pivot.md) (31 task, TDD per task)
+
+### Tasks (hepsi tamam)
+- [x] **Task 0–1:** Setup & legacy archive — `legacy/atomic-paradigm` branch + `v0.4.0-archived` tag pushed; `feature/v1.0-pivot` worktree
+- [x] **Task 2–6:** Mining pipeline removal — 9 production modules, 16+ test files, mining CLI subcommands, mine_mode config field, openpyxl dep silindi
+- [x] **Task 7–8:** Refine prompt v2 — tag prefix kategorileri (proj/, tool/, person/, file/, skill/) + prose wikilink rules + KALİTE KONTROL checklist
+- [x] **Task 9–14:** Identity Layer — bootstrap canonical prompt, `mnemos/identity.py` (bootstrap+refresh+rollback+show), CLI subcommands, auto-refresh trigger gates, `mnemos_status` identity metadata
+- [x] **Task 15–16:** Briefing skill v2 — 3-katman akış (Identity 3K + Cwd 8K + Cross-context 4K, hard cap 15K), recall_briefing.py SUB-B2 mining sync silindi
+- [x] **Task 17–21:** MCP/skill surface refactor — recall skill Sessions-only, mnemos_search raw-only deprecation, mnemos_wake_up Identity Layer, mnemos_recall L0-only, mnemos_graph+timeline wikilink-based (SQLite triple store silindi)
+- [x] **Task 22–23:** Reindex — `mnemos/reindex.py` (Sessions rebuild + backend switch + backup) + CLI subcommand
+- [x] **Task 24–26:** Hooks v1.0 — install-hook --v1 atomic install, stale hook graceful failure shim, statusline format
+- [x] **Task 27:** mnemos init v2 — drops mine_mode prompt, adds Phase 6 identity bootstrap (TR+EN i18n)
+- [x] **Task 28–29:** README v1.0 (folded v1.0-readme-draft.md) + CHANGELOG v1.0.0 entry + draft deleted
+- [x] **Task 30:** Version bump 1.0.0a1, build artifacts, local tag annotated, push branch+tag
+
+### Post-tag hotfixes
+- [x] `d579362` — install-hook --v1 must use `--vault` flag (positional was silently ignored by `parse_known_args`, hook silently exited)
+- [x] `04e6d03` — refine ledger reads must use `errors='replace'` for historical non-UTF-8 bytes (cp1252 `0xae` survived from old Windows console writes)
+
+### Pending alpha validation
+- [ ] Identity bootstrap on kasamd (~5–10 dk)
+- [ ] Real-world cwd test cycle (procuretrack 2nd visit, mnemos cwd, Claude Çalışma Dosyası, others)
+- [ ] PyPI alpha upload (`twine upload dist/...`)
+- [ ] GitHub pre-release (`gh release create v1.0.0a1 --prerelease`)
+- [ ] STATUS update post-validation (rotate "v1.0 alpha rollout" → "v1.0.0 stable shipped")
+
+---
 
 ---
 

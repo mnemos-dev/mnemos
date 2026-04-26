@@ -1,8 +1,9 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-24 (4.3.1 shipped: explicit `/mnemos-recall` skill — in-session narrative synthesis + Sessions grep rescue when drawer match is weak + soft fallback listing; 5 commits `e1ab0e4`…`166809c`; threshold empirically calibrated 0.5 → 0.015 for k=60 RRF; **643 test pass +2 new**; sonraki: 4.5 settings TUI + 4.6 benchmark + 4.7 PyPI v0.4.0)
-**Stable PyPI version:** `v0.3.3` · **Next:** `v0.4.0` (AI Boost / Phase 1 — 4.3.1 + 4.5 + 4.6 + 4.7 remaining)
-**Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
+**Last updated:** 2026-04-26 — **v1.0.0a1 alpha shipped (git only, NOT yet on PyPI)** · narrative-first pivot complete · 33 commits + 2 post-tag hotfixes · kasamd v1.0 hooks live, briefing inject working
+**Stable PyPI version:** `v0.3.3` (the v0.x atomic-paradigm — still default for `pip install mnemos-dev`)
+**Alpha:** `v1.0.0a1` — tag pushed to GitHub, **not** yet uploaded to PyPI (pending real-world validation)
+**Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md) · **v1.0 spec:** [`docs/specs/2026-04-25-v1.0-narrative-pivot-design.md`](docs/specs/2026-04-25-v1.0-narrative-pivot-design.md) · **v1.0 plan:** [`docs/plans/2026-04-25-v1.0-narrative-pivot.md`](docs/plans/2026-04-25-v1.0-narrative-pivot.md)
 
 This file is the single-glance answer to: *why does Mnemos exist, what can it
 do right now, and what will it do when the roadmap is complete?*
@@ -11,743 +12,192 @@ do right now, and what will it do when the roadmap is complete?*
 
 ## 1. Why Mnemos exists
 
-You have hundreds of Claude Code sessions stored as `~/.claude/projects/*.jsonl`.
-Decisions, debugging notes, preferences, hard-won context — all locked in files
-nobody re-opens. Every new session starts from zero. Your AI never *remembers
-you*.
+Hundreds of Claude Code sessions live in `~/.claude/projects/*.jsonl`. Decisions,
+debugging notes, preferences, hard-won context — all locked in files nobody
+re-opens. Every new session starts from zero. Your AI never *remembers you*.
 
-Prior art ([MemPalace](https://github.com/MemPalace/mempalace), 42K ★) proved
-the palace architecture works, but:
+**v0.x bahis (MemPalace inspired):** atomic fragmentation — sohbetleri küçük
+"drawer" parçalarına bölüp vector index'le. Ölçüm çürüttü: RRF skor bandı
+0.014–0.017'de takıldı, sentez narrative'den iyi besleniyor, 600-node graph
+kullanılmıyor.
 
-- Stores memory in an opaque ChromaDB binary — users can't read/edit their own memory
-- Mining is English-only regex — no Turkish, no multilingual
-- Built as an isolated tool — doesn't plug into existing knowledge workflows
+**v1.0 bahis (narrative-first pivot, 2026-04-25):**
+- **Sessions tek memory unit.** Her sohbet bir zengin markdown notu.
+- **Wikilink graph.** `[[Project X]]` eşleşmeleri Sessions'ları seyrek-anlamlı bağlar.
+- **Identity Layer** (`<vault>/_identity/L0-identity.md`). Tüm Sessions'tan damıtılan
+  kalıcı user profile. Briefing her oturumda bunu base layer olarak okur.
+- **3-katman briefing skill.** Identity (3K) + cwd Sessions (8K) + 1-hop wikilink
+  cross-context (4K), hard cap 15K.
 
-**The Mnemos bet:** make the palace **Obsidian-native**. Memory becomes plain
-markdown in the user's existing vault. They can read, edit, delete, search with
-Obsidian Graph View and Dataview — and their AI queries the same files via MCP.
-Obsidian is the source of truth; the vector index is just an index.
-
-**The v0.3 pivot:** after delivering the technical foundation (v0.1 core + v0.2
-Phase 0 foundation), it became clear that without a one-command onboarding
-flow that turns Claude Code history into palace memory, the tool is invisible
-to external users. v0.3 is the "First-Run Experience" focused purely on that
-gap.
+Mining pipeline (~3K LOC + ~200 test) silindi. Geri dönüş için
+`legacy/atomic-paradigm` branch + `v0.4.0-archived` tag korunuyor.
 
 ---
 
-## 2. What Mnemos can do today
+## 2. What Mnemos can do today (v1.0.0a1)
 
-### Stable — `pip install mnemos-dev` (v0.2.0)
+### Stable — `pip install mnemos-dev` still installs v0.3.3 (atomic paradigm)
 
-**Memory palace core**
-- ✅ Obsidian-native markdown storage — every memory is a `.md` file you can read
-- ✅ Dual-backend vector index: ChromaDB (default) or sqlite-vec (lighter, cosine scoring)
-- ✅ Palace hierarchy: Wing → Room → Hall → Drawer
-- ✅ L0–L3 memory stack (identity / wing summaries / room details / deep search)
-- ✅ Knowledge graph (SQLite, temporal triples)
-- ✅ File watcher — Obsidian edits sync to vector index within seconds
-- ✅ Soft-delete via `_recycled/` folder
+The PyPI default is the v0.x stable. v1.0 alpha is **not yet published** to PyPI.
+For early adopters: `pip install git+https://github.com/mnemos-dev/mnemos@v1.0.0a1`.
 
-**MCP integration (8 tools)**
-- ✅ `mnemos_wake_up`, `mnemos_search`, `mnemos_recall`, `mnemos_add`,
-  `mnemos_mine`, `mnemos_graph`, `mnemos_timeline`, `mnemos_status`
-- ✅ Works with Claude Code, Cursor, ChatGPT, any MCP-compatible client
+### v1.0 alpha capabilities (live in author's vault)
 
-**Mining pipeline (Phase 0 Foundation)**
-- ✅ 5 conversation formats auto-detected: Claude Code JSONL, Claude.ai JSON,
-  ChatGPT JSON, Slack JSON, plain markdown/text
-- ✅ Exchange-pair chunking (question + answer together)
-- ✅ Room detection — 72+ folder/keyword patterns across 13 categories
-- ✅ Heuristic entity detection (person vs project)
-- ✅ 172 markers (87 EN + 85 TR) across 4 halls (decisions, preferences, problems, events)
-- ✅ Prose extraction — filters code blocks, shell commands, tool noise
-- ✅ Scoring + disambiguation (problem→milestone detection)
-- ✅ Dual collection (raw + mined), Reciprocal Rank Fusion merge
-- ✅ Case-insensitive wing resolution, `wing_override` for manual classification
-- ✅ Bulk indexing API (10–25x faster mining than per-file)
+**Memory storage**
+- Obsidian-native: every memory is a `.md` file you read/edit/delete
+- `<vault>/Sessions/<date>-<slug>.md` — refined Claude Code transcripts (one per session)
+- `<vault>/_identity/L0-identity.md` — persistent user profile (after `mnemos identity bootstrap`)
+- `<vault>/_identity/_history/<date>-bootstrap.md` — bootstrap snapshots
+- `<vault>/_identity/L0-identity.md.bak-*` — pre-refresh backups (rolling window 5)
+- ChromaDB OR sqlite-vec backend for vector search; switch via `mnemos reindex --backend X`
 
-**Quality / validation**
-- ✅ 51 tests passing
-- ✅ LongMemEval benchmark harness (`mnemos benchmark longmemeval`)
-- 🟢 Measured recall: **~90% Recall@5** on a 10-question LongMemEval subset — both backends (ChromaDB and sqlite-vec) verified identical at R@5=0.90 / R@10=0.90 / NDCG@10=0.74 on 2026-04-17. Phase 1 target ≥95%.
+**Refine prompt v2 (tag + wikilink hybrid)**
+- Each Session frontmatter carries: `tags: [session-log, proj/<wing>, tool/<svc>, person/<name>, file/<repeating>, skill/<cmd>]`
+- Each Session's `cwd:` field captured from JSONL first message
+- Prose entities wikilink'd on first mention (`[[Mnemos]]`, `[[Tugra]]`, `[[Supabase]]`)
+- Quality control checklist: ≥1 `proj/*` tag + ≥1 prose wikilink + tag-prose tutarlılığı
 
-### Released — `v0.3.0` First-Run Experience (2026-04-16)
+**Identity Layer (Task 10–14)**
+- `mnemos identity bootstrap` — read all Sessions (≤150K token cap with hybrid sampling), produce structured profile
+- `mnemos identity refresh` — incremental update (gates: ≥10 new sessions + identity-relevant tags); pre-refresh backup
+- `mnemos identity rollback [target]` — restore from `.bak-*` snapshot
+- `mnemos identity show` — print current profile
+- Scope-aware preferences: `(general)` vs `(proj/<name>)` to prevent identity contamination
+- `mnemos_status` MCP tool reports `identity_last_refreshed` + `identity_session_count_at_refresh`
 
-- ✅ `refine-transcripts` Claude Code skill — JSONL → refined Sessions/.md
-  with ledger-based resume, zero LLM cost, ships inside the repo via junction/symlink
-- ✅ README repositioned around the Claude Code history use case
-- ✅ `.mnemos-pending.json` schema + `mnemos.pending` module — atomic
-  read/write/upsert API for resumable onboarding, status enum validation,
-  schema versioning
-- ✅ `mnemos init` 5-phase onboarding flow: intro → discover (Claude Code
-  JSONL + vault Sessions/memory/Topics) → [A]ll/[S]elective/[L]ater choice
-  → process (curated mined immediately, raw registered as pending with
-  refine-skill hint) → hook activation placeholder. Skip/done sources
-  honored on re-run via `.mnemos-pending.json`
-- ✅ `mnemos import <kind>` command family: `claude-code` (register-only,
-  prints refine-skill instructions), `chatgpt` / `slack` (single-file JSON
-  exports → mine), `markdown` / `memory` (curated `.md` directories → mine).
-  Every import updates `.mnemos-pending.json`.
-- ✅ CLI i18n: `mnemos init` intro + onboarding prompts + outcome
-  messages localized to TR + EN. Locale resolved from `mnemos.yaml`'s
-  `languages` setting (first supported wins; English fallback). Windows
-  cp1252 console safe via auto stdout UTF-8 reconfigure.
-- ✅ `mnemos install-hook` registers a SessionStart auto-refine hook that
-  refines the last 3 unprocessed Claude Code JSONL transcripts in the
-  background and mines the vault, without blocking session start. A
-  vault-root `.mnemos-hook-status.json` file drives a live statusline;
-  a weekly (≥7 day) backlog reminder surfaces via `additionalContext`
-  on first-turn AI context. `mnemos init`'s final phase prompts the
-  user to install the hook (Y/n, default Y). Subagent JSONLs under
-  `/subagents/` are filtered from the picker. `filelock` advisory
-  locking prevents overlapping sessions from duplicating work.
-- ✅ `mnemos install-statusline` idempotently wires the auto-refine
-  progress snippet into `~/.claude/settings.json`. Two modes: append a
-  fenced `# --- mnemos-auto-refine-statusline ---` block to a user-owned
-  bash/.cmd statusline script (settings untouched) or fresh-install
-  `~/.claude/mnemos-statusline.{sh,cmd}` and point `statusLine.command`
-  at it. `--uninstall` removes the block (and the owned script +
-  `statusLine` key in fresh mode). `.bak-YYYY-MM-DD` backups. `mnemos
-  init` prompts for it after the hook step (i18n TR+EN).
-- ✅ Auto-refine no longer flickers between sessions: lock-timeout
-  returns silently instead of writing a destructive `phase=busy` over
-  the lock-holder's `refining 2/3` row, and the SessionStart wrapper
-  short-circuits subagent dispatches (`transcript_path` under
-  `/subagents/`) so agent-heavy workflows don't spawn fresh bg workers.
-  When there's nothing to refine, the bg skips `mnemos mine` and the
-  wrapper writes no status at all. Wrapper writes `phase=refining,
-  current=0` directly (no `starting` snapshot). The idle render uses new
-  `last_outcome` + `last_finished_at` fields to show `mnemos: last
-  refine Xm ago · N notes · OK · backlog Y` for 10 minutes (was 30s).
-- ✅ Auto-refine no longer re-fires mid-conversation: the wrapper
-  whitelists SessionStart `source` values ({"", "startup", "resume",
-  "clear"}) so auto-compaction (`source=compact`) and any future
-  ephemeral event types short-circuit to exit 0.
-  `pick_recent_jsonls(exclude=...)` accepts the current session's own
-  `transcript_path` from the hook input, so the in-progress conversation
-  is never marked OK in the ledger before it actually ends — fixes the
-  silent loss of post-refine turns. Legacy `mnemos-session-mine.py`
-  SessionStart entry removed from the author's `~/.claude/settings.json`
-  (separate hook that mined raw transcripts; obsolete since 3.7's
-  refine-then-mine pipeline).
-- ✅ Legacy session-memory deprecation guide: README §"Migrating from
-  older session-memory setups" lists exactly which `~/.claude/skills/
-  session-memory/` and `~/.claude/hooks/mnemos-*` files an early adopter
-  can safely remove now that the auto-refine hook captures everything
-  automatically. CONTRIBUTING gains a sibling note so contributors don't
-  reintroduce the legacy patterns.
-- ✅ New-user pilot validated the README's onboarding works end-to-end
-  on a clean throwaway vault (`mnemos init` → mining → search →
-  install-hook → install-statusline). Caught one real CLI display bug
-  (`mnemos search` showed `wing=?  hall=?` because the formatter read
-  the wrong nesting level — fixed and locked down with two regression
-  tests in `test_cli_search.py`). Full pilot report:
-  [`docs/pilots/2026-04-16-new-user-pilot.md`](docs/pilots/2026-04-16-new-user-pilot.md).
-- ✅ PyPI release v0.3.0 — wheel + sdist published to
-  <https://pypi.org/project/mnemos-dev/0.3.0/>, GitHub release at
-  <https://github.com/mnemos-dev/mnemos/releases/tag/v0.3.0>.
-  Pre-release wheel inspection caught a release-blocker (3.10a):
-  `install-hook` and `install-statusline` resolved their script and
-  snippet paths to `<repo>/scripts/*` — a directory only present in
-  dev installs. Fixed by moving the resources into the `mnemos`
-  package (`mnemos/auto_refine_hook.py` invoked as `python -m
-  mnemos.auto_refine_hook`; `mnemos/_resources/statusline_snippet.{sh,cmd}`
-  resolved relatively). Bash-on-Windows (Git Bash MSYS path)
-  detection and target-suffix-aware block syntax were folded in too
-  so the appended block actually parses on the user's shell.
-- ✅ Auto-refine noise filter + truthful status (3.11): picker and
-  backlog skip JSONLs with fewer than 3 real user turns
-  (`MIN_USER_TURNS`, opt-out with `min_user_turns=0`) — `tool_result`
-  messages don't count as turns, so a 1-turn-with-tools session is
-  correctly treated as noise. `_run_locked` now reads the ledger
-  after each `claude --print` call to count real OK vs SKIP outcomes;
-  status JSON gains `last_ok` + `last_skip` fields and a new
-  `last_outcome="skip"` value for the all-SKIP case. Statusline
-  snippet renders the actual split: "1 note · 2 skipped · backlog 87"
-  or "0 notes (3 skipped)" instead of the prior "3 notes · OK" lie
-  that surfaced when every pick was a `/clear → mnemos` resume
-  session. Fixes the report where backlog grew 150 → 152 across two
-  fresh sessions because every fire wasted picks on noise.
-- ✅ PID-based active-session exclusion (3.12): each SessionStart
-  hook registers its Claude Code parent PID in a marker file under
-  `~/.claude/projects/.mnemos-active-sessions/`. Before picking, all
-  markers are scanned — live PIDs' transcripts are excluded from
-  both picker and backlog. Dead PID markers are cleaned up (session
-  closed → transcript becomes available for next hook fire). 24 h
-  max-age safety net guards against PID recycling. Solves the
-  multi-window scenario (3-4 concurrent Claude Code sessions) where
-  the picker could refine an in-progress transcript and silently
-  lose later turns.
+**3-layer briefing skill v2**
+- Identity Layer (3K cap, sabit) → Cwd Layer (8K priority-1) → Cross-context (4K priority-2)
+- Hard cap 15K input, output 200–400 word narrative
+- Identity-less graceful: skips Identity section, cwd briefing still works
+- Boş cwd: "No prior sessions recorded for this cwd yet" mesajı
 
-### Released — v0.3.1 Backend UX (2026-04-17, GitHub)
+**MCP tool surface (6 tools, down from 8)**
+- `mnemos_search` (collection="raw" only, "mined"/"both" deprecated → warn + raw fallback)
+- `mnemos_recall` (level="L0" only, L1/L2 returns deprecated marker)
+- `mnemos_wake_up` (returns Identity Layer content)
+- `mnemos_graph(entity)` — Obsidian wikilink graph scan (was SQLite triple store)
+- `mnemos_timeline(entity)` — chronological wikilink mention list
+- `mnemos_status` — vault stats + identity metadata
 
-- ✅ **2026-04-17 parity benchmark** — sqlite-vec ve ChromaDB LongMemEval
-  10q subset'inde dördüncü ondalığa kadar aynı: R@5=0.90, R@10=0.90,
-  NDCG@10=0.7393, 8027 drawer, ~62 dk. Backend seçimi recall-nötr.
-- ✅ **`mnemos init` backend prompt** — `use_llm` sonrası, yaml yazımından
-  önce. [C]hromaDB (default) / [S]qlite-vec, TR+EN i18n, Windows+Py3.14
-  platform hint. Re-run idempotent (yaml'da `search_backend` varsa sormaz).
-- ✅ **`mnemos migrate --backend X`** — pre-flight plan (drawer + source
-  file sayısı + süre tahmini ±%30), `--dry-run`, dated backups (aynı gün
-  ikinci migrate `.bak-DATE.2` suffix), yaml update, mine_log clear, rebuild,
-  `--no-rebuild` opt-out, drawer-drop uyarısı (>%20 düşüş → "backup preserved").
-- ✅ **`BackendInitError` wrapper** — ChromaDB HNSW / sqlite-vec DatabaseError
-  gibi init hataları tek satır "use `mnemos migrate --backend <other>`"
-  önerisiyle surface oluyor. Traceback `--verbose` için saklı.
-- ✅ **`mnemos status` backend satırı** — `Backend: <name> (<path> · N drawers · X MB)`.
-  `SearchBackend.storage_path()` abstract + `get_stats()["storage_bytes"]`.
-- ✅ **README Troubleshooting + hero tweak** — "Two vector backends" vurgusu,
-  index corruption → migrate sqlite-vec recipe. CONTRIBUTING "backend count
-  stays at two" architectural line (Qdrant/LanceDB gibi 3. backend PR'ı için
-  yüksek bar).
-- ✅ **Miner regression hotfix** — `_dedup_by_id` bulk indexer'da duplicate
-  drawer ID'yi tolere ediyor (v0.2 bulk API sonrası çıkan crash).
-- ✅ **Clean-vault pilot** (`docs/pilots/2026-04-17-v0.3.1-backend-pilot.md`):
-  init → sqlite-vec → mine → dry-run migrate → real migrate → migrate back
-  → search → same-backend noop hepsi yeşil. Tag `v0.3.1` + GitHub release at
-  <https://github.com/mnemos-dev/mnemos/releases/tag/v0.3.1> + PyPI
-  <https://pypi.org/project/mnemos-dev/0.3.1/> (wheel + sdist asset'li).
+**Hooks**
+- `mnemos install-hook --v1` — atomic idempotent settings.json install (auto-refine + recall-briefing)
+- Stale hook graceful failure shim — old v0.x entries print "Run install-hook --v1" + exit 0
+- Statusline format updated (drops mining fields, adds `identity_last_refreshed`)
 
-### Released — v0.3.2 Palace Hygiene (2026-04-18)
+**CLI**
+- `mnemos init` v2 — drops mine_mode prompt, adds identity bootstrap phase 6 (TR+EN i18n)
+- `mnemos identity {bootstrap,refresh,rollback,show}`
+- `mnemos reindex --backend X` (replaces `mnemos migrate`)
+- `mnemos install-hook --v1` (replaces v0.x install-hook + install-recall-hook)
+- Removed (with friendly migration nudge): `mnemos {mine, catch-up, migrate, processing-log, pilot}`, `mnemos import {chatgpt, slack, markdown, memory, claude-code}`
 
-- ✅ **Six pipeline hygiene fixes (Group A)** — TR-aware wing canonicalization
-  (`94b624d`); lazy hall/`_wing.md`/`_room.md` creation so empty wings and
-  phantom rooms don't pollute the graph view (`590f302`); `tags[0]` no longer
-  promoted to room (`0e72389`); drawer filenames use source date with
-  word-boundary slug so `YYYY-MM-DD-YYYY-MM-DD-…` double prefix is gone
-  (`6707010`); drawer body gains `# <smart-title>` H1 + `> Source: [[…]]`
-  wikilink, synthetic/manual sources skip the wikilink to avoid dead
-  `[[unknown]]` links (`13fc74c` + review fix `9532caf`); entity hygiene —
-  no tags as entities, case-preserve dedup (`bbfa1b8`).
-- ✅ **Atomic `mnemos mine --rebuild` (Group B)** — `mnemos/rebuild.py`
-  orchestrator: resolve sources → pre-flight plan → dry-run gate → confirm
-  → `.rebuild.lock.flock` → backup wings/index/graph → `drop_and_reinit()`
-  + `KnowledgeGraph.reset()` → re-mine → verify → rollback on failure.
-  `--dry-run` / `--yes` / `--no-backup` flags; `path` argument optional
-  (falls back to `cfg.mining_sources` or auto-discovers `Sessions/` +
-  `Topics/`). `SearchBackend.drop_and_reinit()` on both backends, `Palace
-  .backup_wings()` with `.N` collision suffix, `KnowledgeGraph.reset()`
-  (commits `2059783` / `6a9570d` / `1c4da1f` / `729eea4` / `b70a935` /
-  `86a915b` / `85e301c`).
-- ✅ **Auto-refine hook respects rebuild lock** — `mnemos/auto_refine_hook.py`
-  silently exits if the rebuild orchestrator holds `.rebuild.lock.flock`;
-  uses a 50 ms non-blocking probe so stale lock files (crashed prior
-  rebuild) don't wedge the hook (`7f30777`).
-- ✅ **Review fixes (post-Group-B)** — backend + graph handles now close in
-  `finally` so the rollback path's `shutil.rmtree` won't hit Windows
-  `WinError 32`; `_resolve_sources` called once through `plan
-  ["sources_resolved"]` (no TOCTOU window between plan display and
-  confirmation); `test_rebuild_happy_path` now parametrized across both
-  backends (first end-to-end ChromaDB exercise of `rebuild_vault` — dir
-  backup vs sqlite-vec's file backup); new `test_rebuild_succeeds_past_
-  stale_lock_file` covers filelock's OS-level advisory semantics. 17
-  tests in `test_rebuild.py`, all green (`d290de8`).
-- ✅ **Test-suite repairs** — five pre-existing tests in `test_server.py`
-  / `test_stack.py` assumed A2's old eager `_wing.md` behavior; seeded
-  a minimal drawer per wing/room to trigger the lazy summary write. No
-  production code changes (`509582f`).
-- ✅ **Distribution-ready memory-source handling** — three post-pilot fixes
-  so every Claude Code user (not just the author) gets rebuild-safe
-  memory imports:
-  - `MEMORY.md` index files + leading-underscore `.md` files are skipped
-    by the miner (duplicate-signal noise) — `998a529`.
-  - `mnemos import markdown|memory <path>` now appends the source to
-    `mnemos.yaml`'s `mining_sources` (idempotent, yaml-preserving,
-    Windows-normalized) so rebuilds pick it up automatically — `e9f3d6d`.
-  - `_resolve_sources` is now additive: always auto-discovers the
-    vault's internal `Sessions/` + `Topics/` and UNIONs with configured
-    `mining_sources` entries (dedup by `os.path.normpath`). Caught by
-    the round-trip rebuild pilot, which initially dropped from 683 to
-    100 drawers because `mining_sources` was replacing auto-discover —
-    `bb53892`.
-- ✅ **Real-vault pilot complete** — kasamd rebuild + 5 external memory
-  folder re-import + round-trip validation. Final: 683 drawers (up
-  from 670 pre-v0.3.2 despite skipping MEMORY.md indexes), 16 wings,
-  session-log entity pollution 0 (was 457), phantom hall dirs 0 (was
-  138), double-date filenames 4 (was 69). Source file sha256 hashes
-  unchanged — rebuild never modifies Sessions/Topics.
-- ✅ **PyPI release v0.3.2** — wheel + sdist published to
-  <https://pypi.org/project/mnemos-dev/0.3.2/>, GitHub release at
-  <https://github.com/mnemos-dev/mnemos/releases/tag/v0.3.2>
-  (wheel + sdist asset'li). Tag `v0.3.2` pushed.
+**Test suite**
+- 452 pass / 2 skip / 3 deselect / 1 known EOL artifact (`test_mnemos_recall_skill_junction_zero_drift` — CRLF vs LF junction drift, mechanical)
+- v0.x mining-bound tests deleted (~200 tests)
+- v1.0 added: `test_identity.py` (18 tests), `test_mcp_v1.py` (8 tests), `test_briefing_v2.py` (5 tests), `test_install_hook_v1.py` (4 tests), `test_reindex.py` (3 tests), `test_cli_identity.py` (2 tests), `test_cli_reindex.py` (1 test), etc.
 
-### Released — v0.3.3 Post-v0.3.2 cleanup (2026-04-19)
+### v1.0.0a1 release artifacts (built, NOT published to PyPI)
 
-- ✅ **Migrate rollback + lock** — `MigrateError` raised on rebuild
-  failure (old backend storage + mine_log + yaml restored atomically,
-  partial new-backend storage wiped). `.migrate.lock.flock` advisory
-  lock prevents concurrent migrates on the same vault. Lock is
-  OS-held so crashed processes don't leave stale lock files.
-- ✅ **Dry-run estimate readable on tiny vaults** — `~0–0 minutes` →
-  `~2–3 seconds` via `MigrationPlan.format_estimate()`, with seconds
-  floor at 1 so single-drawer vaults still show a real number.
-- ✅ **sqlite-vec score parity with ChromaDB** — `_l2_to_score` uses
-  linear `1 - L2/2` (was cosine `1 - L2²/2`). Ranking unchanged
-  (monotonic in L2, benchmark recall identical) but surface scores
-  now sit in the 0.3–0.7 band instead of the confusing 0.01–0.02
-  range users saw on sqlite-vec.
-- ✅ **Test suite green in ~5 min** — `@pytest.mark.slow` marker
-  registered in pyproject, durability tests tagged + subprocess
-  timeout bumped to 600 s, default `addopts = "-m 'not slow'"`.
-  Full default run: **463 passed, 2 skipped, 3 deselected**.
-- ✅ **PyPI release v0.3.3** — wheel + sdist published to
-  <https://pypi.org/project/mnemos-dev/0.3.3/>, GitHub release at
-  <https://github.com/mnemos-dev/mnemos/releases/tag/v0.3.3>.
+- `dist/mnemos_dev-1.0.0a1-py3-none-any.whl` (100,461 bytes, on disk in v1.0 worktree)
+- `dist/mnemos_dev-1.0.0a1.tar.gz` (586,634 bytes)
+- Tag `v1.0.0a1` pushed to GitHub
+- Branch `feature/v1.0-pivot` pushed to GitHub
+- Main updated with all 33+2 commits, pushed to GitHub
 
-### Post-v0.3.3 repo polish (2026-04-19, not a release — docs/meta only)
+### Pre-v1.0 stable releases (preserved on PyPI)
 
-- ✅ **GitHub community surface** (`.github/`) — structured bug + feature
-  issue forms (dropdowns for backend / OS / Python version), PR
-  template with checklist (pytest / CHANGELOG / ROADMAP checkbox / no
-  secrets), `config.yml` redirects blank-issue traffic to ROADMAP /
-  CHANGELOG / Discussions.
-- ✅ **CI** — `.github/workflows/test.yml` runs the default pytest
-  suite on push + PR, matrix ubuntu + windows × Python 3.10 + 3.12.
-  README hero bar now carries a live "tests" badge and a live PyPI
-  version badge (replaced the static v0.3.x one).
-- ✅ **Policy documents** — `SECURITY.md` (latest-minor support
-  policy + private GitHub advisory reporting) and `CODE_OF_CONDUCT.md`
-  (Contributor Covenant v2.1). Both appear in the GitHub sidebar
-  automatically.
-- ✅ **Visual identity** — `assets/make_social_preview.py` generates
-  a 1280×640 PNG (deep-indigo gradient, Georgia bold title, palace
-  motif). The committed `assets/social-preview.png` is the source of
-  truth; maintainer uploads it via *Settings → Social preview* for the
-  Twitter/Discord link-card.
-- ✅ **README ELI5 block** — a "New here? Read this first" section
-  between the nav bar and "The Problem" covers Claude Code / Obsidian
-  / MCP in plain language, an end-to-end pipeline diagram, the 5-minute
-  happy path, and five pre-install FAQs (API cost, Obsidian-optional,
-  backend choice, disk footprint, mixed-use vault).
-- 🟡 **Pending user action** — social-preview PNG still needs to be
-  uploaded to the GitHub repo settings page (*Settings → Social
-  preview → Edit → upload `assets/social-preview.png`*). Done once,
-  sticks forever.
-
-### Next session starts here
-
-**4.3.1 explicit `/mnemos-recall` skill shipped (2026-04-24).**
-
-Kasamd smoke'u rescue path'ini tam beklenen şekilde doğruladı (tavuklu
-oyun query'si farcry Sessions'ından evolution-aware narrative
-ürettirdi). Threshold 0.5 → 0.015 kalibrasyonu + Sessions grep rescue
-SKILL.md'ye ship sırasında smoke-driven iki polish commit olarak
-eklendi.
-
-Sıradaki v0.4.0 ship blocker'ları:
-
-- **4.5 Settings TUI** (~2.5h) — `mnemos settings` numbered menu
-  (backend / mine-mode / recall-mode / hooks / statusline / languages).
-  Tek panel altında fragmanlı komutları toparlayacak, i18n TR+EN.
-- **4.6 LongMemEval benchmark** (~3h) — S+S combo ölçümü, hedef
-  R@5 ≥ %93.
-- **4.7 PyPI release v0.4.0**.
-
-v0.4.1 polish candidate (isteğe bağlı, bu ship'e eklenmedi):
-- `/mnemos-recall` için EN + pure-noise smoke senaryoları (bu backend'de
-  drawer-direct path yeterince hit almıyor — ek gözlem v0.4.1'de).
-- `/mnemos-recall` threshold backend-parity (sqlite-vec vs ChromaDB)
-  smoke — spec §9.1 scenario 7, deferred.
-
-### Previous — 4.3.A session notes
-
-**v0.4.2-alpha batch tamam (2026-04-19 → 20, 17 commit):**
-
-| Commit | Parça |
-|---|---|
-| `033a7d4` | Phase 1 design spec (skill-first reframe) |
-| `c7d6c58` | 4.2.1 mnemos-mine-llm skill + canonical prompt |
-| `e300a2c` | 4.2.2 pilot.py orchestrator + CLI (31 test) |
-| `777d076` | 4.2.3 + 4.2.5 compare-palaces skill + accept komutu |
-| `b8b3b4c` | 4.2.6 real-vault pilot (3 session, 4 finding) |
-| `d8cb5c1` | 4.2.7 + 4.2.8 filesystem fallback + pilot-session filter |
-| `da85a58` | 4.2.10 latency realism docs |
-| `6e00736` | 4.2.9 palace indexer + `mnemos mine --from-palace` |
-| `5ef2dac` | 4.2.11 skill prompt multi-format (Type A/B/C/D) |
-| `326cc6d` | 4.2.12 orchestrator multi-source plan |
-| `a28eb31` | 4.2.13 `--pilot-limit 0` + CLI source breakdown |
-| `ad31ff2` | 4.2.14 parallel execution + monitor-friendly progress |
-| `d8b233d` | per-source token visibility in progress events |
-| `0c55366` | `--model sonnet` pin for skill subprocess |
-| `be4a17e` | cumulative token alongside per-source in progress lines |
-| `6e8a3e3` | `.gitkeep.md` filter in `_discover_sources` |
-| `dbe13da` | 4.2.15 docs — skill-mine accepted, live in kasamd |
-
-**Kasamd canlı durumu (post-accept + 2026-04-21 cleanup):**
-
-- `Mnemos/` = **593 skill-mine drawer** (572 orijinal accept batch +
-  21 yeni post-accept session drawer'ı). 5-hall dağılımı:
-  decisions 255 / events 156 / problems 148 / preferences 32 /
-  emotional 2. 6 wing. Önceki script-mine palace (725 drawer)
-  `_recycled/Mnemos-2026-04-20/`'de arşivli.
-- `mnemos.yaml: mine_mode: skill`
-- `Mnemos/search.sqlite3` 593 drawer'dan rebuilt (sqlite-vec backend)
-- `mnemos search` smoke: "safa clutch" / "jzg24c deadline anchor" /
-  "v042 alpha accept skill mine" üçü de skill drawer top-1 döndürdü
-- Pilot rapor: `kasamd/docs/pilots/2026-04-19-llm-mine-pilot-3.md` —
-  5-eksen qualitative judgment dolu
-
-**2026-04-21 hybrid-palace temizliği (root cause + düzeltme):**
-- **Sorun:** accept sonrası auto-refine hook SessionStart'ta
-  `mnemos mine Sessions/` (regex) çağırıyordu. ID deterministic olsa
-  da skill-mine smart-H1 filename ≠ regex section-header filename →
-  hiçbir drawer overwrite olmadı, ama 535 regex drawer `facts/` hall
-  ve `alınan-kararlar/yapılanlar/özet/sonraki-adımlar/see-also/
-  sorunlar` section-header filename pattern'iyle skill palace'ın
-  yanında birikti. Frontmatter farkı: skill drawer `source_type:
-  skill-mine` taşıyor, regex drawer bu field'ı taşımıyor →
-  ayrıştırma güvenli.
-- **Fix 1 — hook guard** (`a5042a2`): `mnemos/auto_refine.py`
-  `_read_mine_mode(vault)` inline yaml parse ediyor; yaml'da
-  `mine_mode: skill` ise regex mine çağrısı skip oluyor. Hook
-  sadece refine yapar, mining pilot orchestrator'a bırakılır.
-  4 yeni test, auto_refine suite 65/65 green.
-- **Fix 2 — vault cleanup** (repo commit yok, kasamd-only):
-  535 regex drawer `_recycled/regex-cleanup-2026-04-21/`'e
-  taşındı (silme değil); 101 boş hall/room dir temizlendi;
-  index rebuild `--from-palace` ile yapıldı.
-- **Fix 3 — post-accept iki yeni session skill-mine edildi:**
-  `2026-04-19-mnemos-v042-alpha-skill-mine-accept` (13 drawer) +
-  `2026-04-21-gyp-deadline-anchor-jzg24c-teknik-uygunluk` (8 drawer).
-  Pilot orchestrator `--pilot-limit 0` ile başlatıldı ama ledger
-  path mismatch yüzünden tümünü baştan mine etmeye başladı;
-  hedef 21 drawer üretildikten sonra durduruldu, sadece iki hedef
-  session'ın drawer'ları `Mnemos-pilot/` → `Mnemos/` path-preserving
-  kopyalandı, kalan `Mnemos-pilot/` `_recycled/Mnemos-pilot-2026-04-21-partial/`'e
-  arşivlendi.
-- **Snapshot:** temizlik öncesi `kasamd-Mnemos-backup-2026-04-21-1738.zip`
-  (4.4 MB) vault-root'ta duruyor.
-
-Full suite **542 pass / 2 skip / 3 deselect** (+4 hook guard test). Working tree temiz.
-
-### Released — 4.3.A Hook → skill-mine route + catch-up (2026-04-22)
-
-- ✅ **Hook routes to skill-mine when `mine_mode: skill`** — `auto_refine.py`'ın skill-mode guard'ı skip'ten route'a çevrildi. Yeni `_run_skill_pipeline` iki-fazlı queue çalıştırır:
-  - **Phase A** (priority): unmined Sessions → `/mnemos-mine-llm` (refine zaten yapılmış, sadece mine kaldı)
-  - **Phase B** (main): unrefined JSONLs → worker başına zincir `/mnemos-refine-transcripts` sonra `/mnemos-mine-llm` (refine ledger'ından session_md path'i okunur)
-  - Fire-toplam cap **10** (A önce yer doldurur, remainder B'ye)
-  - Her subprocess `claude --print --dangerously-skip-permissions` (hook non-interactive)
-- ✅ **`mnemos catch-up [--limit N] [--parallel N] [--dry-run] [--yes]`** — foreground bulk processor. `mine_mode: skill` zorunlu, `CatchUpError` aksi halde. `--parallel N` shard-based worker pool (ThreadPoolExecutor). Warning output eğer N > 1.
-- ✅ **`<vault>/Mnemos/_processing.xlsx`** — native Excel audit trail. `openpyxl` + `filelock` concurrent-safe. 9 kolon: `source_type, path, refined_at, refine_outcome, mined_at, mined_outcome, drawer_count, tokens, notes`. Obsidian `_` prefix ile gizli, Windows Explorer'da çift-tık → Excel.
-- ✅ **Hook log `phase=A` / `phase=B` prefix** — post-hoc debug için.
-- ✅ **Yeni dependency** — `openpyxl>=3.1` (pure Python, yaygın).
-- ✅ **Kasamd ledger backfill** — 593 skill drawer source'larını `~/.claude/skills/mnemos-mine-llm/state/mined.tsv`'e `palace=kasamd/Mnemos` olarak yazdı (103 unique source). Hook bundan sonra bu session'ları atlar; Mnemos-pilot palace'a yazılan eski ledger satırları zararsız kalır. Backfill sonrası dry-run: Phase A = 2 (gerçek unmined po-556 + `.gitkeep.md` noise).
-
-**Yeni tests (+19):** 5 processing_log, 6 picker/ledger helper, 3 pipeline (A/B/cap), 1 routing (replaced old skip test), 3 catch_up, 2 CLI catch-up. Full suite **561 pass / 2 skip / 3 deselect**.
-
-**Commits (2026-04-22, chronological):**
-
-| Commit | Parça |
-|---|---|
-| `8a8783a` | T1 `openpyxl>=3.1` dependency |
-| `a66e65e` | T2 `mnemos/processing_log.py` (xlsx upsert + filelock) |
-| `ff01230` | T3 picker + ledger helpers in `auto_refine.py` |
-| `b0e8bdd` | T4 `_run_skill_pipeline` two-phase scheduler |
-| `0f291be` | T5 `_run_locked` routing to skill pipeline |
-| `79490c3` | T6 `mnemos/catch_up.py` foreground processor |
-| `b0f377e` | T7 `mnemos catch-up` CLI subcommand |
-| `<T10>`   | T10 ROADMAP + STATUS (this commit) |
-
-**✅ Manual smoke run (2026-04-22):**
-- Hook wrapper active-session marker yazıyor ama **spawn ettiği bg
-  subprocess sessizce ölüyor** (Windows `DETACHED_PROCESS + stdout=DEVNULL`
-  kombinasyonu; import/startup error görünmez kalıyor). Ship-blocker
-  değil çünkü manuel `mnemos catch-up` + manuel bg invocation sorunsuz
-  çalışıyor. v0.4.1 P8 olarak tracked.
-- **Manuel bg run başarıyla Phase A mine çalıştırdı:**
-  - `2026-04-21-po-556-deadline-anchor-skill-extract-kaldirildi.md` →
-    **6 drawer** (GYP / Satin-Alma-Otomasyonu/po-olusturma/: 2 decisions,
-    2 events, 1 preferences, 1 problems). Smart H1, absolute-path source,
-    entities temiz (`[Xi'an Yile Technology, po-olusturma]`).
-  - `.gitkeep.md` → 0 drawer (skill SKIP, placeholder — beklenildi).
-  - Süre: ~3 dk (cap 10 altında, her iki item seri koştu).
-- **Palace delta:** 593 → **599 drawer**. 5-hall dağılımı güncel.
-- **Xlsx:** `_processing.xlsx` 170 → 163 row (9 temizlik + 1 Phase A
-  row-sync). Po-556 tek satırda `mined_outcome=OK, drawer_count=6`.
-- **Tespit edilen minor schema bug (P9):** Phase A bir Session md'yi
-  işlediğinde xlsx'e yeni `md` row ekliyor, ama o md'nin arkasındaki
-  JSONL satırı (backfill'den) güncellenmiyor → aynı iş iki row'da
-  görünüyor. Bu smoke'da elle sync ettim; v0.4.1 P9 kalıcı fix.
-- **`if picked:` gate bug (`fdb92d8`):** smoke sırasında ortaya çıktı.
-  T5 testi `picked=[a]` non-empty ile geçiyordu; production'da
-  kasamd backfill sonrası picker sıklıkla `[]` dönünce hook skill
-  pipeline'ı stranded bırakıyordu. Fix + regression test shipped.
-
-**Scope-dışı küçük polish (v0.4.1'e taşındı):**
-- `_pick_unmined_sessions` ve `_pick_unprocessed_jsonls` `.gitkeep*` + `MEMORY.md` filter'ı (zaten `_discover_sources` pilot'ta var, hook picker'ında yok). Kasamd'de şu an `.gitkeep.md` Phase A picker'a düşüyor; skill SKIP ediyor, zararsız ama noise.
-- `mnemos processing-log --rebuild` komutu (xlsx'i iki ledger'dan sıfırdan üret). Ship edildiğinde yeni kullanıcının xlsx'i natural doğar (YAGNI); sadece kasamd/brownfield kurtarma senaryosu için.
-- **Ledger/palace reconcile komutu** (`mnemos processing-log repair` veya benzeri). 2026-04-22 kasamd analizinde tespit: wings'te **593 gerçek drawer** var ama skill-mine ledger sadece **516 drawer**'ı accounting içinde (`palace=Mnemos` satırları, sum of column 2). 77 drawer palace'ta fiziksel olarak var ama ledger'a yazılmamış — pilot raporu Finding 2'deki "ledger-skipped; recovered from filesystem" pattern'ının birikmesi. Repair komutu palace frontmatter'ını tarayıp eksik OK satırlarını ledger'a + xlsx'e backfill eder (`count_drawers_for_source` pattern'ı pilot.py'da zaten var).
-- **Skill-mine-llm source field path discipline** — SKILL.md'ye "drawer frontmatter'daki `source:` alanı daima absolute path" notu. 2026-04-22 audit'te 3 drawer relative path ile yazılmış (`source: memory/user_profile.md`). Ledger'a düzgün absolute path yaz (pilot runtime'ı cwd-relative değil, skill subprocess cwd farklı olabilir).
-- **Legacy corrupt ledger rows cleanup** — refine ledger satır 128 (`C:\Users<TAB>ugrademirors\.claude\...`) + 4 UUID-prefix-kesik satır (satır 58/84/94/111) + eski `palace=Mnemos-pilot` satırları. Hook path-match'te tutmaz, xlsx backfill absolute-path filter'ı ile de temiz; yine de one-liner cleanup STATUS'un Pending user actions maddesini kapatır.
-
-### Released — 4.3 first ship: cwd-aware auto-briefing (2026-04-23)
-
-**Why this ships:** Mnemos'un "hafıza kaydet" tarafı dolu (593 skill-mined
-drawer), ama "hafıza hatırla" tarafı yoktu. Kullanıcı cwd'ye özgü context'e
-ancak explicit `mnemos_search` çağrısıyla erişiyordu — AI kendiliğinden
-"geçen sefer burada X konuşmuştuk" demiyor. Bu ship otomatik cwd-briefing'i
-SessionStart hook'u ile enjekte eder; kullanıcı hiçbir komut yazmadan
-Claude ilk turn'den itibaren cwd bağlamıyla gelir.
-
-- ✅ **`cwd:` frontmatter in Sessions/.md** — refine prompt + SKILL.md
-  extract `"cwd"` from JSONL's first message, write absolute Windows path
-  to `<Sessions-md>.frontmatter.cwd`. `scripts/backfill_cwd_frontmatter.py`
-  populated kasamd's existing 40 sessions (20 others skipped: JSONL archived);
-  commits `365da49`, `87e9fba`, `05dcfb0`.
-- ✅ **`mnemos/recall_briefing.py` (~780 lines) — path-checker SessionStart
-  hook wrapper**:
-  - `<vault>/.mnemos-cwd-state.json` tracks visits per cwd-slug (atomic JSON
-    load/save via tmp+os.replace)
-  - **CASE A first-visit:** record state, exit silent (no briefing spawn;
-    no prior data to brief from)
-  - **SUB-B1 return-visit, no pending JSONLs:** inject cache if present;
-    staleness check via `session_count_used` frontmatter — M − N ≥ 3 triggers
-    SYNC regen
-  - **SUB-B2 return-visit, unrefined JSONLs for this cwd:** BLOCKING catch-up
-    under `.mnemos-catch-up.flock` (10s timeout) — sync refine each pending
-    → read resulting session_md from ledger → sync mine → sync brief, then
-    inject. `.mnemos-hook-status.json` writes per-phase (refining N/M →
-    mining N/M → briefing) so statusline shows live progress.
-  - All skill subprocess calls: `claude --print --dangerously-skip-permissions
-    --model sonnet /<skill> <arg>` (subscription auth, API key stripped).
-  - Hook timeout: 600000ms (10 min upper bound for pathological catch-up).
-  - 37 tests covering every branch (first-visit, cache fresh/stale, bg spawn,
-    blocking sequence, refine-failure-skip-mine, subprocess mocking).
-- ✅ **`skills/mnemos-briefing/` — evolution-aware narrative synthesis skill**:
-  reads Sessions/.md filtered by cwd frontmatter + associated Mnemos drawers,
-  synthesizes 200-400 word briefing with explicit "Revize/iptal edilen
-  kararlar" section so decisions revised across sessions surface visibly.
-  Contradiction detection embedded in prompt — no separate scanner needed.
-  Token budget ≤60K input (last 10 sessions + first 2 baseline for long
-  histories). Junction'ed into `~/.claude/skills/` alongside refine/mine/compare.
-- ✅ **`mnemos/server.py build_instructions(cfg)` pure function** —
-  `recall_mode: script` (default) preserves existing "AI auto-calls
-  mnemos_search" behavior. `recall_mode: skill` tells AI "briefing already
-  injected; don't auto-call on every turn; but user-explicit asks still
-  override". Backwards-compatible — unaware users see no change.
-- ✅ **`mnemos install-recall-hook` CLI** — nested Claude Code hook schema
-  `{matcher, _managed_by: "mnemos-recall-briefing", hooks: [{type, command,
-  timeout}]}`, 600000ms timeout, forward-slash vault path on Windows (Claude
-  Code hook dispatcher quirk). Idempotent install, targeted uninstall leaves
-  auto-refine entry untouched. `mnemos init` prompts for it after the
-  auto-refine + statusline prompts (TR+EN i18n).
-- ✅ **Test delta:** +61 new tests (9 backfill + 4 config + 5 MCP instructions
-  + 37 recall_briefing + 5 install-recall-hook + 1 statusline edge).
-  Full suite **623 pass / 2 skip / 3 deselect** (from 562 baseline on 2026-04-23).
-- ✅ **Kasamd live:** `mine_mode: skill` + `recall_mode: skill`, install-recall-hook
-  run (2 SessionStart entries: auto-refine + recall-briefing both pointing
-  to kasamd via forward-slash path). First-visit offline smoke PASS (state.json
-  correct); backfill applied to 40 existing sessions.
-
-**Commits (2026-04-23, chronological):**
-
-| Commit | Parça |
-|---|---|
-| `4b08630` | Design spec (17 sections) |
-| `f159e5d` | Spec post-review amendments (statusline progress, staleness threshold) |
-| `429f169` | ROADMAP 4.3 `[ ]` → `[~]` |
-| `f6500a3` | Implementation plan (18 tasks, TDD per task) |
-| `365da49`, `39c83b5` | T1 refine prompt cwd field + clarification |
-| `87e9fba`, `fda2cd2`, `05dcfb0` | T2-T3 backfill script + ledger format fix + kasamd apply |
-| `11f0dd1` | T4 config `recall_mode` yaml field |
-| `98aad3e` | T5 `build_instructions(cfg)` |
-| `f185f34` | T6 briefing skill SKILL.md + prompt.md |
-| `c641089` | T7 recall_briefing scaffold (slug + state) |
-| `d6eb524` | T8 helpers (mode/cache/session counter) |
-| `20c564b` | T9 unrefined JSONL discovery |
-| `5b70770` | T10 statusline status writes |
-| `7b38de1` | T11 subprocess runners |
-| `f1070c1` | T12 handle_session_start CASE A + SUB-B1 |
-| `2a743b9` | T13 SUB-B2 blocking catch-up |
-| `3a902c6` | T14 main() hook entry |
-| `ea3537b`, `59948f6` | T15 install-recall-hook CLI + schema fix |
-| `5943d2f` | T15b init integration + i18n |
-
-✅ **Smoke doğrulandı (2026-04-23):** farcry cwd'sinde gerçek Claude Code
-oturumunda recall hook fire etti, 6 post-ship fix sonrası SUB-B1 fresh-path
-anında briefing inject ediyor. Detaylar yukarıdaki "Post-ship emergency
-fix'ler" + "Smoke doğrulandı" bloklarında.
+- v0.1.0 — First Breath (core MCP, regex mining, ChromaDB)
+- v0.2.0 — Full Memory / Phase 0 (L0–L3 stack, dual collection RRF, multilingual)
+- v0.3.0 — First-Run Experience (`mnemos init`, refine skill, `.mnemos-pending.json`)
+- v0.3.1 — Backend UX (`mnemos migrate`, `mnemos init` backend prompt, error wrapping)
+- v0.3.2 — Palace Hygiene (atomic rebuild, TR-aware wing canonicalization)
+- v0.3.3 — Post-v0.3.2 cleanup (migrate rollback+lock, score parity, slow-tests)
 
 ---
 
-### ⏭ SIRADAKİ OTURUM — v0.4.0 Phase 1 kalanı
+## 3. v1.0 alpha rollout — current state (2026-04-26)
 
-4.3 first ship kapandı (2026-04-23). Sıradaki parçalar v0.4.0-final için:
+### Completed
 
-- **4.3.1 Explicit `/mnemos-recall <query>` skill** (~2h, second ship) —
-  cross-context edge case: farcry cwd'sinde çalışıyorum ama GYP satın alma
-  hatırlatması istiyorum. Brainstorm + spec + plan ayrı, v0.4.1 polish'ine
-  birleşmeden önce kendi ship'inde.
-- **4.5 Settings TUI** (~2.5h) — `mnemos settings` numbered menu
-  (backend / mine-mode / recall-mode / hooks / statusline / languages).
-  Fragmanlı komutları tek panel altında topla. i18n TR+EN.
-- **4.6 LongMemEval benchmark** (~3h) — S+S combo (script-mine +
-  script-recall) ölçüm. Hedef Recall@5 ≥ %93. Skill modları kalitatif
-  (pilot raporu) — benchmark sadece baseline.
-- **4.7 PyPI release v0.4.0** — version bump, CHANGELOG, wheel+sdist,
-  GitHub release. 3.10a pre-release wheel inspection paterni tekrarla
-  (skill path'leri package'da mı, --model sonnet hardcode mu vb.).
+- ✅ All 31 v1.0 pivot tasks (Tasks 0–30) — see `docs/plans/2026-04-25-v1.0-narrative-pivot.md`
+- ✅ Local merge `feature/v1.0-pivot` → `main` (fast-forward, 33 commits)
+- ✅ Push origin main + feature branch + tag v1.0.0a1
+- ✅ Build artifacts in `dist/`
+- ✅ Switched author's editable install to v1.0 (via merge, automatically)
+- ✅ Ran `mnemos install-hook --v1` against kasamd
+- ✅ Two post-tag hotfixes shipped to main:
+  - `d579362` — install-hook commands needed `--vault` flag (not positional)
+  - `04e6d03` — refine ledger reads needed `errors='replace'` for non-UTF-8 bytes
+- ✅ kasamd cwd-coverage backfill: 22 Sessions backfilled (ProcureTrack 8, Mnemos 5, valves 1, TPAO 2, Safa Clutch 1, GYP+Satin-Alma 5). **86% coverage (68/79)**.
+- ✅ kasamd backup zip taken: `kasamd-pre-v1-2026-04-26.zip` (17 MB) on Masaüstü
+- ✅ farcry cwd test PASS — briefing inject works, real history surfaced ("Far Cry 7 → Shimeji tavuk pivot")
+- ✅ procuretrack cwd test (1st visit, CASE A — silent expected) confirmed
 
-**Opsiyonel v0.4.1 polish:**
-- `.gitkeep*` filter zaten `6e8a3e3`'te eklendi → bir sonraki pilot'ta
-  discovery'de hiç çıkmayacak. **Picker'lar hâlâ kapsamıyor** —
-  `_pick_unmined_sessions` + `_pick_unprocessed_jsonls` için de aynı
-  filter (hook / catch-up akışında `.gitkeep.md` ve `MEMORY.md` sessiz
-  düşsün). 2026-04-22 dry-run'ında kasamd'de Phase A'ya `.gitkeep.md`
-  girdi.
-- Script miner section-header kaçışı ("Özet/Sonraki Adımlar/Yapılanlar
-  /Alınan Kararlar/See Also" filename'e sızıyor) — script-mine canlı
-  olmasa bile benchmark ve geri dönüş senaryoları için temizlemek iyi
-- `mnemos mine --raw-only` (4.2.9 follow-up)
-- **Ledger/palace reconcile komutu** — `mnemos processing-log repair`
-  veya `mnemos mine --reconcile-ledger`. Palace frontmatter'ını tarar,
-  skill-mine ledger'ına eksik OK satırlarını filesystem fallback'tan
-  backfill eder, `_processing.xlsx`'i günceller. 2026-04-22 kasamd
-  bulgusu: palace'ta 593 drawer, ledger accounting 516 (77 gap =
-  pilot raporu Finding 2 "ledger-skipped; recovered from filesystem"
-  birikmesi). `mnemos processing-log --rebuild` ile birlikte aynı
-  modülde (`mnemos/processing_log.py` command surface genişletmesi).
-- **Skill-mine-llm source field absolute-path discipline** —
-  `skills/mnemos-mine-llm/SKILL.md` frontmatter şema bölümünde
-  `source:` alanının **daima absolute path** olduğunu vurgula + canonical
-  prompt'a input path'i kaybetmeden kopyalama talimatı. 2026-04-22 audit:
-  3 drawer relative path ile yazılmış (`source: memory/user_profile.md`).
-- **Legacy corrupt ledger rows cleanup** — refine ledger satır 128
-  (`C:\Users<TAB>ugrademirors\.claude\...`) + 4 UUID-prefix-kesik satır
-  + eski `palace=Mnemos-pilot` satırları. Harmless, ama STATUS'taki
-  Pending user actions maddesini kapatır.
-- **Hook ledger-skip koruması** — `_run_skill_pipeline` Phase B
-  sonunda refine skill ledger'ı `OK` yazmadıysa ama `Sessions/`'ta
-  yeni md oluştuysa filesystem fallback çağır (pilot.py pattern).
-  Plan'da Spec §8'de bu durum "Refine OK ama skill ledger'da session
-  path bulunamıyor → filesystem fallback" olarak not edilmişti ama
-  implementation'da `_latest_session_for_jsonl is None → ERROR` oluyor.
+### 🟡 Pending user actions
+
+1. **Identity bootstrap** (~5–10 dk LLM call, abonelik kotası): `mnemos identity bootstrap --vault "C:/Users/tugrademirors/OneDrive/Masaüstü/kasamd"`. Generates `_identity/L0-identity.md` from 79 Sessions.
+2. **More real-world testing**: open new Claude Code sessions in various cwds:
+   - Re-test `C:\Projeler\Satın Alma\procuretrack` (now 2nd visit, SUB-B1 should brief)
+   - Test `C:\Projeler\mnemos` (rich Sessions, briefing should pivot summary)
+   - Test `C:\Users\tugrademirors\OneDrive\Masaüstü\Claude Çalışma Dosyası` (5 backfilled Sessions)
+3. **PyPI alpha publish** (deferred until validated): `python -m twine upload C:/Projeler/mnemos-v1.0/dist/mnemos_dev-1.0.0a1*`
+4. **GitHub pre-release create**: `gh release create v1.0.0a1 --prerelease --title "v1.0.0a1 — Narrative-First Pivot Alpha" --notes-file CHANGELOG.md dist/mnemos_dev-1.0.0a1*`
+
+### Known caveats
+
+- 11 Sessions still cwd-less (1 LightRAG + 9 General/setup + 1 no-frontmatter) — acceptable; setup work, not project-specific. Can be tag/project-fallback'd later if needed.
+- 1 EOL test failure (`test_mnemos_recall_skill_junction_zero_drift`) — mechanical CRLF/LF mismatch. Will resolve naturally next time the SKILL.md is regenerated.
 
 ---
 
-**🟡 Pending user actions:**
+## 4. Next session starts here (post-`/clear`)
 
-- Social-preview PNG → GitHub Settings (tek tıklık; v0.4.0 ship'i
-  bloklamıyor)
-- Skill-mine ledger'ında legacy 2 pilot-2 row'u + corrupted bash-escape
-  row'u kalıntı var (`~/.claude/skills/mnemos-mine-llm/state/mined.tsv`).
-  Harmless (path-match'te tutmazlar) ama one-liner cleanup düşünebiliriz.
-- Mnemos MCP server şu oturum için kill edildi (accept anında graph.json
-  SQLite lock tutuyordu). Bir sonraki Claude Code restart'ında otomatik
-  respawn eder, yeni skill palace'ı + yeni ChromaDB'yi kullanır.
+**Trigger:** type `mnemos` or `devam`. Resume protocol kicks in (CLAUDE.md):
 
-### Released — 4.3.1 second ship: explicit /mnemos-recall skill (2026-04-24)
+1. Read `STATUS.md` (this file) — see §3 "v1.0 alpha rollout" for current state
+2. Read `docs/ROADMAP.md` — version table shows v1.0.0a1 alpha, v1.0.0 stable next
+3. Run `git log --oneline -10` — see latest commits (HEAD = `04e6d03` ledger UTF-8 fix)
+4. Give <100 word summary, ask "Devam mı, başka iş mi?"
 
-- ✅ `skills/mnemos-recall/SKILL.md` — user-invoked slash command for
-  cross-context recall queries. In-session (no subprocess): current
-  Claude calls `mnemos_search(limit=8, collection="both")`, evaluates
-  top-3 scores against threshold 0.015, iterates candidates in score
-  order reading up to 5 successfully readable drawers, synthesizes a
-  150-300 word narrative with `[[drawer-slug]]` wikilink citations.
-  Language-matches the query; single-drawer case appends an "ek kayıt
-  yok" hint.
-- ✅ **Threshold empirically calibrated** 0.5 → 0.015. The original
-  spec's 0.5 was above the k=60 RRF scoring max (~0.033); kasamd smoke
-  on 2026-04-24 surfaced that every query was falling to fallback.
-  0.015 = "top-1 in at least one collection" (RRF `1/61 = 0.0164`).
-  Spec §11's calibration policy covered this — no spec revision needed.
-- ✅ **Sessions grep rescue (Step 7)** — when drawer scores are weak,
-  skill derives vault root from any drawer hit's `source_path`, extracts
-  2-4 content keywords from the query, runs `Grep` over
-  `<vault>/Sessions/` for each, unions hit files scored by keyword
-  coverage, reads the top 3, synthesizes a narrative from their Özet /
-  Alınan Kararlar / Sorunlar / Sonraki Adımlar sections, cites as
-  `[[session-slug]]`, appends a one-line attribution footer. Solves the
-  embedding-misses-obvious-keywords failure mode: smoke query "tavuklu
-  bir oyun yapacaktık biz sanki?" correctly found the farcry tavuk-pet
-  brainstorm Session and synthesized an evolution-aware narrative
-  (Far Cry 7 → AAA reddi → Shimeji pet pivot) with all 4 open-question
-  decision items preserved.
-- ✅ Soft fallback (Step 8) — triggers only when both drawer path and
-  Sessions rescue come up empty; lists top 3 drawers with scores +
-  snippets, no synthesis.
-- ✅ Junction installed (`$HOME/.claude/skills/mnemos-recall` → repo)
-  via `New-Item -ItemType Junction` on Windows. Zero-drift unit test
-  verifies `SKILL.md` bytes match between repo and junction.
-- ✅ Test delta: +2 unit tests (`test_mnemos_recall_skill_frontmatter_valid`,
-  `test_mnemos_recall_skill_junction_zero_drift`). Full suite **643 pass** /
-  2 skip / 3 deselect (was 641 baseline).
-- ✅ Smoke validated on kasamd: no-args usage hint, Sessions grep rescue
-  (tavuk demo — excellent), soft fallback scoring behavior. Drawer-direct
-  happy-path not explicitly exercised because this backend's RRF score
-  distribution clusters at 0.014-0.017; the rescue path is the de facto
-  common case. EN-query and pure-noise scenarios deferred to v0.4.1
-  polish for follow-up smoke if needed.
-- ✅ Spec: [`docs/specs/2026-04-24-v0.4-task-4.3.1-explicit-recall-design.md`](docs/specs/2026-04-24-v0.4-task-4.3.1-explicit-recall-design.md).
-  Plan: [`docs/plans/2026-04-24-v0.4-task-4.3.1-explicit-recall.md`](docs/plans/2026-04-24-v0.4-task-4.3.1-explicit-recall.md).
+**Most likely next work:**
+1. **`mnemos identity bootstrap`** — single LLM call, ~5–10 min. Creates user profile.
+2. After identity is in place, retest cwd-aware briefing — it should now have a "Kullanıcı profili" section in addition to Aktif durum/Geçerli kararlar/etc.
+3. Continue alpha validation in real cwds for 1–2 weeks. Fix any rough edges.
+4. Once stable: `python -m twine upload dist/...` (PyPI alpha publish) + `gh release create` (GitHub pre-release).
 
-### Practical stats (author's vault, 2026-04-22)
-
-- **593 drawers** across 6 wings (GYP, General, LightRAG-PO-Arsivi,
-  Mnemos, ProcureTrack, Satin-Alma-Otomasyonu), 5-hall dağılımı
-  (decisions:255, events:156, problems:148, preferences:32, emotional:2)
-- Mine mode: **skill** — auto-refine hook artık `mine_mode: skill` olduğunda
-  `_run_skill_pipeline`'a route oluyor (`0f291be` + T4 scheduler). Kasamd
-  skill-mine ledger backfilled (103 unique source), ilk fire'da sadece
-  gerçek unmined (po-556) işlenecek.
-- Backend: sqlite-vec (`Mnemos/search.sqlite3`), 593 drawer indexed
-- 67 refined session notes in `Sessions/` (53 OK from 123 processed transcripts)
-- Backlog: **0** — all Claude Code JSONL transcripts processed
-- Auto-refine hook processes 3 closed transcripts per new session start
-  (bu hook'un içinde skill-mine tetiklenmesi opsiyonel; şimdilik hook hâlâ
-  regex-mine çağırıyor — Phase 2 automation'da revizyon olacak)
+**If issues surface:** kasamd backup is at `C:/Users/tugrademirors/OneDrive/Masaüstü/kasamd-pre-v1-2026-04-26.zip` (17 MB, full vault snapshot). Recovery: unzip OR `git checkout legacy/atomic-paradigm` for code rollback.
 
 ---
 
-## 3. Where the roadmap ends up
+## 5. Where the roadmap ends up (post-v1.0)
 
-When the full ROADMAP is delivered (v0.6), Mnemos will be:
+**v1.1 — Wikilink resolution intelligence.** Heuristics to merge `[[GYP]]` and
+`[[GYP Energy]]` into a canonical entity, with manual override. Tag/project
+fallback in briefing skill for cwd-less Sessions.
 
-### A turnkey on-ramp (v0.3)
-- `mnemos init` discovers every knowledge source on your machine — Claude Code
-  projects, Obsidian Topics/, past Sessions/, memory/ folders — and classifies
-  them as curated vs raw
-- Curated markdown is mined directly; raw transcripts are refined first via a
-  Claude Code skill that runs inside your existing session (no extra API cost)
-- `mnemos import <source>` lets you add sources later; `.mnemos-pending.json`
-  tracks in-progress batches so a crashed session doesn't start over
+**v1.2 — Cross-vault recall.** Query memory across multiple Obsidian vaults
+(work + personal) with vault-aware filtering.
 
-### High-recall memory (v0.4, Phase 1)
-- Claude API mining catches what regex misses — including the emotional hall
-  that Phase 0 deferred to avoid false positives
-- LLM reranking boosts search precision (top-50 → top-10)
-- Contradiction detection: when a new memory says "we switched to Y" and an
-  old memory says "we use X", the old one is auto-flagged stale
-- Benchmark target: **≥95% Recall@5, ≥97% Recall@10**
+**v1.3 — Obsidian plugin.** Native sidebar: memory browser, timeline view,
+briefing inbox.
 
-### Self-maintaining (v0.5, Phase 2)
-- Session hooks auto-mine at the end of each Claude Code session — zero manual
-  `mnemos mine` commands
-- Memory lifecycle: stale, never-queried memories decay; contradicted ones
-  move to `_recycled/`
-- Knowledge graph deepening — indirect queries like "what did Y-wing decide
-  in the last N days about project X?"
-
-### Community-ready (v0.6)
-- Multi-language marker sets (de, es, fr, ja) with the same 80+ markers per language
-- Obsidian plugin — in-vault UI: memory browser, timeline view, graph view
-- Demo video + launch blog post
-- Contributor onboarding (issue templates, good-first-issue tags)
+**v2.0 — Self-maintaining memory.** Stale-decision flagging, decay,
+contradiction detection — the v0.5 Phase 2 ideas, rebased onto Sessions graph.
 
 ### The end state
 
-> *A new Claude Code user runs `pip install mnemos-dev && mnemos init`. Within
-> ten minutes, every past session they've ever had is indexed into their
-> Obsidian vault as plain markdown, classified by project and topic. From that
-> day forward, every Claude Code session opens with relevant context already
-> loaded, and every decision they make is persisted automatically. Their AI
-> knows them. Their memory is human-readable. Nothing is locked in a proprietary
-> binary.*
+> *A Claude Code user runs `pip install mnemos-dev && mnemos init && mnemos
+> identity bootstrap`. Every past session becomes a Session note in their
+> Obsidian vault, classified by project, linked by entity wikilinks. From that
+> day forward, every Claude Code session opens with: a 3-section briefing
+> (their identity profile + cwd-specific decisions + cross-context wikilink
+> neighbors). Their AI knows them. Their memory is human-readable. Nothing is
+> locked in a proprietary binary.*
 
 ---
 
 ## Check-in rhythm
 
-This file is updated whenever a ROADMAP checkbox flips. If you're reading it
-months from now, expect section 2 to have grown and section 3 to have shrunk.
+This file is updated at every meaningful state transition. v1.0 alpha
+validation is the current cycle; expect §3 to evolve as testing surfaces
+edge cases and §4 to update when each pending action is taken.
