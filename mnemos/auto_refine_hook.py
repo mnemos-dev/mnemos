@@ -37,6 +37,43 @@ def _find_vault(argv: list[str]) -> Path | None:
     return None
 
 
+# ---------------------------------------------------------------------------
+# v1.0 stale-hook detection
+#
+# When a user upgrades to v1.0 but their ~/.claude/settings.json still has a
+# v0.x ``mnemos-auto-refine`` hook entry, Claude Code keeps invoking the old
+# command. The new wrapper would crash on stale CLI flags or on missing
+# downstream modules. To fail gracefully we sniff our own settings.json
+# entry: if it exists but ``_version`` != "v1.0", we print a one-line
+# guidance message to stderr and exit 0 (so the SessionStart event still
+# completes cleanly).
+# ---------------------------------------------------------------------------
+
+
+def _user_settings_path() -> Path:
+    return Path.home() / ".claude" / "settings.json"
+
+
+def _detect_stale_hook_signature(managed_by: str) -> bool:
+    """Return True iff a hook entry with ``_managed_by == managed_by`` exists
+    but its ``_version`` is anything other than ``"v1.0"``.
+
+    Returns False if the file is missing, malformed, or the entry is already
+    v1.0 — all "fall through to normal main()" cases.
+    """
+    settings_path = _user_settings_path()
+    if not settings_path.exists():
+        return False
+    try:
+        data = json.loads(settings_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    for entry in data.get("hooks", {}).get("SessionStart", []):
+        if entry.get("_managed_by") == managed_by:
+            return entry.get("_version") != "v1.0"
+    return False
+
+
 def _read_hook_input() -> dict:
     """Best-effort read of Claude Code's SessionStart JSON from stdin.
 
@@ -111,13 +148,28 @@ def _rebuild_in_progress(vault: Path) -> bool:
         return True
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    argv = list(argv) if argv is not None else sys.argv[1:]
+
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
 
-    vault = _find_vault(sys.argv[1:])
+    # v1.0 stale-hook guard: if our own settings.json entry is still v0.x,
+    # the user upgraded the package without re-running ``mnemos install-hook
+    # --v1``. Print guidance to stderr and exit 0 so the SessionStart event
+    # finishes cleanly (no crash dialog, no stuck terminal).
+    if _detect_stale_hook_signature("mnemos-auto-refine"):
+        print(
+            "Mnemos v1.0 detected an outdated SessionStart hook entry.\n"
+            "Run `mnemos install-hook --v1` to update.\n"
+            "Skipping this run to avoid errors.",
+            file=sys.stderr,
+        )
+        return 0
+
+    vault = _find_vault(argv)
     if vault is None or not vault.exists():
         return 0
 

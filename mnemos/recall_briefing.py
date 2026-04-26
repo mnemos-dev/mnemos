@@ -667,6 +667,34 @@ def handle_session_start(
 import sys
 
 
+# ---------------------------------------------------------------------------
+# v1.0 stale-hook detection — see auto_refine_hook.py for design notes.
+# Mirrors the auto-refine shim so a stale ``mnemos-recall-briefing`` entry
+# (v0.x ``_version`` or missing ``_version``) never crashes SessionStart.
+# ---------------------------------------------------------------------------
+
+
+def _user_settings_path() -> Path:
+    return Path.home() / ".claude" / "settings.json"
+
+
+def _detect_stale_hook_signature(managed_by: str) -> bool:
+    """Return True iff a SessionStart entry with ``_managed_by == managed_by``
+    exists but its ``_version`` is anything other than ``"v1.0"``.
+    """
+    settings_path = _user_settings_path()
+    if not settings_path.exists():
+        return False
+    try:
+        data = json.loads(settings_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    for entry in data.get("hooks", {}).get("SessionStart", []):
+        if entry.get("_managed_by") == managed_by:
+            return entry.get("_version") != "v1.0"
+    return False
+
+
 def _resolve_vault(explicit: str | None = None) -> Path | None:
     """Resolve vault from explicit arg, env, or cwd upward walk. Return None if unresolvable."""
     if explicit:
@@ -731,6 +759,19 @@ def main(argv: list[str] | None = None) -> int:
     # fired SessionStart and re-invoked us, HOOK_ACTIVE_ENV is set. Exit
     # immediately to break the recursion BEFORE any state / subprocess work.
     if os.environ.get(HOOK_ACTIVE_ENV):
+        return 0
+
+    # v1.0 stale-hook guard: if our own settings.json entry is still v0.x,
+    # the user upgraded the package without re-running ``mnemos install-hook
+    # --v1``. Print guidance to stderr and exit 0 so SessionStart finishes
+    # cleanly (no crash dialog, no stuck terminal).
+    if _detect_stale_hook_signature("mnemos-recall-briefing"):
+        print(
+            "Mnemos v1.0 detected an outdated SessionStart hook entry.\n"
+            "Run `mnemos install-hook --v1` to update.\n"
+            "Skipping this run to avoid errors.",
+            file=sys.stderr,
+        )
         return 0
 
     if argv is None:

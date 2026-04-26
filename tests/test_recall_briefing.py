@@ -4,6 +4,26 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _disable_v1_stale_hook_check(monkeypatch):
+    """Test isolation: bypass the v1.0 stale-hook shim.
+
+    The shim reads ``~/.claude/settings.json`` to detect a v0.x SessionStart
+    entry — but that's the developer's real settings file, which often
+    contains a v0.x entry on machines that haven't yet run
+    ``mnemos install-hook --v1``. Without this autouse, every ``main()``
+    test in this file would early-return through the shim and emit the
+    "outdated hook" stderr message instead of exercising the code path
+    under test. Tests that explicitly cover the shim live in
+    test_install_hook_v1.py and monkeypatch ``_user_settings_path`` themselves.
+    """
+    monkeypatch.setattr(
+        "mnemos.recall_briefing._detect_stale_hook_signature", lambda _marker: False,
+    )
+
 # Minimum-viable JSONL content: 3 real user turns (meets MIN_USER_TURNS=3
 # threshold used by find_unrefined_jsonls_for_cwd). Use this in tests whose
 # stub JSONLs must survive the min-turns filter; write raw "{}" if you
