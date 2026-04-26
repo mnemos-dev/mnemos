@@ -83,3 +83,42 @@ Bitirdikten sonra kendine sor:
 ## ÇIKTI
 
 Yalnız markdown body to stdout. Wrapper dosyaya yazar.
+
+
+## CLASSIFICATION DISCIPLINE — critical (v1.1)
+
+Identity'ye bir madde EKLEMEDEN ÖNCE kendi kendine sor:
+"Bu ilke kullanıcının TÜM projelerinde geçerli mi?"
+
+- EVETSE: `(general)` etiketle, ekle.
+- HAYIRSA:
+  - Belirli projeye özel ama tekrar edebilir mi? → `(proj/<name>)` etiketle, ekle.
+  - Sadece o session'a özel one-off mu? → SKIP, yazma.
+
+### GOOD examples (Identity'ye yaz)
+
+| Session quote | Identity entry |
+|---|---|
+| "TypeScript over JS prefer ediyorum yeni projelerde" | `(general)` TypeScript over JS for new projects |
+| "Test'leri integration olarak yazıyorum, mock'lamıyorum" | `(general)` Integration tests, no mocks |
+| "ProcureTrack'te agentic orchestrator kullanıyoruz" | `(proj/ProcureTrack)` Agentic orchestrator architecture |
+
+### BAD examples (SKIP — Identity'ye GİRMEZ)
+
+| Session quote | Why skip |
+|---|---|
+| "Bu sefer Supabase ile gidelim" | Tek-proje teknoloji seçimi |
+| "Bugün yorgunum" | Anlık state |
+| "Şu fonksiyon adı X olsun" | Implementation detail |
+
+### EDGE CASE
+
+"X kararını verdim ama yarın değişebilir" → Identity'ye yazma (uncertainty marker).
+"Artık her zaman X yapıyorum" → Identity'ye yaz (general, persistent intent).
+
+## FINAL SELF-CHECK
+
+Identity'ye eklediğin her madde için bir kez daha sor:
+"Bu kullanıcı bu projeyi 6 ay sonra bıraksa bile, başka projede de geçerli mi?"
+HAYIR → (proj/) tag veya skip.
+EVET → kalsın.
