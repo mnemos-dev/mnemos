@@ -1,9 +1,9 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-26 — v1.0.0a1 alpha shipped + bg-catchup hotfix + v1.1.0 design + 55-task implementation plan complete (3 v1.1 commits `a19cfb9` `10fa3ca` `2e428e3`; **455 test pass +2 new** from hotfix; sonraki: G1 Task 1.1'den implementation başlangıç, fresh session ile)
+**Last updated:** 2026-04-26 — v1.1.0 implementation **complete** (G1-G11+G13.1-G13.3, ~50 commits since `9974437`; **527 test pass / 2 skip / 3 deselect** vs 455 v1.0 baseline = +72 tests). Wheel + sdist built (`dist/mnemos_dev-1.1.0*`) and clean-venv install + CLI smoke verified. **Pending:** 🟡 G12 empirical validation on kasamd (real /exit + X-close lifecycle smokes) + 🟡 G13.4 PyPI publish + GitHub release.
 **Stable PyPI version:** `v0.3.3` (v0.x atomic-paradigm — still default `pip install mnemos-dev`)
-**Alpha:** `v1.0.0a1` — tag pushed to GitHub, **not** yet uploaded to PyPI (pending v1.1 ship + real-world validation)
-**Next:** `v1.1.0` — SessionEnd-driven memory architecture, plan ready
+**Alpha:** `v1.0.0a1` — tag pushed to GitHub, **not** yet uploaded to PyPI (superseded by v1.1.0 work; alpha tag stays as historical marker)
+**Next:** `v1.1.0` — SessionEnd-driven memory architecture, code-complete locally; awaiting empirical validation + publish
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 **v1.0 spec:** [`docs/specs/2026-04-25-v1.0-narrative-pivot-design.md`](docs/specs/2026-04-25-v1.0-narrative-pivot-design.md) · **v1.0 plan:** [`docs/plans/2026-04-25-v1.0-narrative-pivot.md`](docs/plans/2026-04-25-v1.0-narrative-pivot.md)
 **v1.1 spec:** [`docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md`](docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md) · **v1.1 plan:** [`docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md`](docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md)
@@ -155,7 +155,59 @@ For early adopters: `pip install git+https://github.com/mnemos-dev/mnemos@v1.0.0
 
 ## 4. Next session starts here (post-`/clear`, 2026-04-26)
 
-**v1.1.0 design + implementation plan COMPLETE. Implementation NOT started.**
+**v1.1.0 implementation COMPLETE (G1-G11 + G13.1-G13.3). Validation + publish pending.**
+
+### v1.1 implementation summary (2026-04-26)
+
+| Group | Tasks | Status | Highlights |
+|---|---|---|---|
+| G1 Config schema | 5 | done | `schema_version`, `RefineConfig`, `BriefingConfig`, `IdentityConfig`, atomic `save_config` |
+| G2 Refine pipeline | 6 | done | `pick_jsonls(cfg, ...)`, `find_unrefined_jsonls_for_cwd(cfg)`, hook caller cfg-thread |
+| G3 Identity gate | 5 | done | `mnemos/readiness.py`, bootstrap eligibility gate + `--force`, `refresh` reads `cfg.identity.*` |
+| G4 Identity-refresh skill | 3 | done | `skills/mnemos-identity-refresh/{SKILL.md, prompt.md}` + junction zero-drift test |
+| G5 Briefing v3 | 3 | done | smart-layered + revision-aware prompt rewrite, junction re-pointed to v1.1 worktree |
+| G6 SessionStart updates | 5 | done | readiness gate, `systemMessage`, cross-check directive, sync fallback, vault-aware first-visit |
+| G7 SessionEnd hook + worker | 6 | done | `mnemos/session_end_hook.py` with breakaway flag + 3-stage pipeline + stale-hook detection |
+| G8 install-end-hook CLI | 4 | done | atomic install/uninstall, idempotent, surgical |
+| G9 Settings TUI | 7 | done | `mnemos/settings_tui.py` + `mnemos settings` command, real progress display, TR/EN i18n |
+| G10 Init flow | 3 | done | refine quota dialog + `install-end-hook` prompt + 11 i18n keys |
+| G11 Documentation | 5 | done | README hero, CHANGELOG v1.1.0 entry, identity-bootstrap classification, CONTRIBUTING no-API rule, CI grep |
+| G12 Empirical validation | 3 | 🟡 deferred | needs real Claude Code sessions in farcry / procuretrack / mid-stream X-close |
+| G13.1-13.3 Release prep | 3 | done | version bump 1.0.0a1 → 1.1.0, wheel + sdist built, clean-venv smoke OK |
+| G13.4 Publish | 1 | 🟡 deferred | PyPI + GitHub release pending user explicit go-ahead |
+
+**Build artifacts on disk (gitignored):**
+- `dist/mnemos_dev-1.1.0-py3-none-any.whl` (117 KB, +17 KB vs v1.0.0a1)
+- `dist/mnemos_dev-1.1.0.tar.gz` (657 KB, +70 KB vs v1.0.0a1)
+
+🟡 **Pending user actions before release:**
+
+1. **G12 empirical validation** — open real Claude Code sessions in:
+   - `C:\Users\tugrademirors\OneDrive\Masaüstü\farcry` — full /exit lifecycle smoke (SessionEnd fires → worker refines + briefs → next session opens with fresh cache)
+   - `C:\Projeler\Satın Alma\procuretrack` — repeat
+   - mid-stream X-close — confirm SessionStart sync fallback catches the missed SessionEnd next session
+   - Watch the SessionEnd worker test infra at `~/.claude/test-session-end/` (`mnemos-end-smoke-test` entry) for breakaway survival.
+
+2. **G13.4 PyPI publish + GitHub release** (only after G12 passes):
+   ```bash
+   python -m twine upload C:/Projeler/mnemos-v1.1/dist/mnemos_dev-1.1.0*
+   gh release create v1.1.0 \
+     --title "v1.1.0 — SessionEnd-Driven Memory" \
+     --notes-file CHANGELOG.md \
+     C:/Projeler/mnemos-v1.1/dist/mnemos_dev-1.1.0-py3-none-any.whl \
+     C:/Projeler/mnemos-v1.1/dist/mnemos_dev-1.1.0.tar.gz
+   git tag v1.1.0 -a -m "v1.1.0 — SessionEnd-Driven Memory"
+   git push origin v1.1.0
+   ```
+
+3. **kasamd identity bootstrap** (still pending from v1.0):
+   `mnemos identity bootstrap --vault "C:/Users/tugrademirors/OneDrive/Masaüstü/kasamd"` — once available, the bootstrap eligibility gate (25%) will assess kasamd readiness; pass `--force` to bypass.
+
+4. **Test infra cleanup** — `~/.claude/test-session-end/` and the `mnemos-end-smoke-test` SessionEnd entry in `settings.json` were left active during the design phase. After G12 passes, delete the dir + remove the entry (or just run `mnemos install-end-hook --uninstall` and let the canonical install replace it).
+
+### Original v1.1 design conversation (still applies)
+
+**v1.1.0 design + implementation plan COMPLETE. Implementation NOT started.** [Original next-session block — preserved for archaeology]
 
 **🌳 Worktree migration completed (2026-04-26):**
 - `feature/v1.0-pivot` → merged to `main` via `fe1837f` (resolves STATUS+ROADMAP conflicts; main now reflects v1.0.0a1 alpha + bg-catchup hotfix + v1.1 design+plan)
