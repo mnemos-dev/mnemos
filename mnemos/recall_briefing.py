@@ -580,6 +580,31 @@ _spawn_bg_brief = _spawn_bg_catchup
 from mnemos.readiness import per_cwd_readiness
 
 
+# v1.1 Task 6.3 — cross-check directive prepended to additionalContext when
+# cfg.briefing.enforce_consistency. Goal: if the user contradicts an
+# established decision in the briefing, the AI must pause and ask, not
+# silently comply.
+CROSS_CHECK_DIRECTIVE = """[MNEMOS BRIEFING — CRITICAL READING INSTRUCTION]
+
+This briefing reflects the user's CURRENT decisions for this project.
+If the user's request CONTRADICTS items in "Geçerli kararlar" or
+"Revize/iptal edilen kararlar", PAUSE before acting. Politely ask:
+  "This conflicts with your decision <item> from <date> — do you want
+   to revise that decision now, or am I misunderstanding?"
+
+Do NOT silently follow contradictory requests.
+
+[BRIEFING CONTENT FOLLOWS]
+
+"""
+
+
+def wrap_with_directive(body: str, enforce: bool) -> str:
+    if not enforce:
+        return body
+    return CROSS_CHECK_DIRECTIVE + body
+
+
 def handle_session_start(
     inp: SessionStartInput,
     vault: Path,
@@ -894,18 +919,26 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if result.injected_context:
+        # v1.1 Task 6.3: optionally prepend cross-check directive so the AI
+        # is primed to pause when the user contradicts established decisions.
+        try:
+            from mnemos.config import load_config
+            cfg = load_config(str(vault))
+        except Exception:
+            cfg = None
+        body = result.injected_context
+        if cfg is not None:
+            body = wrap_with_directive(body, cfg.briefing.enforce_consistency)
         out: dict = {
             "hookSpecificOutput": {
                 "hookEventName": "SessionStart",
-                "additionalContext": result.injected_context,
+                "additionalContext": body,
             }
         }
         # v1.1 Task 6.2: optional systemMessage display so the user sees a
         # visible "briefing loaded" line in the Claude Code transcript.
         try:
-            from mnemos.config import load_config
-            cfg = load_config(str(vault))
-            if cfg.briefing.show_systemmessage:
+            if cfg is not None and cfg.briefing.show_systemmessage:
                 cache_p = cache_path_for(vault, cwd_to_slug(inp.cwd))
                 session_n = "?"
                 if cache_p.exists():

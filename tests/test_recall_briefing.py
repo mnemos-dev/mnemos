@@ -1461,3 +1461,67 @@ def test_main_emits_systemmessage_when_briefing_show_enabled(tmp_path, monkeypat
     assert "systemMessage" in out
     assert "Mnemos" in out["systemMessage"] or "briefing loaded" in out["systemMessage"]
     assert "additionalContext" in out["hookSpecificOutput"]
+
+
+def test_inject_includes_cross_check_directive_when_enabled(tmp_path, monkeypatch, capsys):
+    from mnemos.recall_briefing import main
+    import json as _json
+    import io as _io
+
+    (tmp_path / "mnemos.yaml").write_text(
+        "schema_version: 2\nrecall_mode: skill\n"
+        "briefing:\n  enforce_consistency: true\n  readiness_pct: 0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MNEMOS_VAULT", str(tmp_path))
+    cache_dir = tmp_path / ".mnemos-briefings"
+    cache_dir.mkdir()
+    (cache_dir / "test-cwd.md").write_text(
+        "---\ncwd: C:/test\n---\n**Aktif durum:** body\n",
+        encoding="utf-8",
+    )
+    _make_state_file(tmp_path)
+    monkeypatch.setattr("mnemos.recall_briefing.cwd_to_slug", lambda c: "test-cwd")
+    monkeypatch.setattr(
+        "mnemos.recall_briefing._spawn_bg_catchup",
+        lambda cwd, vault: None,
+    )
+    hook_input = _json.dumps({"cwd": "C:/test", "source": "startup", "transcript_path": "/x"})
+    monkeypatch.setattr("sys.stdin", _io.StringIO(hook_input))
+
+    main()
+    captured = capsys.readouterr()
+    out = _json.loads(captured.out)
+    ctx = out["hookSpecificOutput"]["additionalContext"]
+    assert "MNEMOS BRIEFING" in ctx
+    assert "CRITICAL" in ctx
+    assert "PAUSE" in ctx or "DUR" in ctx or "contradicts" in ctx.lower()
+
+
+def test_inject_no_directive_when_disabled(tmp_path, monkeypatch, capsys):
+    """enforce_consistency: false → no directive, raw briefing body only."""
+    from mnemos.recall_briefing import main
+    import json as _json
+    import io as _io
+
+    (tmp_path / "mnemos.yaml").write_text(
+        "schema_version: 2\nrecall_mode: skill\n"
+        "briefing:\n  enforce_consistency: false\n  readiness_pct: 0\n  show_systemmessage: false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MNEMOS_VAULT", str(tmp_path))
+    cache_dir = tmp_path / ".mnemos-briefings"
+    cache_dir.mkdir()
+    (cache_dir / "test-cwd.md").write_text(
+        "---\n---\n**Aktif durum:** body\n", encoding="utf-8"
+    )
+    _make_state_file(tmp_path)
+    monkeypatch.setattr("mnemos.recall_briefing.cwd_to_slug", lambda c: "test-cwd")
+    monkeypatch.setattr("mnemos.recall_briefing._spawn_bg_catchup", lambda c, v: None)
+    monkeypatch.setattr("sys.stdin", _io.StringIO(_json.dumps({"cwd": "C:/test", "source": "startup", "transcript_path": "/x"})))
+
+    main()
+    out = _json.loads(capsys.readouterr().out)
+    ctx = out["hookSpecificOutput"]["additionalContext"]
+    assert "MNEMOS BRIEFING" not in ctx
+    assert "**Aktif durum:** body" in ctx
