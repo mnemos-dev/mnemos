@@ -142,7 +142,8 @@ def test_cmd_init_creates_recycled_directory(tmp_path, monkeypatch):
     #   4. install hook → "n"
     #   5. install statusline → "n"
     #   6. install recall hook → "n"
-    inputs = iter(["en", "n", "", "n", "n", "n"])
+    #   7. identity bootstrap (Phase 6, v1.0 task 27) → "n"
+    inputs = iter(["en", "n", "", "n", "n", "n", "n"])
     monkeypatch.setattr("builtins.input", lambda *_a, **_k: next(inputs))
 
     cmd_init(args)

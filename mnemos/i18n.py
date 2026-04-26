@@ -135,8 +135,9 @@ _STRINGS: Dict[str, Dict[str, str]] = {
         "tr": "    [sonra] {sid} pending olarak kaydedildi.",
     },
     # v1.0: outcome.mining + outcome.done removed — they were emitted by the
-    # deleted mining-pipeline path. Init wizard text overhaul deferred to
-    # Task 27 (mnemos init v2).
+    # deleted mining-pipeline path. Task 27 (mnemos init v2) added the
+    # identity_bootstrap_* keys below; the curated "process now" outcome now
+    # falls back to outcome.later (no per-source mining UX in v1.0).
     # ---------------- Hook install (v0.3 task 3.7) ----------------
     "hook_install_prompt": {
         "en": "Install the auto-refine SessionStart hook so future Claude Code sessions mine themselves? [Y/n]: ",
@@ -223,6 +224,27 @@ _STRINGS: Dict[str, Dict[str, str]] = {
     "statusline_install_declined": {
         "en": "Skipped. Install later with: mnemos install-statusline",
         "tr": "Atlandı. Daha sonra kurmak için: mnemos install-statusline",
+    },
+    # ---------------- Identity bootstrap (v1.0 task 27 — Phase 6) ----------------
+    "identity_bootstrap_prompt": {
+        "en": "Generate Identity Layer now? (~5-10 min, uses subscription quota) [Y/n]: ",
+        "tr": "Identity Layer'ı şimdi oluşturayım mı? (~5-10 dk, abonelik kotası kullanır) [E/h]: ",
+    },
+    "identity_bootstrap_starting": {
+        "en": "Bootstrapping Identity Layer...",
+        "tr": "Identity Layer hazırlanıyor...",
+    },
+    "identity_bootstrap_done": {
+        "en": "Identity Layer created: {path}",
+        "tr": "Identity Layer oluşturuldu: {path}",
+    },
+    "identity_bootstrap_failed": {
+        "en": "Identity bootstrap failed: {reason}. Run `mnemos identity bootstrap` later.",
+        "tr": "Identity bootstrap başarısız: {reason}. `mnemos identity bootstrap` ile sonra tekrar deneyebilirsiniz.",
+    },
+    "identity_bootstrap_declined": {
+        "en": "Skipped. Run `mnemos identity bootstrap` later.",
+        "tr": "Atlandı. Sonra çalıştırmak için: `mnemos identity bootstrap`",
     },
     # ---------------- Recall-briefing hook install (v0.4 task 15b) ----------------
     "recall_hook_install_prompt": {

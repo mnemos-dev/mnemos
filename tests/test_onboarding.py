@@ -243,3 +243,131 @@ class TestDiscoveryOrdering:
 
         sources = discover(tmp_vault, claude_projects_dir=cc_dir)
         assert [s.id for s in sources] == ["claude-code-jsonl", "vault-sessions"]
+
+
+# ---------------------------------------------------------------------------
+# v1.0 task 27 — `mnemos init` v2 regressions
+# ---------------------------------------------------------------------------
+
+
+class TestInitV2NoMineMode:
+    """The wizard never asks about mine_mode or drawer paradigm in v1.0."""
+
+    def test_apply_decision_curated_process_no_v1_sentinel(
+        self, config, tmp_vault: Path
+    ) -> None:
+        """Curated 'process now' must NOT register the awaiting-v1-onboarding
+        placeholder Task 4 left behind. Task 27 replaces it with the same
+        deferred-by-user marker the 'later' branch uses.
+        """
+        from mnemos import pending
+        from mnemos.cli import _apply_decision
+
+        src = DiscoveredSource(
+            id="vault-sessions", kind="curated-md",
+            root_path=str(tmp_vault / "Sessions"), file_count=3,
+        )
+        _apply_decision(config, src, "process")
+
+        entry = pending.load(tmp_vault).get("vault-sessions")
+        assert entry is not None
+        assert entry.status == "pending"
+        assert entry.last_action == "deferred-by-user"
+        # The Task 4 placeholder must be gone.
+        assert entry.last_action != "awaiting-v1-onboarding"
+
+    def test_i18n_has_no_mining_prompt_strings(self) -> None:
+        """Mining/drawer-paradigm prompts were stripped in Tasks 5 / 6 / 27."""
+        from mnemos.i18n import _STRINGS
+
+        flat = "\n".join(
+            f"{k}\n{v}"
+            for k, bundle in _STRINGS.items()
+            for v in bundle.values()
+        ).lower()
+        assert "mine_mode" not in flat
+        assert "skill-mine" not in flat
+        # 'drawer' was the atomic-paradigm term — gone in v1.0
+        assert "drawer" not in flat
+        assert "mine mode" not in flat
+
+
+class TestInitV2IdentityBootstrap:
+    """Phase 6 — `mnemos init` offers to bootstrap the Identity Layer."""
+
+    def test_install_identity_prompt_declined(
+        self, monkeypatch, tmp_vault: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Bare 'n' answer skips the bootstrap and prints the declined hint.
+
+        Crucially: the bootstrap function must NOT be called — declining
+        keeps init free of any LLM cost.
+        """
+        from mnemos.cli import _install_identity_prompt
+
+        monkeypatch.setattr("builtins.input", lambda _="": "n")
+
+        called: dict[str, bool] = {"hit": False}
+
+        def _boom(*_a: object, **_k: object) -> Path:
+            called["hit"] = True
+            raise AssertionError("bootstrap called despite decline")
+
+        monkeypatch.setattr("mnemos.identity.bootstrap", _boom)
+
+        _install_identity_prompt(lang="en", vault=tmp_vault)
+
+        assert called["hit"] is False
+        out = capsys.readouterr().out.lower()
+        assert "identity" in out
+
+    def test_install_identity_prompt_accepted_calls_bootstrap(
+        self, monkeypatch, tmp_vault: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Accepting (Enter / 'y' / 'e') invokes identity.bootstrap and
+        reports the resulting path. We monkeypatch the bootstrap itself so
+        the test stays offline.
+        """
+        from mnemos.cli import _install_identity_prompt
+
+        monkeypatch.setattr("builtins.input", lambda _="": "")  # Enter = yes
+
+        fake_path = tmp_vault / "_identity" / "L0-identity.md"
+        captured_args: dict[str, object] = {}
+
+        def _fake_bootstrap(vault: Path, *args: object, **kwargs: object) -> Path:
+            captured_args["vault"] = vault
+            return fake_path
+
+        monkeypatch.setattr("mnemos.identity.bootstrap", _fake_bootstrap)
+
+        _install_identity_prompt(lang="en", vault=tmp_vault)
+
+        assert captured_args.get("vault") == tmp_vault
+        out = capsys.readouterr().out
+        assert str(fake_path) in out
+
+    def test_install_identity_prompt_failure_reported_friendly(
+        self, monkeypatch, tmp_vault: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """If bootstrap raises IdentityError (no Sessions/, claude CLI gone,
+        etc.) we print the reason to stderr and keep going — the rest of
+        init has already completed.
+        """
+        from mnemos.cli import _install_identity_prompt
+        from mnemos.identity import IdentityError
+
+        monkeypatch.setattr("builtins.input", lambda _="": "y")
+
+        def _fail(*_a: object, **_k: object) -> Path:
+            raise IdentityError("no sessions in vault")
+
+        monkeypatch.setattr("mnemos.identity.bootstrap", _fail)
+
+        # Should not raise — friendly fallback.
+        _install_identity_prompt(lang="en", vault=tmp_vault)
+
+        captured = capsys.readouterr()
+        combined = (captured.out + captured.err).lower()
+        assert "identity bootstrap failed" in combined
+        assert "no sessions" in combined

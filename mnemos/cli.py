@@ -352,6 +352,12 @@ def cmd_init(args: argparse.Namespace) -> None:
     # --- Recall-briefing hook: offer to install + flip recall_mode to skill ---
     _install_recall_hook_prompt(lang=lang, vault=Path(cfg.vault_path))
 
+    # --- Phase 6 (v1.0 task 27): optional Identity Layer bootstrap. Runs at
+    # the very end so the user has already seen / accepted hook + statusline
+    # installs, and so a `claude --print` failure here can't strand the rest
+    # of the wizard. Pure no-op when the user declines.
+    _install_identity_prompt(lang=lang, vault=Path(cfg.vault_path))
+
     # --- MCP connection instructions ---
     print(
         "\n=== MCP Connection ===\n"
@@ -520,10 +526,14 @@ def _apply_decision(cfg, src, decision: str, lang: str = "en") -> None:  # type:
             print(t("outcome.later", lang, sid=src.id))
         return
 
-    # Curated source — v1.0: register as pending (mining is gone). Task 27
-    # will replace this with a Sessions-aware onboarding flow.
+    # Curated source, "process now" — v1.0: there is no synchronous mining
+    # step to run from `mnemos init` (Task 27 / narrative-first pivot).
+    # Sessions/ is consumed by the briefing + identity skills on demand, and
+    # stale memory/Topics/ markdown is left for the user to refile manually.
+    # We register the source as pending so the entry stays in
+    # .mnemos-pending.json for parity with the "later" branch.
     onboarding.register_pending(
-        cfg.vault_path, **common, last_action="awaiting-v1-onboarding",
+        cfg.vault_path, **common, last_action="deferred-by-user",
     )
     print(t("outcome.later", lang, sid=src.id))
 
@@ -605,6 +615,37 @@ def _install_recall_hook_prompt(lang: str = "en", vault: Path = Path(".")) -> No
             yaml_path.write_text(text, encoding="utf-8")
 
     print(t("recall_hook_install_done", lang))
+
+
+def _install_identity_prompt(lang: str = "en", vault: Path = Path(".")) -> None:
+    """Phase 6 (v1.0 task 27) — offer to bootstrap the Identity Layer.
+
+    Calls :func:`mnemos.identity.bootstrap` which spawns ``claude --print``
+    and writes ``<vault>/_identity/L0-identity.md``. The bootstrap can take
+    several minutes and consumes the user's Claude subscription quota, so
+    it's strictly opt-in. Failures (no Sessions/, claude CLI missing,
+    network) are caught and reported as a friendly skip — the rest of the
+    init wizard already finished by the time we get here.
+    """
+    from mnemos.i18n import t
+    from mnemos.identity import IdentityError, bootstrap as identity_bootstrap
+
+    answer = input(t("identity_bootstrap_prompt", lang)).strip().lower()
+    yes_answers = {"", "y", "yes", "e", "evet"}
+    if answer not in yes_answers:
+        print(t("identity_bootstrap_declined", lang))
+        return
+
+    print(t("identity_bootstrap_starting", lang))
+    try:
+        path = identity_bootstrap(vault)
+    except IdentityError as exc:
+        print(
+            t("identity_bootstrap_failed", lang, reason=str(exc)),
+            file=sys.stderr,
+        )
+        return
+    print(t("identity_bootstrap_done", lang, path=path))
 
 
 # ---------------------------------------------------------------------------
