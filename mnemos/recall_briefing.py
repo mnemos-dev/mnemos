@@ -755,31 +755,18 @@ def main(argv: list[str] | None = None) -> int:
          and exit. Used by _spawn_bg_brief to produce the briefing cache
          in a detached background process.
     """
-    # Re-entry guard: if our own subprocess spawned a `claude --print` which
-    # fired SessionStart and re-invoked us, HOOK_ACTIVE_ENV is set. Exit
-    # immediately to break the recursion BEFORE any state / subprocess work.
-    if os.environ.get(HOOK_ACTIVE_ENV):
-        return 0
-
-    # v1.0 stale-hook guard: if our own settings.json entry is still v0.x,
-    # the user upgraded the package without re-running ``mnemos install-hook
-    # --v1``. Print guidance to stderr and exit 0 so SessionStart finishes
-    # cleanly (no crash dialog, no stuck terminal).
-    if _detect_stale_hook_signature("mnemos-recall-briefing"):
-        print(
-            "Mnemos v1.0 detected an outdated SessionStart hook entry.\n"
-            "Run `mnemos install-hook --v1` to update.\n"
-            "Skipping this run to avoid errors.",
-            file=sys.stderr,
-        )
-        return 0
-
     if argv is None:
         argv = sys.argv[1:]
     parsed = _parse_args(argv)
 
     # --catchup subcommand — foreground refine+brief pipeline. Default
     # bg entry from _spawn_bg_catchup. Does NOT touch stdin or hook state.
+    #
+    # IMPORTANT: must run BEFORE the HOOK_ACTIVE_ENV re-entry guard. The bg
+    # subprocess spawned by handle_session_start inherits HOOK_ACTIVE_ENV=1
+    # from _child_env() so its OWN claude --print SessionStart re-fires
+    # exit silently. If we checked the guard first, --catchup itself would
+    # exit 0 immediately and no cache would ever be written.
     if parsed.catchup:
         if not parsed.cwd or not parsed.vault:
             return 0
@@ -793,7 +780,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     # --brief-and-cache subcommand — brief-only regen (backward-compat).
-    # Kept for external callers and legacy test imports.
+    # Kept for external callers and legacy test imports. Same re-entry
+    # bypass rationale as --catchup above.
     if parsed.brief_and_cache:
         if not parsed.cwd or not parsed.vault:
             return 0
@@ -804,6 +792,30 @@ def main(argv: list[str] | None = None) -> int:
             brief_and_cache(parsed.cwd, vault)
         except Exception:
             return 0
+        return 0
+
+    # ----- Hook stdin mode below -----
+    # Re-entry guard: if our own subprocess spawned a `claude --print` which
+    # fired SessionStart and re-invoked us in stdin mode, HOOK_ACTIVE_ENV
+    # is set. Exit immediately to break the recursion BEFORE any state /
+    # subprocess work. Subcommand modes above intentionally bypass this.
+    if os.environ.get(HOOK_ACTIVE_ENV):
+        return 0
+
+    # v1.0 stale-hook guard: if our own settings.json entry is still v0.x,
+    # the user upgraded the package without re-running ``mnemos install-hook
+    # --v1``. Print guidance to stderr and exit 0 so SessionStart finishes
+    # cleanly (no crash dialog, no stuck terminal). Stdin mode only — the
+    # subcommand entries are invoked by our own bg spawn, not by Claude
+    # Code's hook dispatcher, so a stale settings.json signature is
+    # irrelevant to them.
+    if _detect_stale_hook_signature("mnemos-recall-briefing"):
+        print(
+            "Mnemos v1.0 detected an outdated SessionStart hook entry.\n"
+            "Run `mnemos install-hook --v1` to update.\n"
+            "Skipping this run to avoid errors.",
+            file=sys.stderr,
+        )
         return 0
 
     # Hook mode. Windows Python opens stdin/stdout in cp1252 by default;

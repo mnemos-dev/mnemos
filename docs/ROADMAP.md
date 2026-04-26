@@ -4,8 +4,7 @@
 Eski `docs/specs/2026-04-*` ve `docs/plans/2026-04-*` dosyaları historical
 archive; burada çelişki olursa bu dosya geçerlidir.
 
-**Son güncelleme:** 2026-04-26 — **v1.0.0a1 alpha shipped to git** (NOT yet on PyPI). 31-task narrative-first pivot complete + 2 post-tag hotfixes. v0.4.x roadmap superseded.
-
+**Son güncelleme:** 2026-04-26 (v1.0.0a1 alpha shipped + bg-catchup hotfix; v1.1 design + 55-task plan ready)
 ---
 
 ## Sürüm durumu
@@ -18,65 +17,70 @@ archive; burada çelişki olursa bu dosya geçerlidir.
 | v0.3.1 | Backend UX (keşif + migrate + recovery) | ✅ | ✅ |
 | v0.3.2 | Palace Hygiene (pipeline fixes + atomic rebuild) | ✅ | ✅ |
 | v0.3.3 | Post-v0.3.2 cleanup (migrate rollback+lock, score parity, slow-tests) | ✅ | ✅ |
-| ~~v0.4.0~~ | **SUPERSEDED** by v1.0 narrative-first pivot (atomic-fragmentation paradigm dropped) | 🚫 | — |
-| ~~v0.4.1~~ | SUPERSEDED | 🚫 | — |
-| **v1.0.0a1** | **Narrative-First Pivot — Alpha** (Identity Layer + 3-katman briefing + reindex + install-hook --v1) | ✅ git tag | — pending validation |
-| v1.0.0 | Narrative-First Pivot — Stable (post-2-week alpha validation) | ⏳ | — |
-| v1.1.0 | Wikilink resolution intelligence + tag/project fallback in briefing | ⏸ | — |
-| v1.2.0 | Cross-vault recall | ⏸ | — |
-| v1.3.0 | Obsidian plugin | ⏸ | — |
-| v2.0.0 | Self-maintaining memory (stale flagging, decay, contradiction) | ⏸ | — |
+| ~~v0.4.0~~ | ~~AI Boost / Phase 1~~ — superseded by v1.0 narrative-first pivot | 🗄️ archived | — |
+| **v1.0.0a1** | **Narrative-first pivot (atomic-fragmentation dropped, Sessions = unit, Identity Layer)** | ✅ shipped 2026-04-26 | ⏸ deferred |
+| **v1.1.0** | **SessionEnd-driven memory (refine+brief+identity-refresh worker, settings TUI, briefing v3, readiness gates, in-session cross-check)** | **🔄 plan ready** | — |
+| v1.2.0 | Polish + LongMemEval benchmark (R@5 ≥ %93 baseline, JSONL-direct identity bootstrap?) | ⏸ | — |
+| v0.5.0 | Automation / Phase 2 — superseded by v1.1 SessionEnd hook | 🗄️ archived | — |
+| v0.6.0 | Community & Ecosystem (Obsidian plugin, multi-language markers, demo video) | ⏸ | — |
 
-**Pivot context:** v0.x'in atomic-fragmentation (drawer mining) paradigması ölçümle çürüdü (RRF skor bandı 0.014–0.017'de takıldı, 600-node graph kullanılmıyor). v1.0 narrative-first paradigmaya geçti — Sessions tek memory unit, refine prompt v2 tag+wikilink hibrit, Identity Layer kalıcı user profile, briefing 3-katman. Mining kodu (~3K LOC + ~200 test) silindi. Geri dönüş için `legacy/atomic-paradigm` branch + `v0.4.0-archived` tag korunuyor.
-
-**v1.0 detayları:**
-- Spec: `docs/specs/2026-04-25-v1.0-narrative-pivot-design.md`
-- Plan: `docs/plans/2026-04-25-v1.0-narrative-pivot.md` (31 task, hepsi tamam)
-- Git: 33 commit + 2 hotfix (`d579362` install-hook --vault, `04e6d03` ledger UTF-8 errors=replace)
-- Test: 452 pass / 1 EOL artifact (mechanical, mild)
-
-**Şu an pending:**
-1. `mnemos identity bootstrap` — kasamd'de ~5-10 dk LLM call, kalıcı user profile üret
-2. 1-2 hafta gerçek-dünya alpha test (farcry ✅, procuretrack 1st visit, daha fazla cwd)
-3. `python -m twine upload dist/mnemos_dev-1.0.0a1*` (PyPI publish — validation sonrası)
-4. `gh release create v1.0.0a1 --prerelease ...` (GitHub pre-release)
+**v1.1.0 spec:** [`docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md`](specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md)
+**v1.1.0 plan:** [`docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md`](plans/2026-04-26-v1.1.0-sessionend-driven-memory.md) (55 TDD task, 13 group)
 
 ---
 
-## v1.0.0a1 — Narrative-First Pivot Alpha ✅ *(git only, 2026-04-26)*
+## v1.1.0 — SessionEnd-Driven Memory 🔄 *(plan ready 2026-04-26)*
 
-Atomic-fragmentation paradigmadan narrative-first paradigmaya clean-break geçiş.
+13 task group, 55 task. Subagent-driven implementation önerilir.
 
-### Spec & Plan
-- Spec: [`docs/specs/2026-04-25-v1.0-narrative-pivot-design.md`](specs/2026-04-25-v1.0-narrative-pivot-design.md)
-- Plan: [`docs/plans/2026-04-25-v1.0-narrative-pivot.md`](plans/2026-04-25-v1.0-narrative-pivot.md) (31 task, TDD per task)
+### Görevler (group-level checkpoints; full TDD step list plan'da)
 
-### Tasks (hepsi tamam)
-- [x] **Task 0–1:** Setup & legacy archive — `legacy/atomic-paradigm` branch + `v0.4.0-archived` tag pushed; `feature/v1.0-pivot` worktree
-- [x] **Task 2–6:** Mining pipeline removal — 9 production modules, 16+ test files, mining CLI subcommands, mine_mode config field, openpyxl dep silindi
-- [x] **Task 7–8:** Refine prompt v2 — tag prefix kategorileri (proj/, tool/, person/, file/, skill/) + prose wikilink rules + KALİTE KONTROL checklist
-- [x] **Task 9–14:** Identity Layer — bootstrap canonical prompt, `mnemos/identity.py` (bootstrap+refresh+rollback+show), CLI subcommands, auto-refresh trigger gates, `mnemos_status` identity metadata
-- [x] **Task 15–16:** Briefing skill v2 — 3-katman akış (Identity 3K + Cwd 8K + Cross-context 4K, hard cap 15K), recall_briefing.py SUB-B2 mining sync silindi
-- [x] **Task 17–21:** MCP/skill surface refactor — recall skill Sessions-only, mnemos_search raw-only deprecation, mnemos_wake_up Identity Layer, mnemos_recall L0-only, mnemos_graph+timeline wikilink-based (SQLite triple store silindi)
-- [x] **Task 22–23:** Reindex — `mnemos/reindex.py` (Sessions rebuild + backend switch + backup) + CLI subcommand
-- [x] **Task 24–26:** Hooks v1.0 — install-hook --v1 atomic install, stale hook graceful failure shim, statusline format
-- [x] **Task 27:** mnemos init v2 — drops mine_mode prompt, adds Phase 6 identity bootstrap (TR+EN i18n)
-- [x] **Task 28–29:** README v1.0 (folded v1.0-readme-draft.md) + CHANGELOG v1.0.0 entry + draft deleted
-- [x] **Task 30:** Version bump 1.0.0a1, build artifacts, local tag annotated, push branch+tag
+- [ ] **G1** — Config schema foundation (5 task) — schema_version + nested RefineConfig/BriefingConfig/IdentityConfig + atomic save w/ backup
+- [ ] **G2** — Refine pipeline configurability (6 task) — pick_jsonls(cfg), direction newest/oldest, min_user_turns from config, caller updates
+- [ ] **G3** — Identity eligibility helpers + bootstrap gate (5 task) — readiness pct, threshold gate, --force flag, refresh trigger from config
+- [ ] **G4** — Identity refresh skill (3 task) — `mnemos-identity-refresh` scaffold + junction + zero-drift test
+- [ ] **G5** — Briefing prompt v3 (3 task) — smart-layered (anchor + all-decisions + recent 5) + revision-aware rewrite + tests
+- [ ] **G6** — SessionStart updates (5 task) — readiness gate, systemMessage, cross-check directive, sync fallback, vault-aware first-visit
+- [ ] **G7** — SessionEnd hook + worker (6 task) — module skeleton, detached spawn w/ CREATE_BREAKAWAY_FROM_JOB+fallback, 3-stage worker, re-entry guard regression, hook entry schema, stale-hook detection
+- [ ] **G8** — install-end-hook CLI (4 task) — atomic install, --uninstall, argparse wiring, roundtrip test
+- [ ] **G9** — Settings TUI (7 task) — render_menu + validators + apply_field_change + cmd_settings + per-cwd readiness + progress display + i18n
+- [ ] **G10** — Init flow integration (3 task) — refine quota dialog, install-end-hook prompt, i18n
+- [ ] **G11** — Documentation (5 task) — README hero+quota, CHANGELOG, identity-bootstrap v2 prompt, CONTRIBUTING no-API rule, CI grep
+- [ ] **G12** — Empirical validation (3 task) — farcry/procuretrack/mid-stream X-close smoke on real kasamd vault. **BLOCKING for G13.**
+- [ ] **G13** — Release prep (4 task) — version bump, build, pre-release inspection, PyPI+GitHub publish (DEFERRED — user-triggered)
 
-### Post-tag hotfixes
-- [x] `d579362` — install-hook --v1 must use `--vault` flag (positional was silently ignored by `parse_known_args`, hook silently exited)
-- [x] `04e6d03` — refine ledger reads must use `errors='replace'` for historical non-UTF-8 bytes (cp1252 `0xae` survived from old Windows console writes)
+### Hard invariants (spec §2)
 
-### Pending alpha validation
-- [ ] Identity bootstrap on kasamd (~5–10 dk)
-- [ ] Real-world cwd test cycle (procuretrack 2nd visit, mnemos cwd, Claude Çalışma Dosyası, others)
-- [ ] PyPI alpha upload (`twine upload dist/...`)
-- [ ] GitHub pre-release (`gh release create v1.0.0a1 --prerelease`)
-- [ ] STATUS update post-validation (rotate "v1.0 alpha rollout" → "v1.0.0 stable shipped")
+- ❌ **NO Anthropic API calls anywhere** — `claude --print` subscription only, `_child_env()` strips API key, CI grep enforces
+- 📁 Obsidian master, vault is source of truth
+- ⚛️ Idempotent hooks, atomic file ops
+- 🔓 SessionEnd worker survives parent termination (CREATE_BREAKAWAY_FROM_JOB)
+- 🚫 No silent failure on user-actionable conditions
+
+### Başarı kriterleri
+
+- [ ] All G1-G11 task-level tests pass (target ≥520 total, was 455)
+- [ ] No-API CI grep passes (zero violations)
+- [ ] G12 empirical smoke 3 cwd × full lifecycle on kasamd green
+- [ ] User reviews + approves implementation before G13 release
 
 ---
 
+## v1.0.0a1 — Narrative-First Pivot ✅ *(2026-04-26)*
+
+Atomic-fragmentation paradigm dropped. Sessions/.md = canonical memory unit.
+Identity Layer scaffold introduced. Mining pipeline (~3K LOC + ~200 test)
+silindi. 33 commit + 2 hotfix on main. Tag `v1.0.0a1` pushed; PyPI publish
+deferred per staged rollout strategy.
+
+**Hotfix (2026-04-26):** `recall_briefing.py` re-entry guard moved to AFTER
+`--catchup`/`--brief-and-cache` arg parsing. Pre-fix: bg subprocess inherited
+HOOK_ACTIVE_ENV=1 → guard at top of main() bloks --catchup → no cache ever
+written for any cwd since v1.0 went live. Fix + 2 regression test, full suite
+455 pass. Empirically validated by producing fresh procuretrack briefing cache
+(4128B, 18 sessions) — pre-fix had no cache file at all.
+
+(Full release notes: STATUS.md "v1.0.0a1 alpha shipped" section + git log)
 ---
 
 ## v0.1.0 — First Breath ✅ *(2026-04-12)*

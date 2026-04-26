@@ -1,9 +1,12 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-26 — **v1.0.0a1 alpha shipped (git only, NOT yet on PyPI)** · narrative-first pivot complete · 33 commits + 2 post-tag hotfixes · kasamd v1.0 hooks live, briefing inject working
-**Stable PyPI version:** `v0.3.3` (the v0.x atomic-paradigm — still default for `pip install mnemos-dev`)
-**Alpha:** `v1.0.0a1` — tag pushed to GitHub, **not** yet uploaded to PyPI (pending real-world validation)
-**Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md) · **v1.0 spec:** [`docs/specs/2026-04-25-v1.0-narrative-pivot-design.md`](docs/specs/2026-04-25-v1.0-narrative-pivot-design.md) · **v1.0 plan:** [`docs/plans/2026-04-25-v1.0-narrative-pivot.md`](docs/plans/2026-04-25-v1.0-narrative-pivot.md)
+**Last updated:** 2026-04-26 — v1.0.0a1 alpha shipped + bg-catchup hotfix + v1.1.0 design + 55-task implementation plan complete (3 v1.1 commits `a19cfb9` `10fa3ca` `2e428e3`; **455 test pass +2 new** from hotfix; sonraki: G1 Task 1.1'den implementation başlangıç, fresh session ile)
+**Stable PyPI version:** `v0.3.3` (v0.x atomic-paradigm — still default `pip install mnemos-dev`)
+**Alpha:** `v1.0.0a1` — tag pushed to GitHub, **not** yet uploaded to PyPI (pending v1.1 ship + real-world validation)
+**Next:** `v1.1.0` — SessionEnd-driven memory architecture, plan ready
+**Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
+**v1.0 spec:** [`docs/specs/2026-04-25-v1.0-narrative-pivot-design.md`](docs/specs/2026-04-25-v1.0-narrative-pivot-design.md) · **v1.0 plan:** [`docs/plans/2026-04-25-v1.0-narrative-pivot.md`](docs/plans/2026-04-25-v1.0-narrative-pivot.md)
+**v1.1 spec:** [`docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md`](docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md) · **v1.1 plan:** [`docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md`](docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md)
 
 This file is the single-glance answer to: *why does Mnemos exist, what can it
 do right now, and what will it do when the roadmap is complete?*
@@ -150,9 +153,67 @@ For early adopters: `pip install git+https://github.com/mnemos-dev/mnemos@v1.0.0
 
 ---
 
-## 4. Next session starts here (post-`/clear`)
+## 4. Next session starts here (post-`/clear`, 2026-04-26)
 
-**Trigger:** type `mnemos` or `devam`. Resume protocol kicks in (CLAUDE.md):
+**v1.1.0 design + implementation plan COMPLETE. Implementation NOT started.**
+
+Bugünkü oturumun sonunda:
+1. v1.0 bug fix shipped — `recall_briefing.py` re-entry guard `--catchup`
+   parsing'inden sonraya taşındı (`a19cfb9`). `HOOK_ACTIVE_ENV=1` artık
+   bg subprocess'i bloklamıyor. +2 regression test, 455 pass full suite.
+   Empirical doğrulama: kasamd procuretrack için 4128B briefing cache
+   üretildi — bug öncesi hiçbir cache yazılmıyordu.
+
+2. v1.1 design conversation tamam (5 issue brainstormed, all resolved):
+   - Issue 1: Refine pipeline configurability + Settings TUI
+   - Issue 2: Identity bootstrap eligibility gate + auto-refresh from SessionEnd
+   - Issue 3: Briefing readiness gate (default 60%)
+   - Issue 4: Briefing prompt v3 (smart-layered + revision-aware)
+   - Issue 5: In-session briefing UX (systemMessage + cross-check directive)
+   - Foundation: SessionEnd-driven worker pipeline (refine + brief + identity check)
+     with CREATE_BREAKAWAY_FROM_JOB for X-close survival
+
+3. Spec written + committed (`10fa3ca`):
+   `docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md` — 818 satır,
+   15 bölüm. Hard invariant: NO Anthropic API calls anywhere (subscription only
+   via `claude --print` skill subprocess, `_child_env` strips API key).
+
+4. Implementation plan written + committed (`2e428e3`):
+   `docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md` — 4748 satır,
+   13 task group, 55 TDD task, ~275 step. Her task TDD pattern (failing test →
+   minimal impl → green → commit).
+
+5. Empirical SessionEnd smoke (2026-04-26 cycle on kasamd farcry):
+   - /exit graceful close: SessionEnd ateşler, worker `with_breakaway` yaşar ✓
+   - X-close idle: SessionEnd ateşler, worker BREAKAWAY ile 30s yaşar ✓
+   - X-close mid-stream: SessionEnd kaçırır → SessionStart sync fallback yakalar
+   - Test infra: `~/.claude/test-session-end/` (hook + worker + inspect script)
+     ve settings.json'da `mnemos-end-smoke-test` SessionEnd entry'si ŞU AN AKTİF.
+
+**Sıradaki oturum başlangıcı:**
+
+Plan'ı `superpowers:subagent-driven-development` veya `superpowers:executing-plans`
+skill'i ile uygula. Önerim subagent-driven (her task fresh subagent, two-stage
+review, paralel friendly). İlk task: **G1 Task 1.1 — Add schema_version field
+with backward-compat read** (`mnemos/config.py` + `tests/test_config_v1_1.py`,
+TDD pattern, ~5 step, ~15 dakika).
+
+Group sırası: G1 (config foundation) → G2 (refine config) → G3 (identity gate)
+→ G4 (refresh skill) → G5 (briefing v3) → G6 (SessionStart updates) → G7
+(SessionEnd worker) → G8 (install-end-hook CLI) → G9 (Settings TUI) → G10
+(init flow) → G11 (docs) → G12 (empirical validation, BLOCKING) → G13 (release).
+
+🟡 **Pending user actions (defer):**
+- Test infra cleanup: `~/.claude/test-session-end/` dir + settings.json'daki
+  `mnemos-end-smoke-test` SessionEnd entry. Implementation sırasında G7 için
+  reference olarak kalabilir, sonra cleanup.
+- Identity bootstrap (v1.0'dan beri pending): `mnemos identity bootstrap
+  --vault "C:/Users/tugrademirors/OneDrive/Masaüstü/kasamd"` — v1.1 G3 ile
+  birlikte threshold gate'e takılacak (~10% have, 25% need); --force ile
+  bypass mümkün. Implementation döneminde gerekirse force ile çalıştır.
+- PyPI publish v1.0.0a1 (deferred): `python -m twine upload dist/...` — v1.1
+  hazır olunca v1.1.0 doğrudan publish, v1.0.0a1 alpha tag GitHub'da kalır.
+
 
 1. Read `STATUS.md` (this file) — see §3 "v1.0 alpha rollout" for current state
 2. Read `docs/ROADMAP.md` — version table shows v1.0.0a1 alpha, v1.0.0 stable next
