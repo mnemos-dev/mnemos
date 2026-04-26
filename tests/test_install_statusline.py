@@ -224,6 +224,27 @@ def test_install_fresh_block_references_packaged_snippet(tmp_path, monkeypatch):
         f"block must reference mnemos/_resources/; got:\n{body}"
 
 
+# ---------------------------------------------------------------------------
+# v1.0 statusline format — drop mining, add identity refresh marker
+# ---------------------------------------------------------------------------
+
+
+def test_statusline_snippet_includes_identity_field():
+    """The v1.0 statusline must surface the identity-refresh timestamp so
+    users see when their L0 identity layer was last regenerated."""
+    snippet_path = Path(__file__).parent.parent / "mnemos" / "_resources" / "statusline_snippet.sh"
+    content = snippet_path.read_text(encoding="utf-8")
+    assert "identity_last_refreshed" in content
+
+
+def test_statusline_snippet_does_not_reference_mining():
+    """v1.0 dropped mining entirely — the statusline must not mention it."""
+    snippet_path = Path(__file__).parent.parent / "mnemos" / "_resources" / "statusline_snippet.sh"
+    content = snippet_path.read_text(encoding="utf-8")
+    assert "mine" not in content.lower()
+    assert "mining" not in content.lower()
+
+
 def test_install_appends_to_existing_msys_path_on_windows(tmp_path, monkeypatch):
     """Settings.json on Windows often stores the statusline command as
     `bash /c/Users/.../foo.sh` (Git Bash POSIX style). The installer must
