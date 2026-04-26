@@ -284,14 +284,27 @@ def cmd_init(args: argparse.Namespace) -> None:
     else:
         search_backend = _ask_backend_choice(lang=lang)
 
+    # --- v1.1 refine quota dialog ---
+    # Surface the subscription-quota cost up front so the user picks a
+    # sustainable per_session value before we write yaml.
+    try:
+        from mnemos.readiness import count_eligible_jsonls
+        projects_dir = Path.home() / ".claude" / "projects"
+        eligible_count = count_eligible_jsonls(projects_dir, min_user_turns=3)
+    except Exception:
+        eligible_count = 0
+    refine_settings = _init_refine_quota_dialog(vault_dir, eligible_count, lang=lang)
+
     # --- Build config ---
     config_data: dict = {
+        "schema_version": 2,
         "vault_path": vault_path,
         "languages": languages,
         "use_llm": use_llm,
         "search_backend": search_backend,
         "halls": list(HALLS_DEFAULT),
         "watcher_ignore": list(WATCHER_IGNORE_DEFAULT),
+        "refine": refine_settings,
     }
 
     # --- Write mnemos.yaml ---
@@ -353,6 +366,9 @@ def cmd_init(args: argparse.Namespace) -> None:
     # --- Recall-briefing hook: offer to install + flip recall_mode to skill ---
     _install_recall_hook_prompt(lang=lang, vault=Path(cfg.vault_path))
 
+    # --- v1.1: SessionEnd hook prompt ---
+    _init_prompt_install_end_hook(vault=Path(cfg.vault_path), lang=lang)
+
     # --- Phase 6 (v1.0 task 27): optional Identity Layer bootstrap. Runs at
     # the very end so the user has already seen / accepted hook + statusline
     # installs, and so a `claude --print` failure here can't strand the rest
@@ -376,6 +392,67 @@ def cmd_init(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 # Onboarding helpers (Phase 1–5 of `mnemos init`)
 # ---------------------------------------------------------------------------
+
+
+def _init_refine_quota_dialog(vault: Path, eligible_count: int, lang: str = "en") -> dict:
+    """v1.1 G10 Task 10.1: ask the user for refine pipeline knobs.
+
+    Returns a dict shaped for direct embedding in mnemos.yaml under the
+    ``refine:`` key — per_session / direction / min_user_turns. Each
+    prompt loops on invalid input.
+    """
+    from mnemos.i18n import t
+
+    print()
+    print(t("init.quota_warning_header", lang))
+    hours = (eligible_count / 45) * 5 if eligible_count else 0
+    print(t("init.quota_warning_body", lang, count=eligible_count, hours=hours))
+    print()
+
+    while True:
+        s = input(t("init.per_session_prompt", lang)).strip() or "3"
+        try:
+            per = int(s)
+            if 1 <= per <= 50:
+                break
+        except ValueError:
+            pass
+        print(t("init.invalid_per_session", lang))
+
+    while True:
+        s = input(t("init.direction_prompt", lang)).strip().lower() or "n"
+        if s in ("n", "newest"):
+            direction = "newest"
+            break
+        if s in ("o", "oldest"):
+            direction = "oldest"
+            break
+        print(t("init.invalid_direction", lang))
+
+    while True:
+        s = input(t("init.min_turns_prompt", lang)).strip() or "3"
+        try:
+            mut = int(s)
+            if 1 <= mut <= 10:
+                break
+        except ValueError:
+            pass
+        print(t("init.invalid_min_turns", lang))
+
+    return {"per_session": per, "direction": direction, "min_user_turns": mut}
+
+
+def _init_prompt_install_end_hook(vault: Path, lang: str = "en") -> None:
+    """v1.1 G10 Task 10.2: offer to install the SessionEnd hook at the end of init."""
+    from mnemos.i18n import t
+
+    answer = (input(t("init.end_hook_prompt", lang)).strip().lower() or "y")
+    if answer in ("y", "e", "yes", "evet"):
+        ns = argparse.Namespace(vault=str(vault), uninstall=False, v1=True)
+        cmd_install_end_hook(ns)
+        print(t("init.end_hook_done", lang))
+    else:
+        print(t("init.end_hook_skipped", lang))
 
 
 def _print_intro(lang: str = "en") -> None:
