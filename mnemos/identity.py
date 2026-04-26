@@ -210,7 +210,10 @@ def refresh(vault: Path, force: bool = False, model: str = "sonnet") -> Optional
     new_sessions = all_sessions[last_count:]
 
     if not force:
-        if len(new_sessions) < 10:
+        from mnemos.config import load_config
+
+        cfg = load_config(str(vault))
+        if len(new_sessions) < cfg.identity.refresh_session_delta:
             return None  # quantity gate
         if not _has_identity_relevant_new_tags(existing, new_sessions):
             return None  # relevance gate
