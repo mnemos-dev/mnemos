@@ -86,3 +86,29 @@ def test_apply_field_change_updates_cfg():
 
     apply_field_change(cfg, field_num=15, value="sqlite-vec")
     assert cfg.search_backend == "sqlite-vec"
+
+
+def test_per_cwd_readiness_breakdown_lists_all_state_cwds(tmp_path):
+    from mnemos.settings_tui import format_per_cwd_breakdown
+
+    state = tmp_path / ".mnemos-cwd-state.json"
+    state.write_text(
+        '{"version":1,"cwds":{'
+        '"foo":{"cwd":"C:/foo","first_seen":1.0,"last_seen":2.0,'
+        '"visit_count":5,"last_session_id":null},'
+        '"bar":{"cwd":"C:/bar","first_seen":1.0,"last_seen":2.0,'
+        '"visit_count":3,"last_session_id":null}'
+        '}}',
+        encoding="utf-8",
+    )
+    output = format_per_cwd_breakdown(vault=tmp_path)
+    assert "C:/foo" in output
+    assert "C:/bar" in output
+    assert "%" in output
+
+
+def test_per_cwd_readiness_breakdown_handles_no_state(tmp_path):
+    from mnemos.settings_tui import format_per_cwd_breakdown
+
+    output = format_per_cwd_breakdown(vault=tmp_path)
+    assert "No per-cwd state" in output or "no" in output.lower()

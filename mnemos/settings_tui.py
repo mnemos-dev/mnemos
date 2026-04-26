@@ -157,3 +157,47 @@ def apply_field_change(cfg, field_num: int, value) -> None:
         setattr(cfg, attr, value)
     else:
         setattr(getattr(cfg, section), attr, value)
+
+
+# ---------------------------------------------------------------------------
+# Per-cwd readiness breakdown (Task 9.5)
+# ---------------------------------------------------------------------------
+
+
+def format_per_cwd_breakdown(vault: Path) -> str:
+    """Render a per-cwd readiness table for option 18 of the menu.
+
+    Reads the cwd state file (written by recall_briefing.save_state) and
+    computes per_cwd_readiness for each entry. Each row shows the cwd,
+    refined/eligible counts, the percentage, and whether the briefing
+    inject gate would unlock at the current cfg.briefing.readiness_pct.
+    """
+    from mnemos.readiness import per_cwd_readiness
+
+    state_path = vault / ".mnemos-cwd-state.json"
+    if not state_path.exists():
+        return "No per-cwd state recorded yet."
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "State file unreadable."
+
+    cfg = load_config(str(vault))
+    projects_root = Path.home() / ".claude" / "projects"
+    lines: list[str] = ["", "Per-cwd readiness:"]
+    for slug, info in state.get("cwds", {}).items():
+        cwd = info.get("cwd", "?")
+        r = per_cwd_readiness(
+            vault=vault,
+            cwd=cwd,
+            cwd_slug=slug,
+            projects_root=projects_root,
+            min_user_turns=cfg.refine.min_user_turns,
+        )
+        gate = "[inject]" if r["pct"] >= cfg.briefing.readiness_pct else "[silent]"
+        lines.append(f"  {cwd}")
+        lines.append(
+            f"    refined {r['refined']}/{r['eligible']}  "
+            f"({r['pct']:.1f}%)  {gate}"
+        )
+    return "\n".join(lines)
