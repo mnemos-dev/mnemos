@@ -93,3 +93,67 @@ def render_menu(vault: Path) -> str:
     lines.append("  q) Quit")
     lines.append("=" * 68)
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Validators (Task 9.2)
+# ---------------------------------------------------------------------------
+
+
+def validate_int(s: str, min_v: int, max_v: int) -> tuple[bool, int, str]:
+    try:
+        v = int(s)
+    except ValueError:
+        return False, 0, f"Not an integer: {s!r}"
+    if v < min_v or v > max_v:
+        return False, 0, f"Out of range [{min_v}, {max_v}]: {v}"
+    return True, v, ""
+
+
+def validate_bool(s: str) -> tuple[bool, bool, str]:
+    s = s.strip().lower()
+    if s in ("true", "t", "yes", "y", "1"):
+        return True, True, ""
+    if s in ("false", "f", "no", "n", "0"):
+        return True, False, ""
+    return False, False, f"Not a bool (true/false expected): {s!r}"
+
+
+def validate_choice(s: str, choices: list[str]) -> tuple[bool, str, str]:
+    if s in choices:
+        return True, s, ""
+    return False, "", f"Not in {choices}: {s!r}"
+
+
+# ---------------------------------------------------------------------------
+# Field application (Task 9.3)
+# ---------------------------------------------------------------------------
+
+
+# Menu number -> (config section, attribute). The "__direct__" sentinel
+# routes to MnemosConfig itself for top-level fields like search_backend.
+_FIELD_MAP: dict[int, tuple[str, str]] = {
+    1: ("refine", "per_session"),
+    2: ("refine", "direction"),
+    3: ("refine", "min_user_turns"),
+    4: ("briefing", "readiness_pct"),
+    5: ("briefing", "show_systemmessage"),
+    6: ("briefing", "enforce_consistency"),
+    7: ("identity", "bootstrap_threshold_pct"),
+    8: ("identity", "auto_refresh"),
+    9: ("identity", "refresh_session_delta"),
+    10: ("identity", "refresh_min_days"),
+    15: ("__direct__", "search_backend"),
+    17: ("__direct__", "recall_mode"),
+}
+
+
+def apply_field_change(cfg, field_num: int, value) -> None:
+    """Apply a validated value to the appropriate cfg attribute by menu number."""
+    if field_num not in _FIELD_MAP:
+        raise ValueError(f"Field {field_num} not editable via apply_field_change")
+    section, attr = _FIELD_MAP[field_num]
+    if section == "__direct__":
+        setattr(cfg, attr, value)
+    else:
+        setattr(getattr(cfg, section), attr, value)

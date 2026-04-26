@@ -41,3 +41,48 @@ def test_format_field_line_aligns():
     line = _format_field_line(num=1, label="JSONLs per session start", value="3")
     assert line.startswith("  1)")
     assert "3" in line
+
+
+def test_validate_int_field_in_range():
+    from mnemos.settings_tui import validate_int
+
+    assert validate_int("5", min_v=1, max_v=10) == (True, 5, "")
+    assert validate_int("100", min_v=1, max_v=10)[0] is False
+    assert validate_int("abc", min_v=1, max_v=10)[0] is False
+    assert validate_int("0", min_v=1, max_v=10)[0] is False
+
+
+def test_validate_bool_field():
+    from mnemos.settings_tui import validate_bool
+
+    ok, val, _ = validate_bool("true")
+    assert ok and val is True
+    assert validate_bool("y")[1] is True
+    assert validate_bool("false")[1] is False
+    assert validate_bool("xyz")[0] is False
+
+
+def test_validate_choice_field():
+    from mnemos.settings_tui import validate_choice
+
+    assert validate_choice("newest", ["newest", "oldest"]) == (True, "newest", "")
+    assert validate_choice("middle", ["newest", "oldest"])[0] is False
+
+
+def test_apply_field_change_updates_cfg():
+    from mnemos.settings_tui import apply_field_change
+    from mnemos.config import MnemosConfig
+
+    cfg = MnemosConfig(vault_path="/x")
+    assert cfg.refine.per_session == 3
+    apply_field_change(cfg, field_num=1, value=15)
+    assert cfg.refine.per_session == 15
+
+    apply_field_change(cfg, field_num=2, value="oldest")
+    assert cfg.refine.direction == "oldest"
+
+    apply_field_change(cfg, field_num=5, value=False)
+    assert cfg.briefing.show_systemmessage is False
+
+    apply_field_change(cfg, field_num=15, value="sqlite-vec")
+    assert cfg.search_backend == "sqlite-vec"
