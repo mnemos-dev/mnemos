@@ -2,6 +2,51 @@
 
 All notable changes to Mnemos are documented here.
 
+## v1.0.0 — Narrative-First Pivot (2026-04-25)
+
+### Breaking changes
+- Atomic-fragmentation paradigm ("drawer" mining) removed. Mnemos no longer
+  produces or indexes drawer fragments.
+- CLI: `mnemos mine`, `mnemos catch-up`, `mnemos migrate`, `mnemos import
+  claude-code`, `mnemos processing-log` removed (legacy invocations print
+  a friendly v1.0 removal message).
+- MCP: `mnemos_mine` and `mnemos_add` tools removed. `mnemos_search` no
+  longer accepts `collection="mined"` or `"both"` (warns and falls back to
+  `raw`).
+- Wing/Hall/Room hierarchy retired. `mnemos_recall(level="L1"|"L2")` returns
+  a deprecated marker.
+
+### Added
+- **Identity Layer** (`<vault>/_identity/L0-identity.md`) — persistent user
+  profile, bootstrapped from existing Sessions, evolves via incremental
+  refresh.
+- `mnemos identity {bootstrap,refresh,rollback,show}` CLI commands.
+- Briefing skill produces 3-layer narrative (Identity 3K + cwd Sessions 8K +
+  cross-context wikilink expansion 4K, hard cap 15K).
+- Refine prompt v2 produces tag + wikilink hybrid (`tags: [proj/x, tool/y,
+  person/z, file/r, skill/s]` + prose `[[X]]`).
+- `mnemos reindex` for backend switch and index recovery (replaces
+  `mnemos migrate`).
+- `mnemos install-hook --v1` atomic idempotent installer with stale-hook
+  graceful failure shim.
+
+### Refactored
+- `mnemos_graph(entity)` and `mnemos_timeline(entity)` now query Obsidian
+  wikilink graph instead of SQLite triple store. Tool signatures unchanged.
+
+### Removed code
+- Mining pipeline (9 modules, ~3K LOC).
+- Knowledge graph SQLite store (`mnemos/graph.py`).
+- ~200 drawer-related tests.
+- `mnemos-mine-llm` and `mnemos-compare-palaces` skills.
+
+### Migration
+See [README "Migration: v0.x → v1.0"](README.md#migration-v0x--v10).
+
+### Pre-v1.0 paradigm preservation
+- Branch `legacy/atomic-paradigm` and tag `v0.4.0-archived` preserve full
+  v0.x source. Pin `pip install mnemos-dev==0.3.3` for stable v0.x.
+
 ## [0.3.3] — 2026-04-19 — Post-v0.3.2 cleanup
 
 **Goal:** Close four deferred follow-ups flagged during the v0.3.1 and v0.3.2 pilots so the tree is green and user-visible friction is gone before Phase 1 work starts. No new features — only fixes to UX, test-suite reliability, and cross-backend score presentation.
