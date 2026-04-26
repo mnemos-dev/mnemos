@@ -51,6 +51,25 @@ class RefineConfig:
     min_user_turns: int = 3
 
 
+@dataclass
+class BriefingConfig:
+    """SessionStart briefing knobs — readiness gate, surfacing, cross-check."""
+
+    readiness_pct: int = 60
+    show_systemmessage: bool = True
+    enforce_consistency: bool = True
+
+
+@dataclass
+class IdentityConfig:
+    """Identity bootstrap/refresh thresholds."""
+
+    bootstrap_threshold_pct: int = 25
+    auto_refresh: bool = True
+    refresh_session_delta: int = 10
+    refresh_min_days: int = 7
+
+
 # ---------------------------------------------------------------------------
 # Main config dataclass
 # ---------------------------------------------------------------------------
@@ -107,6 +126,8 @@ class MnemosConfig:
 
     # v1.1 nested config sections
     refine: RefineConfig = field(default_factory=RefineConfig)
+    briefing: BriefingConfig = field(default_factory=BriefingConfig)
+    identity: IdentityConfig = field(default_factory=IdentityConfig)
 
     # ---------------------------------------------------------------------------
     # Derived path properties
@@ -226,6 +247,23 @@ def load_config(vault_path: Optional[str] = None) -> MnemosConfig:
             per_session=int(refine_raw.get("per_session", 3)),
             direction=str(refine_raw.get("direction", "newest")),
             min_user_turns=int(refine_raw.get("min_user_turns", 3)),
+        )
+
+    briefing_raw = raw.get("briefing", {})
+    if isinstance(briefing_raw, dict):
+        cfg.briefing = BriefingConfig(
+            readiness_pct=int(briefing_raw.get("readiness_pct", 60)),
+            show_systemmessage=bool(briefing_raw.get("show_systemmessage", True)),
+            enforce_consistency=bool(briefing_raw.get("enforce_consistency", True)),
+        )
+
+    identity_raw = raw.get("identity", {})
+    if isinstance(identity_raw, dict):
+        cfg.identity = IdentityConfig(
+            bootstrap_threshold_pct=int(identity_raw.get("bootstrap_threshold_pct", 25)),
+            auto_refresh=bool(identity_raw.get("auto_refresh", True)),
+            refresh_session_delta=int(identity_raw.get("refresh_session_delta", 10)),
+            refresh_min_days=int(identity_raw.get("refresh_min_days", 7)),
         )
 
     return cfg
