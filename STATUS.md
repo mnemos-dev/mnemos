@@ -143,7 +143,7 @@ For early adopters: `pip install git+https://github.com/mnemos-dev/mnemos@v1.0.0
    - Re-test `C:\Projeler\Satın Alma\procuretrack` (now 2nd visit, SUB-B1 should brief)
    - Test `C:\Projeler\mnemos` (rich Sessions, briefing should pivot summary)
    - Test `C:\Users\tugrademirors\OneDrive\Masaüstü\Claude Çalışma Dosyası` (5 backfilled Sessions)
-3. **PyPI alpha publish** (deferred until validated): `python -m twine upload C:/Projeler/mnemos-v1.0/dist/mnemos_dev-1.0.0a1*`
+3. **PyPI alpha publish** (deferred until validated; v1.1 likely supersedes v1.0.0a1 publish): `python -m twine upload C:/Projeler/mnemos-v1.1/dist/mnemos_dev-1.0.0a1*` (rebuild from current worktree)
 4. **GitHub pre-release create**: `gh release create v1.0.0a1 --prerelease --title "v1.0.0a1 — Narrative-First Pivot Alpha" --notes-file CHANGELOG.md dist/mnemos_dev-1.0.0a1*`
 
 ### Known caveats
@@ -156,6 +156,13 @@ For early adopters: `pip install git+https://github.com/mnemos-dev/mnemos@v1.0.0
 ## 4. Next session starts here (post-`/clear`, 2026-04-26)
 
 **v1.1.0 design + implementation plan COMPLETE. Implementation NOT started.**
+
+**🌳 Worktree migration completed (2026-04-26):**
+- `feature/v1.0-pivot` → merged to `main` via `fe1837f` (resolves STATUS+ROADMAP conflicts; main now reflects v1.0.0a1 alpha + bg-catchup hotfix + v1.1 design+plan)
+- New `feature/v1.1.0` branch + worktree at **`C:/Projeler/mnemos-v1.1`** (this directory)
+- Editable install reinstalled: `mnemos` package now resolves to `C:/Projeler/mnemos-v1.1/mnemos/__init__.py`
+- Old `C:/Projeler/mnemos-v1.0` worktree (feature/v1.0-pivot branch) STILL EXISTS as backup; can be removed later via `git worktree remove C:/Projeler/mnemos-v1.0`
+- Implementation paths in this STATUS + spec + plan reference `C:/Projeler/mnemos-v1.1`
 
 Bugünkü oturumun sonunda:
 1. v1.0 bug fix shipped — `recall_briefing.py` re-entry guard `--catchup`
