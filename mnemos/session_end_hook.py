@@ -186,8 +186,147 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _parse_worker_args(argv: list[str]):
+    p = argparse.ArgumentParser(add_help=False)
+    p.add_argument("--worker", action="store_true")
+    p.add_argument("--transcript", default="")
+    p.add_argument("--cwd", default="")
+    p.add_argument("--vault", default="")
+    ns, _ = p.parse_known_args(argv)
+    return ns
+
+
+def _run_refine(transcript: str) -> None:
+    """Sync refine via /mnemos-refine-transcripts skill subprocess."""
+    cmd = [
+        "claude", "--print", "--dangerously-skip-permissions",
+        "--model", "sonnet",
+        f"/mnemos-refine-transcripts {transcript}",
+    ]
+    subprocess.call(
+        cmd,
+        env=_child_env(),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def _run_brief_regen(cwd: str) -> None:
+    """Sync brief regen via /mnemos-briefing skill subprocess."""
+    cmd = [
+        "claude", "--print", "--dangerously-skip-permissions",
+        "--model", "sonnet",
+        f"/mnemos-briefing {cwd}",
+    ]
+    subprocess.call(
+        cmd,
+        env=_child_env(),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def _run_identity_refresh_if_due(vault: Path) -> None:
+    """Fire /mnemos-identity-refresh when delta + min-days gates both pass."""
+    from mnemos.config import load_config
+    cfg = load_config(str(vault))
+    if not cfg.identity.auto_refresh:
+        return
+
+    identity_path = vault / "_identity" / "L0-identity.md"
+    if not identity_path.exists():
+        return  # Identity not bootstrapped — refresh has nothing to update
+
+    text = identity_path.read_text(encoding="utf-8", errors="replace")
+    import re
+    m = re.search(r"session_count_at_refresh:\s*(\d+)", text)
+    last_count = int(m.group(1)) if m else 0
+    sessions_dir = vault / "Sessions"
+    current_count = (
+        sum(1 for _ in sessions_dir.glob("*.md")) if sessions_dir.exists() else 0
+    )
+    delta = current_count - last_count
+    if delta < cfg.identity.refresh_session_delta:
+        return
+
+    m_lr = re.search(r"last_refreshed:\s*(\S+)", text)
+    if m_lr:
+        from datetime import datetime, timezone
+        try:
+            last_refreshed = datetime.fromisoformat(
+                m_lr.group(1).replace("Z", "+00:00")
+            )
+            elapsed_days = (
+                (datetime.now(timezone.utc) - last_refreshed).total_seconds() / 86400
+            )
+            if elapsed_days < cfg.identity.refresh_min_days:
+                return
+        except (ValueError, TypeError):
+            pass  # Malformed timestamp — proceed; better to refresh than skip
+
+    cmd = [
+        "claude", "--print", "--dangerously-skip-permissions",
+        "--model", "sonnet",
+        "/mnemos-identity-refresh",
+    ]
+    subprocess.call(
+        cmd,
+        env=_child_env(),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
 def worker_main(argv: list[str]) -> int:
-    """Worker entry — placeholder until Task 7.3."""
+    """3-stage sequential pipeline: refine -> brief regen -> identity refresh.
+
+    Each stage is wrapped in its own try/except: a failure in one continues
+    into the next so partial progress is preserved (e.g. brief regen still
+    fires even if refine failed).
+    """
+    ns = _parse_worker_args(argv)
+    if not ns.transcript or not ns.cwd or not ns.vault:
+        return 0
+    vault = Path(ns.vault)
+    if not vault.exists():
+        return 0
+
+    # Best-effort flock so two SessionEnd workers (e.g. simultaneous /exit
+    # and X-close) don't pile up on the same vault.
+    lock = None
+    try:
+        import filelock
+        lock = filelock.FileLock(str(vault / WORKER_LOCK), timeout=0.1)
+        try:
+            lock.acquire(timeout=0.1)
+        except filelock.Timeout:
+            return 0
+    except ImportError:
+        lock = None
+
+    try:
+        try:
+            _run_refine(ns.transcript)
+        except Exception:
+            pass
+        try:
+            _run_brief_regen(ns.cwd)
+        except Exception:
+            pass
+        try:
+            _run_identity_refresh_if_due(vault)
+        except Exception:
+            pass
+    finally:
+        if lock is not None:
+            try:
+                lock.release()
+            except Exception:
+                pass
+
     return 0
 
 
