@@ -34,5 +34,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      - name: Verify no Anthropic API calls (v1.1 architectural rule)
+        shell: bash
+        run: |
+          set +e
+          matches=$(grep -rn "anthropic\.Anthropic\|from anthropic" mnemos/ skills/ \
+            --include="*.py" --include="*.md" 2>/dev/null \
+            | grep -v "# noqa: no-api")
+          if [ -n "$matches" ]; then
+            echo "::error::Direct Anthropic API call detected. Mnemos uses subscription quota only."
+            echo "$matches"
+            exit 1
+          fi
+          echo "No-API check passed."
+
       - name: Run default test suite (skips `slow` marker)
         run: pytest tests/ -q
