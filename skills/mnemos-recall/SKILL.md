@@ -84,8 +84,8 @@ cheap and representative.
 
 Default threshold: **0.015** (k=60 RRF scoring).
 
-**Calibration note:** This threshold was calibrated (kalibre edildi)
-on the kasamd vault (sqlite-vec backend, ~78 Sessions). New vaults may
+**Calibration note:** This threshold was calibrated on the kasamd vault
+(sqlite-vec backend, ~78 Sessions). New vaults may
 behave differently; ChromaDB vs sqlite-vec score distributions can
 vary. The threshold is soft — if scores fall below it, the skill
 falls through to Sessions grep rescue (Step 7) which usually recovers
@@ -108,9 +108,9 @@ did load — do not retry the search.
 
 If **zero** drawers are readable across the top 8, emit:
 
-    Index-filesystem uyumsuzluğu var — palace'ta bu sorguyla eşleşen
-    drawer'lar için `.md` dosyaları bulunamadı. `mnemos mine --rebuild`
-    ile indexi yenileyin.
+    Index-filesystem mismatch — no `.md` files were found in the palace
+    for the drawers matching this query. Refresh the index with
+    `mnemos mine --rebuild`.
 
 And stop.
 
@@ -130,13 +130,15 @@ Write a 150-300 word narrative answering the user's question. Rules:
   `[[po-kenar-pdf]]` or similar).
 - **Prose paragraphs.** No headers unless the answer genuinely spans
   multiple halls (decisions + problems + events) and structure helps.
-- **No hedging.** Skip "sanırım", "umarım", "I think". If the drawers
-  are thin on a specific detail, say so ("drawer'larda X konusunda
-  açık kayıt yok") rather than filling gaps with guesses.
+- **No hedging.** Skip "I think", "I guess", "I hope" (and Turkish
+  equivalents like "sanırım", "umarım"). If the drawers are thin on a
+  specific detail, say so ("the drawers have no clear record on X" — in
+  the query language) rather than filling gaps with guesses.
 - **Single drawer.** If exactly one drawer was successfully read,
-  synthesize normally but end the answer with this sentence:
-  "Bu konuda palace'ta tek kayıt var; daha fazla bağlam için `mnemos
-  mine` ile indeksi genişletebilirsin."
+  synthesize normally but end the answer with a sentence like:
+  "There is only one record on this topic in the palace; for more
+  context you can extend the index with `mnemos mine`." (Translate
+  this sentence into the query language if the query is not English.)
 
 ### Step 7 — Sessions grep rescue (fallback before giving up)
 
@@ -182,8 +184,10 @@ Session filenames start `YYYY-MM-DD-...`).
 
 **6. Otherwise: pick top 3 Session files by score.**
 `Read` each fully (they are ~5-15 KB — small enough). Focus synthesis on
-their `Özet`, `Alınan Kararlar`, `Sorunlar`, `Sonraki Adımlar` sections
-(markdown `##` headers in Turkish refined sessions).
+their `Özet` (Summary), `Alınan Kararlar` (Decisions), `Sorunlar`
+(Problems), `Sonraki Adımlar` (Next Steps) sections (markdown `##`
+headers in Turkish refined sessions; English sessions use the English
+header names).
 
 **7. Synthesize narrative answer (same rules as Step 6 drawer path).**
 150-300 words, query language, cite as `[[session-slug]]` where
@@ -193,9 +197,12 @@ wikilinks but uses the same `[[...]]` syntax).
 
 **8. Append a one-line attribution footer to the narrative:**
 
-    _Drawer index'te doğrudan match yoktu; bu cevap Session
-    dosyalarından sentezlendi — konu henüz ayrı drawer'a
-    ayrıştırılmamış olabilir._
+    _No direct match in the drawer index; this answer was synthesized
+    from Session files — the topic may not yet be split into its own
+    drawer._
+
+(Render the footer in the query language. The example above is the
+English version; if the query is Turkish, write it in Turkish.)
 
 This tells the reader: the answer is grounded in refined conversation
 summaries, not distilled drawers, and that a `mnemos mine Sessions/`
@@ -204,44 +211,47 @@ run might promote the detail into a proper drawer.
 ### Step 8 — Soft fallback (no match anywhere)
 
 Triggered when both the drawer path (Step 5-6) and the Sessions rescue
-(Step 7) came up empty. Output format:
+(Step 7) came up empty. Output format (render in the query language;
+example below is English):
 
-    Buna dair net kayıt bulamadım. En yakın 3 drawer:
+    I could not find a clear record of this. Closest 3 drawers:
 
     1. [[<slug-of-hit-1>]] (score=X.XX, wing=<wing>, hall=<hall>)
        <one-line snippet>
     2. [[<slug-of-hit-2>]] ...
     3. [[<slug-of-hit-3>]] ...
 
-    Bu sorgu için ne drawer index'te ne de Sessions grep'inde özel kayıt
-    bulundu. Yukarıdakilerden biri ilgili olabilir.
+    Neither the drawer index nor the Sessions grep returned a specific
+    record for this query. One of the above may be relevant.
 
 If there are fewer than 3 drawer hits, list what you have. If there are
-**zero** drawer hits at all, emit:
+**zero** drawer hits at all, emit (in the query language):
 
-    Palace'ta hiçbir drawer arama kriterine uymadı ve Sessions grep'i de
-    boş döndü. Palace boşsa `mnemos mine Sessions/` ile başlayabilirsin.
+    No drawer in the palace matched the search criteria and the Sessions
+    grep was also empty. If the palace is empty, you can start with
+    `mnemos mine Sessions/`.
 
 ## Errors
 
 - **No arguments (`/mnemos-recall` alone):**
 
-      Kullanım: /mnemos-recall <soru>
-      Örnek: /mnemos-recall "PO skill formatı neydi"
+      Usage: /mnemos-recall <question>
+      Example: /mnemos-recall "what was the PO skill format"
 
-      Cwd-bazlı otomatik briefing'in kapsamadığı cross-context sorgular
-      için. Otomatik briefing session başında sessizce yükleniyor —
-      explicit recall'u yalnızca onunla cevaplanmayan soru için çağır.
+      For cross-context queries not covered by the cwd-based auto-briefing.
+      The auto-briefing loads silently at session start — invoke explicit
+      recall only for questions it does not answer.
 
 - **Mnemos not connected (no `mnemos_search` tool):**
 
-      Mnemos MCP bağlı değil. `mnemos init --vault <path>` ile kurulumu
-      tamamla, Claude Code'u yeniden başlat, sonra bu skill'i çağır.
+      Mnemos MCP is not connected. Complete setup with
+      `mnemos init --vault <path>`, restart Claude Code, then invoke
+      this skill.
 
 ## Cost
 
-Skill current Claude Code session'ının içinde çalışır — `claude --print`
-spawn etmez, ayrı bir oturum açmaz.
+The skill runs inside the current Claude Code session — it does not spawn
+`claude --print` or open a separate session.
 
 Typical happy-path (strong drawer match): 1 MCP call (<50ms) + 5 `Read`
 (<20ms) + ~5-15K input token + ~500-1000 output token. One turn.

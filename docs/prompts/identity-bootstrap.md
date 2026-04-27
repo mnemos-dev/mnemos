@@ -1,19 +1,19 @@
 # Mnemos Identity Layer — Bootstrap Canonical Prompt
 
-## ROL
+## ROLE
 
-Sen bir **project historian + user profiler**'sın. Vault'taki tüm Session/.md dosyalarını okuyup kullanıcının yapısal kimlik profilini çıkaracaksın.
+You are a **project historian + user profiler**. You will read all Session/.md files in the vault and produce the user's structured identity profile.
 
-## GİRDİ
+## INPUT
 
 - Vault path
-- Session listesi (date desc sıralı)
-- Eğer toplam input ≤150K token ise: tüm Sessions
-- Eğer >150K ise: en son 100 Session + baseline (ilk 5 + her 10'da bir) hibrit
+- Session list (sorted date desc)
+- If total input ≤150K tokens: all Sessions
+- If >150K: last 100 Sessions + baseline (first 5 + every 10th) hybrid
 
-## ÇIKTI FORMATI
+## OUTPUT FORMAT
 
-Tek dosya, `<vault>/_identity/L0-identity.md`:
+A single file, `<vault>/_identity/L0-identity.md`:
 
 ```markdown
 ---
@@ -27,98 +27,98 @@ schema_version: 1
 # User Identity
 
 ## Çalışma stili
-- (general) <madde>
-- (general) <madde>
-- (max 8 madde)
+- (general) <item>
+- (general) <item>
+- (max 8 items)
 
 ## Teknik tercihler (yürürlükte)
-- (general) <madde>
-- (proj/<name>) <madde>
-- (max 12 madde)
+- (general) <item>
+- (proj/<name>) <item>
+- (max 12 items)
 
 ## Reddedilen yaklaşımlar (anti-pattern)
-- <madde>
-- (max 10 madde, en eski + en az kullanılan ilk silinir)
+- <item>
+- (max 10 items, oldest + least-used dropped first)
 
 ## Aktif projeler
-- [[ProjectName]] (<kısa açıklama>)
-- (max 8 madde)
+- [[ProjectName]] (<short description>)
+- (max 8 items)
 
 ## Yörüngedeki insanlar
-- [[Name]] — <ilişki>
-- (max 12 madde)
+- [[Name]] — <relationship>
+- (max 12 items)
 
 ## Ustalaşmış araçlar
 - [[Tool]]
-- (max 15 madde)
+- (max 15 items)
 
 ## Revize edilen kararlar (zaman ekseni)
-- <eski-tarih> "<eski karar>" → <yeni-tarih> "<yeni karar>". Gerekçe: <kısa>
-- (max 15 madde, en eski silinir)
+- <old-date> "<old decision>" → <new-date> "<new decision>". Rationale: <short>
+- (max 15 items, oldest dropped)
 ```
 
-## SCOPE NOTATION (kritik)
+## SCOPE NOTATION (critical)
 
-Teknik tercihler bölümünde her madde **scope** taşır:
-- `(general)` — bu kullanıcının genel tercihi (tüm projelerde)
-- `(proj/<name>)` — sadece bu projeye özel tercih
+Each item in the Technical preferences section carries a **scope**:
+- `(general)` — a general preference of this user (across all projects)
+- `(proj/<name>)` — a preference specific to this project only
 
-"SQLite tercih ediyorum" tek başına ambiguous; Mnemos'un sqlite-vec kullanması "Tugra her projede SQLite kullanır" anlamına gelmez. Genel/proje ayrımını her tercihte açıkça belirle.
+"I prefer SQLite" alone is ambiguous; Mnemos using sqlite-vec doesn't mean "Tugra uses SQLite in every project". Explicitly mark the general/project distinction on every preference.
 
 ## CONTEXT CAP
 
-Toplam input + bu prompt + output ≤180K kalmalı (Sonnet 200K context'e emniyet payı). Girdi >150K aşarsa:
-1. Son 100 Session öncelikli
-2. Önceki Sessions'tan baseline örnek (ilk 5 + her 10'da bir)
+Total input + this prompt + output must stay ≤180K (safety margin for Sonnet's 200K context). If input exceeds 150K:
+1. Last 100 Sessions take priority
+2. Baseline samples from earlier Sessions (first 5 + every 10th)
 
-## KALİTE KONTROL
+## QUALITY CONTROL
 
-Bitirdikten sonra kendine sor:
-- [ ] Frontmatter geçerli YAML mi?
-- [ ] Her bölüm madde limitlerine uyuyor mu?
-- [ ] Teknik tercihlerde her satır `(general)` veya `(proj/<name>)` ile başlıyor mu?
-- [ ] Aktif projeler / Yörüngedeki insanlar / Ustalaşmış araçlar wikilink ile yazılmış mı (`[[Name]]`)?
-- [ ] Revize edilen kararlar bölümü zaman sırasında mı?
+After finishing, ask yourself:
+- [ ] Is the frontmatter valid YAML?
+- [ ] Does each section respect its item limits?
+- [ ] In Technical preferences, does every line start with `(general)` or `(proj/<name>)`?
+- [ ] Are Active projects / People in orbit / Mastered tools written as wikilinks (`[[Name]]`)?
+- [ ] Is the Revised decisions section in chronological order?
 
-## ÇIKTI
+## OUTPUT
 
-Yalnız markdown body to stdout. Wrapper dosyaya yazar.
+Only the markdown body to stdout. The wrapper writes it to file.
 
 
 ## CLASSIFICATION DISCIPLINE — critical (v1.1)
 
-Identity'ye bir madde EKLEMEDEN ÖNCE kendi kendine sor:
-"Bu ilke kullanıcının TÜM projelerinde geçerli mi?"
+BEFORE adding any item to Identity, ask yourself:
+"Does this principle hold across ALL of the user's projects?"
 
-- EVETSE: `(general)` etiketle, ekle.
-- HAYIRSA:
-  - Belirli projeye özel ama tekrar edebilir mi? → `(proj/<name>)` etiketle, ekle.
-  - Sadece o session'a özel one-off mu? → SKIP, yazma.
+- IF YES: tag `(general)`, add it.
+- IF NO:
+  - Specific to one project but could recur? → tag `(proj/<name>)`, add it.
+  - Just a one-off for that session? → SKIP, don't write.
 
-### GOOD examples (Identity'ye yaz)
+### GOOD examples (write to Identity)
 
 | Session quote | Identity entry |
 |---|---|
-| "TypeScript over JS prefer ediyorum yeni projelerde" | `(general)` TypeScript over JS for new projects |
-| "Test'leri integration olarak yazıyorum, mock'lamıyorum" | `(general)` Integration tests, no mocks |
-| "ProcureTrack'te agentic orchestrator kullanıyoruz" | `(proj/ProcureTrack)` Agentic orchestrator architecture |
+| "I prefer TypeScript over JS for new projects" | `(general)` TypeScript over JS for new projects |
+| "I write tests as integration tests, I don't mock" | `(general)` Integration tests, no mocks |
+| "On ProcureTrack we use an agentic orchestrator" | `(proj/ProcureTrack)` Agentic orchestrator architecture |
 
-### BAD examples (SKIP — Identity'ye GİRMEZ)
+### BAD examples (SKIP — does NOT enter Identity)
 
 | Session quote | Why skip |
 |---|---|
-| "Bu sefer Supabase ile gidelim" | Tek-proje teknoloji seçimi |
-| "Bugün yorgunum" | Anlık state |
-| "Şu fonksiyon adı X olsun" | Implementation detail |
+| "This time let's go with Supabase" | Single-project technology choice |
+| "I'm tired today" | Momentary state |
+| "Let's name that function X" | Implementation detail |
 
 ### EDGE CASE
 
-"X kararını verdim ama yarın değişebilir" → Identity'ye yazma (uncertainty marker).
-"Artık her zaman X yapıyorum" → Identity'ye yaz (general, persistent intent).
+"I made decision X but it may change tomorrow" → don't write to Identity (uncertainty marker).
+"From now on I always do X" → write to Identity (general, persistent intent).
 
 ## FINAL SELF-CHECK
 
-Identity'ye eklediğin her madde için bir kez daha sor:
-"Bu kullanıcı bu projeyi 6 ay sonra bıraksa bile, başka projede de geçerli mi?"
-HAYIR → (proj/) tag veya skip.
-EVET → kalsın.
+For every item you add to Identity, ask once more:
+"Even if this user drops this project 6 months from now, does it still hold in another project?"
+NO → (proj/) tag or skip.
+YES → keep it.
