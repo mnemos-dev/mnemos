@@ -2,7 +2,7 @@
 
 All notable changes to Mnemos are documented here.
 
-## v1.1.0 — SessionEnd-Driven Memory (TBD release date)
+## v1.1.0 — SessionEnd-Driven Memory (2026-04-27)
 
 Spec: [`docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md`](docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md)
 Plan: [`docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md`](docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md)
