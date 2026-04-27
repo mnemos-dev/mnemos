@@ -1,9 +1,9 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-26 — v1.1.0 implementation **complete** (G1-G11+G13.1-G13.3, ~50 commits since `9974437`; **527 test pass / 2 skip / 3 deselect** vs 455 v1.0 baseline = +72 tests). Wheel + sdist built (`dist/mnemos_dev-1.1.0*`) and clean-venv install + CLI smoke verified. **Pending:** 🟡 G12 empirical validation on kasamd (real /exit + X-close lifecycle smokes) + 🟡 G13.4 PyPI publish + GitHub release.
-**Stable PyPI version:** `v0.3.3` (v0.x atomic-paradigm — still default `pip install mnemos-dev`)
-**Alpha:** `v1.0.0a1` — tag pushed to GitHub, **not** yet uploaded to PyPI (superseded by v1.1.0 work; alpha tag stays as historical marker)
-**Next:** `v1.1.0` — SessionEnd-driven memory architecture, code-complete locally; awaiting empirical validation + publish
+**Last updated:** 2026-04-27 — v1.1.0 **shipped to GitHub** ([release tag](https://github.com/mnemos-dev/mnemos/releases/tag/v1.1.0)). G12 empirical validation **passed** (Test A graceful /exit, Test B briefing inject, Test C X-close sync fallback — all green on kasamd). Merge `ebee2f4` to main; 527 pass / 2 skip / 3 deselect. 🟡 **Pending user action:** G13.4 PyPI publish (`python -m twine upload dist/mnemos_dev-1.1.0*`) — deferred 24h for extra observation per staged-rollout preference.
+**Stable PyPI version:** `v0.3.3` (v0.x atomic-paradigm — still default `pip install mnemos-dev` until v1.1.0 PyPI upload)
+**Alpha:** `v1.0.0a1` — tag pushed to GitHub, never uploaded to PyPI (superseded by v1.1.0)
+**Released:** `v1.1.0` — SessionEnd-driven memory architecture, GitHub release live, PyPI pending
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 **v1.0 spec:** [`docs/specs/2026-04-25-v1.0-narrative-pivot-design.md`](docs/specs/2026-04-25-v1.0-narrative-pivot-design.md) · **v1.0 plan:** [`docs/plans/2026-04-25-v1.0-narrative-pivot.md`](docs/plans/2026-04-25-v1.0-narrative-pivot.md)
 **v1.1 spec:** [`docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md`](docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md) · **v1.1 plan:** [`docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md`](docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md)
