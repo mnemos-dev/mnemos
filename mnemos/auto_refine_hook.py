@@ -195,13 +195,14 @@ def main(argv: list[str] | None = None) -> int:
             ACTIVE_SESSIONS_DIR,
             compute_backlog,
             get_active_transcript_paths,
-            pick_recent_jsonls,
+            pick_jsonls,
             read_status_phase,
             register_active_session,
             resolve_ledger_path,
             should_show_reminder,
             write_status,
         )
+        from mnemos.config import load_config
         from mnemos.pending import load as pending_load
     except ModuleNotFoundError:
         return 0
@@ -221,7 +222,8 @@ def main(argv: list[str] | None = None) -> int:
     if self_transcript:
         active_paths.add(self_transcript)
 
-    picked = pick_recent_jsonls(projects_dir, ledger, n=3, exclude=active_paths)
+    cfg = load_config(str(vault))
+    picked = pick_jsonls(cfg, projects_dir, ledger, exclude=active_paths)
     backlog = compute_backlog(projects_dir, ledger, active_paths=active_paths)
 
     today = datetime.now(timezone.utc)

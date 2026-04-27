@@ -31,3 +31,13 @@ def test_cli_identity_show_emits_content(tmp_path):
     )
     assert result.returncode == 0
     assert "Test Identity Profile" in result.stdout
+
+
+def test_cli_identity_bootstrap_accepts_force_flag():
+    """`mnemos identity bootstrap --help` advertises a --force flag."""
+    result = subprocess.run(
+        ["python", "-m", "mnemos.cli", "identity", "bootstrap", "--help"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0
+    assert "--force" in result.stdout

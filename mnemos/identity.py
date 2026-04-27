@@ -25,25 +25,63 @@ _CONTEXT_CAP_TOKENS = 150_000
 _CANONICAL_PROMPT_PATH = Path(__file__).parent.parent / "docs" / "prompts" / "identity-bootstrap.md"
 
 
-def bootstrap(vault: Path, model: str = "sonnet") -> Path:
+def _count_eligible_jsonls_for_bootstrap(vault: Path) -> int:
+    """Wrapper: count eligible JSONLs across all projects.
+
+    Indirected so tests can monkey-patch a fixed count without spinning up a
+    fake ~/.claude/projects tree.
+    """
+    from mnemos.config import load_config
+    from mnemos.readiness import count_eligible_jsonls
+
+    cfg = load_config(str(vault))
+    projects = Path.home() / ".claude" / "projects"
+    return count_eligible_jsonls(projects, min_user_turns=cfg.refine.min_user_turns)
+
+
+def bootstrap(vault: Path, model: str = "sonnet", force: bool = False) -> Path:
     """Generate <vault>/_identity/L0-identity.md from all Sessions.
 
     Args:
         vault: Mnemos vault root.
         model: claude --print model (sonnet | opus).
+        force: Bypass the readiness eligibility gate. Use only when the user
+            explicitly opts in (e.g. ``--force``); CI / automation should
+            never set this implicitly.
 
     Returns:
         Path to the written L0-identity.md.
 
     Raises:
-        IdentityError: if vault has no sessions or LLM invocation fails.
+        IdentityError: if vault has no sessions, readiness is below the
+            configured threshold (and ``force`` is False), or LLM invocation
+            fails.
     """
+    from mnemos.config import load_config
+    from mnemos.readiness import compute_readiness_pct, count_refined_sessions
+
+    cfg = load_config(str(vault))
+    threshold = cfg.identity.bootstrap_threshold_pct
+
     sessions_dir = vault / "Sessions"
     if not sessions_dir.exists():
         raise IdentityError(f"no sessions found in {vault} (expected {sessions_dir})")
     sessions = sorted(sessions_dir.glob("*.md"), key=lambda p: p.name, reverse=True)
     if not sessions:
         raise IdentityError(f"no sessions in {sessions_dir}")
+
+    if not force:
+        refined = count_refined_sessions(vault)
+        eligible = _count_eligible_jsonls_for_bootstrap(vault)
+        pct = compute_readiness_pct(refined, eligible)
+        if pct < threshold:
+            raise IdentityError(
+                f"Identity bootstrap not yet eligible.\n"
+                f"  Refined: {refined} sessions ({pct:.1f}%)\n"
+                f"  Eligible JSONLs: {eligible}\n"
+                f"  Threshold: {threshold}%\n"
+                f"Refine more with hook (open more sessions) or run with --force to override."
+            )
 
     # Apply context cap
     selected = _select_sessions_with_cap(sessions)
@@ -172,7 +210,10 @@ def refresh(vault: Path, force: bool = False, model: str = "sonnet") -> Optional
     new_sessions = all_sessions[last_count:]
 
     if not force:
-        if len(new_sessions) < 10:
+        from mnemos.config import load_config
+
+        cfg = load_config(str(vault))
+        if len(new_sessions) < cfg.identity.refresh_session_delta:
             return None  # quantity gate
         if not _has_identity_relevant_new_tags(existing, new_sessions):
             return None  # relevance gate

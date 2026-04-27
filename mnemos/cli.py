@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -283,14 +284,27 @@ def cmd_init(args: argparse.Namespace) -> None:
     else:
         search_backend = _ask_backend_choice(lang=lang)
 
+    # --- v1.1 refine quota dialog ---
+    # Surface the subscription-quota cost up front so the user picks a
+    # sustainable per_session value before we write yaml.
+    try:
+        from mnemos.readiness import count_eligible_jsonls
+        projects_dir = Path.home() / ".claude" / "projects"
+        eligible_count = count_eligible_jsonls(projects_dir, min_user_turns=3)
+    except Exception:
+        eligible_count = 0
+    refine_settings = _init_refine_quota_dialog(vault_dir, eligible_count, lang=lang)
+
     # --- Build config ---
     config_data: dict = {
+        "schema_version": 2,
         "vault_path": vault_path,
         "languages": languages,
         "use_llm": use_llm,
         "search_backend": search_backend,
         "halls": list(HALLS_DEFAULT),
         "watcher_ignore": list(WATCHER_IGNORE_DEFAULT),
+        "refine": refine_settings,
     }
 
     # --- Write mnemos.yaml ---
@@ -352,6 +366,9 @@ def cmd_init(args: argparse.Namespace) -> None:
     # --- Recall-briefing hook: offer to install + flip recall_mode to skill ---
     _install_recall_hook_prompt(lang=lang, vault=Path(cfg.vault_path))
 
+    # --- v1.1: SessionEnd hook prompt ---
+    _init_prompt_install_end_hook(vault=Path(cfg.vault_path), lang=lang)
+
     # --- Phase 6 (v1.0 task 27): optional Identity Layer bootstrap. Runs at
     # the very end so the user has already seen / accepted hook + statusline
     # installs, and so a `claude --print` failure here can't strand the rest
@@ -375,6 +392,67 @@ def cmd_init(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 # Onboarding helpers (Phase 1–5 of `mnemos init`)
 # ---------------------------------------------------------------------------
+
+
+def _init_refine_quota_dialog(vault: Path, eligible_count: int, lang: str = "en") -> dict:
+    """v1.1 G10 Task 10.1: ask the user for refine pipeline knobs.
+
+    Returns a dict shaped for direct embedding in mnemos.yaml under the
+    ``refine:`` key — per_session / direction / min_user_turns. Each
+    prompt loops on invalid input.
+    """
+    from mnemos.i18n import t
+
+    print()
+    print(t("init.quota_warning_header", lang))
+    hours = (eligible_count / 45) * 5 if eligible_count else 0
+    print(t("init.quota_warning_body", lang, count=eligible_count, hours=hours))
+    print()
+
+    while True:
+        s = input(t("init.per_session_prompt", lang)).strip() or "3"
+        try:
+            per = int(s)
+            if 1 <= per <= 50:
+                break
+        except ValueError:
+            pass
+        print(t("init.invalid_per_session", lang))
+
+    while True:
+        s = input(t("init.direction_prompt", lang)).strip().lower() or "n"
+        if s in ("n", "newest"):
+            direction = "newest"
+            break
+        if s in ("o", "oldest"):
+            direction = "oldest"
+            break
+        print(t("init.invalid_direction", lang))
+
+    while True:
+        s = input(t("init.min_turns_prompt", lang)).strip() or "3"
+        try:
+            mut = int(s)
+            if 1 <= mut <= 10:
+                break
+        except ValueError:
+            pass
+        print(t("init.invalid_min_turns", lang))
+
+    return {"per_session": per, "direction": direction, "min_user_turns": mut}
+
+
+def _init_prompt_install_end_hook(vault: Path, lang: str = "en") -> None:
+    """v1.1 G10 Task 10.2: offer to install the SessionEnd hook at the end of init."""
+    from mnemos.i18n import t
+
+    answer = (input(t("init.end_hook_prompt", lang)).strip().lower() or "y")
+    if answer in ("y", "e", "yes", "evet"):
+        ns = argparse.Namespace(vault=str(vault), uninstall=False, v1=True)
+        cmd_install_end_hook(ns)
+        print(t("init.end_hook_done", lang))
+    else:
+        print(t("init.end_hook_skipped", lang))
 
 
 def _print_intro(lang: str = "en") -> None:
@@ -814,6 +892,191 @@ def cmd_install_hook(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_install_end_hook(args: argparse.Namespace) -> int:
+    """Install or uninstall the mnemos SessionEnd hook entry atomically.
+
+    Behavior:
+      - --v1 (install): adds a SessionEnd entry built by
+        ``mnemos.session_end_hook.build_hook_entry`` to
+        ~/.claude/settings.json. Idempotent — any pre-existing entry with
+        ``_managed_by == "mnemos-session-end"`` is replaced rather than
+        duplicated. A timestamped backup
+        ``settings.json.bak-YYYY-MM-DD-HHMM`` is taken before writing.
+      - --uninstall: removes the managed entry, leaves all other settings
+        and SessionEnd entries from other tools untouched.
+
+    Atomicity: the new content is written to a sibling ``.tmp`` file and
+    then ``os.replace``-d into place so an interrupted run never leaves
+    a half-written settings.json.
+    """
+    settings_path = _user_settings_path()
+    if not settings_path.exists():
+        print(
+            f"Error: settings.json not found at {settings_path}",
+            file=sys.stderr,
+        )
+        return 1
+
+    timestamp = datetime.now().strftime("%Y-%m-%d-%H%M")
+    candidate = settings_path.parent / f"settings.json.bak-{timestamp}"
+    n = 0
+    while candidate.exists():
+        n += 1
+        candidate = settings_path.parent / f"settings.json.bak-{timestamp}.{n}"
+    shutil.copy2(settings_path, candidate)
+
+    try:
+        data = json.loads(settings_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        print(f"Error: settings.json malformed ({exc})", file=sys.stderr)
+        return 1
+    if not isinstance(data, dict):
+        data = {}
+
+    hooks = data.setdefault("hooks", {})
+    se = hooks.setdefault("SessionEnd", [])
+    se[:] = [e for e in se if e.get("_managed_by") != "mnemos-session-end"]
+
+    if getattr(args, "uninstall", False):
+        if not se:
+            del hooks["SessionEnd"]
+        tmp = settings_path.with_suffix(".json.tmp")
+        tmp.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        tmp.replace(settings_path)
+        print(f"SessionEnd hook removed. Backup: {candidate.name}")
+        return 0
+
+    from mnemos.session_end_hook import build_hook_entry
+    entry = build_hook_entry(vault=args.vault)
+    se.append(entry)
+
+    tmp = settings_path.with_suffix(".json.tmp")
+    tmp.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    tmp.replace(settings_path)
+    print(f"SessionEnd hook installed (v1.1). Backup: {candidate.name}")
+    return 0
+
+
+def cmd_settings(args: argparse.Namespace) -> int:
+    """Numbered TUI for unified v1.1 configuration. Interactive edit loop.
+
+    Each iteration: render the menu, read a number (or 'q'), prompt for the
+    appropriate field input (with type-specific validation), apply via
+    apply_field_change, then save_config (which creates a timestamped
+    backup). Options 11-14 redirect to the dedicated install commands;
+    option 18 prints the per-cwd readiness breakdown; 19/20 trigger
+    identity bootstrap/refresh.
+    """
+    from mnemos.settings_tui import (
+        render_menu, validate_int, validate_bool, validate_choice,
+        apply_field_change,
+    )
+    from mnemos.config import load_config, save_config
+
+    vault = Path(args.vault) if getattr(args, "vault", None) else _resolve_vault_from_yaml()
+    if vault is None or not vault.exists():
+        print("Error: vault not found", file=sys.stderr)
+        return 1
+
+    while True:
+        print(render_menu(vault))
+        try:
+            choice = input("Choose option [1-20, q]: ").strip()
+        except EOFError:
+            return 0
+        if choice == "q":
+            return 0
+        try:
+            num = int(choice)
+        except ValueError:
+            print("Invalid input.")
+            continue
+        if num < 1 or num > 20:
+            print("Out of range.")
+            continue
+
+        cfg = load_config(str(vault))
+        ok, v, err = (False, None, "")
+
+        if num == 1:
+            ok, v, err = validate_int(input("New value (1-50): ").strip(), 1, 50)
+        elif num == 2:
+            ok, v, err = validate_choice(
+                input("Direction (newest/oldest): ").strip(), ["newest", "oldest"]
+            )
+        elif num == 3:
+            ok, v, err = validate_int(input("Min user turns (1-10): ").strip(), 1, 10)
+        elif num == 4:
+            ok, v, err = validate_int(input("Readiness % (0-100): ").strip(), 0, 100)
+        elif num in (5, 6, 8):
+            ok, v, err = validate_bool(input("true/false: ").strip())
+        elif num == 7:
+            ok, v, err = validate_int(input("Threshold % (0-100): ").strip(), 0, 100)
+        elif num == 9:
+            ok, v, err = validate_int(input("Session delta (1-100): ").strip(), 1, 100)
+        elif num == 10:
+            ok, v, err = validate_int(input("Min days (1-90): ").strip(), 1, 90)
+        elif num == 15:
+            ok, v, err = validate_choice(
+                input("Backend (chromadb/sqlite-vec): ").strip(),
+                ["chromadb", "sqlite-vec"],
+            )
+        elif num == 17:
+            ok, v, err = validate_choice(
+                input("Recall mode (script/skill): ").strip(), ["script", "skill"]
+            )
+        elif num in (11, 12, 13, 14):
+            print(
+                "Use mnemos install-hook / install-recall-hook / "
+                "install-end-hook / install-statusline."
+            )
+            continue
+        elif num == 16:
+            print("Languages are edited in mnemos.yaml directly.")
+            continue
+        elif num == 18:
+            from mnemos.settings_tui import format_per_cwd_breakdown
+            print(format_per_cwd_breakdown(vault))
+            try:
+                input("Press Enter to continue...")
+            except EOFError:
+                pass
+            continue
+        elif num == 19:
+            print("Running mnemos identity bootstrap --force ...")
+            from mnemos.identity import bootstrap
+            try:
+                p = bootstrap(vault, force=True)
+                print(f"Done: {p}")
+            except Exception as exc:
+                print(f"Error: {exc}")
+            continue
+        elif num == 20:
+            print("Running mnemos identity refresh --force ...")
+            from mnemos.identity import refresh
+            try:
+                p = refresh(vault, force=True)
+                print(f"Done: {p}" if p else "Refresh skipped.")
+            except Exception as exc:
+                print(f"Error: {exc}")
+            continue
+        else:
+            print(f"Field {num} not yet implemented.")
+            continue
+
+        if not ok:
+            print(f"Invalid: {err}")
+            continue
+
+        apply_field_change(cfg, num, v)
+        save_config(cfg)
+        print("Saved. (backup created)")
+
+
 def cmd_install_statusline(args: argparse.Namespace) -> None:
     """Install or uninstall the mnemos statusline snippet."""
     from mnemos.install_statusline import install_statusline
@@ -844,7 +1107,7 @@ def cmd_identity(args: argparse.Namespace) -> int:
     vault = Path(args.vault) if args.vault else _resolve_vault_from_yaml()
     try:
         if args.identity_action == "bootstrap":
-            path = bootstrap(vault, model=args.model)
+            path = bootstrap(vault, model=args.model, force=args.force)
             print(f"Identity layer created: {path}")
         elif args.identity_action == "refresh":
             if args.check:
@@ -1109,6 +1372,36 @@ def main(argv: list[str] | None = None) -> int:
     parser_install_hook.add_argument("--vault", default=None)
     parser_install_hook.set_defaults(func=cmd_install_hook)
 
+    # mnemos install-end-hook (v1.1) — atomic SessionEnd entry install/uninstall.
+    parser_install_end = subparsers.add_parser(
+        "install-end-hook",
+        help="Install/uninstall mnemos SessionEnd hook in ~/.claude/settings.json",
+    )
+    parser_install_end.add_argument(
+        "--vault",
+        default="",
+        help="Vault path (required for install; ignored for --uninstall)",
+    )
+    parser_install_end.add_argument(
+        "--v1",
+        action="store_true",
+        help="Install the v1.1 hook entry (explicit acknowledgement flag)",
+    )
+    parser_install_end.add_argument(
+        "--uninstall",
+        action="store_true",
+        help="Remove the managed entry instead of installing",
+    )
+    parser_install_end.set_defaults(func=cmd_install_end_hook)
+
+    # mnemos settings (v1.1) — unified TUI for tuning all v1.1 config sections.
+    parser_settings = subparsers.add_parser(
+        "settings",
+        help="Numbered TUI for unified v1.1 configuration",
+    )
+    parser_settings.add_argument("--vault", default=None)
+    parser_settings.set_defaults(func=cmd_settings)
+
     # ------------------------------------------------------------------
     # install-recall-hook — REMOVED in v1.0 (merged into install-hook --v1).
     # Pre-dispatched in main() so any flags (e.g. ``--vault``) get the
@@ -1136,6 +1429,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_bootstrap.add_argument("--vault", help="Vault path (default: from mnemos.yaml)")
     p_bootstrap.add_argument("--model", default="sonnet", choices=["sonnet", "opus"])
+    p_bootstrap.add_argument(
+        "--force",
+        action="store_true",
+        help="Bypass eligibility threshold (use cautiously)",
+    )
 
     p_refresh = identity_actions.add_parser("refresh", help="Incremental update")
     p_refresh.add_argument("--vault")
@@ -1239,6 +1537,15 @@ def main(argv: list[str] | None = None) -> int:
     # Special-case: install-hook returns an int (1 when --v1 missing in v1.0).
     if getattr(args, "command", None) == "install-hook":
         return cmd_install_hook(args)
+
+    # Special-case: install-end-hook returns an int (1 if settings.json absent
+    # or malformed; 0 on success).
+    if getattr(args, "command", None) == "install-end-hook":
+        return cmd_install_end_hook(args)
+
+    # Special-case: settings TUI returns an int (interactive loop).
+    if getattr(args, "command", None) == "settings":
+        return cmd_settings(args)
 
     if not hasattr(args, "func"):
         parser.print_help()

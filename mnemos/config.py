@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import os
+import shutil
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
@@ -38,6 +40,39 @@ _LEGACY_YAML_KEYS = (
 
 
 # ---------------------------------------------------------------------------
+# v1.1 nested config dataclasses
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class RefineConfig:
+    """Refinement pipeline knobs — how many JSONLs per session, direction, gate."""
+
+    per_session: int = 3
+    direction: str = "newest"  # "newest" | "oldest"
+    min_user_turns: int = 3
+
+
+@dataclass
+class BriefingConfig:
+    """SessionStart briefing knobs — readiness gate, surfacing, cross-check."""
+
+    readiness_pct: int = 60
+    show_systemmessage: bool = True
+    enforce_consistency: bool = True
+
+
+@dataclass
+class IdentityConfig:
+    """Identity bootstrap/refresh thresholds."""
+
+    bootstrap_threshold_pct: int = 25
+    auto_refresh: bool = True
+    refresh_session_delta: int = 10
+    refresh_min_days: int = 7
+
+
+# ---------------------------------------------------------------------------
 # Main config dataclass
 # ---------------------------------------------------------------------------
 
@@ -45,6 +80,10 @@ _LEGACY_YAML_KEYS = (
 @dataclass
 class MnemosConfig:
     """All configuration for a Mnemos instance."""
+
+    # Schema version — v1 yaml (no field) silently treated as v2 at load time;
+    # the on-disk file is never rewritten just to inject this field.
+    schema_version: int = 2
 
     # Core paths
     vault_path: str = ""
@@ -86,6 +125,11 @@ class MnemosConfig:
     # v1.0 narrative-first pivot — auto-refresh _identity on session boundaries
     # (default off; opt-in via yaml or `mnemos identity refresh --auto`).
     auto_identity_refresh: bool = False
+
+    # v1.1 nested config sections
+    refine: RefineConfig = field(default_factory=RefineConfig)
+    briefing: BriefingConfig = field(default_factory=BriefingConfig)
+    identity: IdentityConfig = field(default_factory=IdentityConfig)
 
     # ---------------------------------------------------------------------------
     # Derived path properties
@@ -164,6 +208,9 @@ def load_config(vault_path: Optional[str] = None) -> MnemosConfig:
     for legacy in _LEGACY_YAML_KEYS:
         raw.pop(legacy, None)
 
+    # Schema version: missing field → v1 yaml, treat as v2 (defaults stand).
+    cfg.schema_version = int(raw.get("schema_version", 2))
+
     # Scalar fields
     for scalar in (
         "palace_root",
@@ -195,4 +242,86 @@ def load_config(vault_path: Optional[str] = None) -> MnemosConfig:
     if "watcher_ignore" in raw:
         cfg.watcher_ignore = list(raw["watcher_ignore"])
 
+    # ---- v1.1 nested config sections -------------------------------------
+    refine_raw = raw.get("refine", {})
+    if isinstance(refine_raw, dict):
+        cfg.refine = RefineConfig(
+            per_session=int(refine_raw.get("per_session", 3)),
+            direction=str(refine_raw.get("direction", "newest")),
+            min_user_turns=int(refine_raw.get("min_user_turns", 3)),
+        )
+
+    briefing_raw = raw.get("briefing", {})
+    if isinstance(briefing_raw, dict):
+        cfg.briefing = BriefingConfig(
+            readiness_pct=int(briefing_raw.get("readiness_pct", 60)),
+            show_systemmessage=bool(briefing_raw.get("show_systemmessage", True)),
+            enforce_consistency=bool(briefing_raw.get("enforce_consistency", True)),
+        )
+
+    identity_raw = raw.get("identity", {})
+    if isinstance(identity_raw, dict):
+        cfg.identity = IdentityConfig(
+            bootstrap_threshold_pct=int(identity_raw.get("bootstrap_threshold_pct", 25)),
+            auto_refresh=bool(identity_raw.get("auto_refresh", True)),
+            refresh_session_delta=int(identity_raw.get("refresh_session_delta", 10)),
+            refresh_min_days=int(identity_raw.get("refresh_min_days", 7)),
+        )
+
     return cfg
+
+
+# ---------------------------------------------------------------------------
+# Saver — atomic write + timestamped backup
+# ---------------------------------------------------------------------------
+
+
+def save_config(cfg: MnemosConfig) -> None:
+    """Atomic write of mnemos.yaml v2 schema with .bak-YYYY-MM-DD-HHMM backup.
+
+    Strips removed v0.x keys (mine_mode, mining_sources, etc.) — only v2 fields
+    are emitted. The pre-existing file (if any) is copied to mnemos.yaml.bak-<ts>
+    before the new content replaces it; if the same minute fires twice, the
+    backup name gets a .N suffix so no snapshot is lost.
+    """
+    vault_root = Path(cfg.vault_path)
+    yaml_path = vault_root / "mnemos.yaml"
+
+    if yaml_path.exists():
+        timestamp = datetime.now().strftime("%Y-%m-%d-%H%M")
+        candidate = vault_root / f"mnemos.yaml.bak-{timestamp}"
+        n = 0
+        while candidate.exists():
+            n += 1
+            candidate = vault_root / f"mnemos.yaml.bak-{timestamp}.{n}"
+        shutil.copy2(yaml_path, candidate)
+
+    data = {
+        "schema_version": 2,
+        "search_backend": cfg.search_backend,
+        "recall_mode": cfg.recall_mode,
+        "languages": list(cfg.languages),
+        "refine": {
+            "per_session": cfg.refine.per_session,
+            "direction": cfg.refine.direction,
+            "min_user_turns": cfg.refine.min_user_turns,
+        },
+        "briefing": {
+            "readiness_pct": cfg.briefing.readiness_pct,
+            "show_systemmessage": cfg.briefing.show_systemmessage,
+            "enforce_consistency": cfg.briefing.enforce_consistency,
+        },
+        "identity": {
+            "bootstrap_threshold_pct": cfg.identity.bootstrap_threshold_pct,
+            "auto_refresh": cfg.identity.auto_refresh,
+            "refresh_session_delta": cfg.identity.refresh_session_delta,
+            "refresh_min_days": cfg.identity.refresh_min_days,
+        },
+    }
+
+    tmp = yaml_path.with_suffix(".yaml.tmp")
+    tmp.write_text(
+        yaml.safe_dump(data, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+    tmp.replace(yaml_path)

@@ -259,6 +259,88 @@ _STRINGS: Dict[str, Dict[str, str]] = {
         "en": "Skipped recall-briefing hook. You can install later with: mnemos install-recall-hook",
         "tr": "Recall-briefing hook atlandı. Sonra kurmak için: mnemos install-recall-hook",
     },
+    # ---------------- Settings TUI (v1.1 G9 task 9.7) ----------------
+    "settings.title": {
+        "en": "Mnemos Settings",
+        "tr": "Mnemos Ayarları",
+    },
+    "settings.refine_section": {
+        "en": "Refine pipeline:",
+        "tr": "Refine pipeline:",
+    },
+    "settings.briefing_section": {
+        "en": "Briefing:",
+        "tr": "Briefing:",
+    },
+    "settings.identity_section": {
+        "en": "Identity:",
+        "tr": "Identity:",
+    },
+    "settings.hooks_section": {
+        "en": "Hooks (settings.json managed):",
+        "tr": "Hooks (settings.json yönetilen):",
+    },
+    "settings.backend_section": {
+        "en": "Backend & locale:",
+        "tr": "Backend & dil:",
+    },
+    "settings.progress_section": {
+        "en": "--- Refinement Progress ---",
+        "tr": "--- Refine ilerlemesi ---",
+    },
+    # ---------------- Init refine quota + install-end-hook (v1.1 G10) ----
+    "init.quota_warning_header": {
+        "en": "Subscription quota reality check:",
+        "tr": "Abonelik kotası gerçeği:",
+    },
+    "init.quota_warning_body": {
+        "en": (
+            "  Eligible JSONLs: {count}. Each refine = 1 'claude --print' message.\n"
+            "  Pro tier ~45 messages / 5h -> ~{hours:.0f}h spread across sessions.\n"
+            "  The hook processes a batch each session start in the background."
+        ),
+        "tr": (
+            "  Uygun JSONL: {count}. Her refine = 1 'claude --print' mesajı.\n"
+            "  Pro tier ~45 mesaj / 5sa -> ~{hours:.0f}sa oturumlara yayılır.\n"
+            "  Hook her oturum başında bir batch'i arka planda işler."
+        ),
+    },
+    "init.per_session_prompt": {
+        "en": "JSONLs per session start [1-50, default 3]: ",
+        "tr": "Oturum başına refine sayısı [1-50, vars. 3]: ",
+    },
+    "init.direction_prompt": {
+        "en": "Direction [n=newest first | o=oldest first, default n]: ",
+        "tr": "Yön [n=en yeni once | o=en eski once, vars. n]: ",
+    },
+    "init.min_turns_prompt": {
+        "en": "Min user-turn threshold [1-10, default 3]: ",
+        "tr": "Min user-turn esigi [1-10, vars. 3]: ",
+    },
+    "init.invalid_per_session": {
+        "en": "Invalid; try 1-50.",
+        "tr": "Gecersiz; 1-50 araliginda dene.",
+    },
+    "init.invalid_direction": {
+        "en": "Invalid; try n or o.",
+        "tr": "Gecersiz; n veya o.",
+    },
+    "init.invalid_min_turns": {
+        "en": "Invalid; try 1-10.",
+        "tr": "Gecersiz; 1-10 araliginda dene.",
+    },
+    "init.end_hook_prompt": {
+        "en": "Install SessionEnd hook (refine + brief on /exit, ~40s detached)? [Y/n]: ",
+        "tr": "SessionEnd hook'u kurulsun mu (/exit'te refine + brief, ~40s detached)? [Y/h]: ",
+    },
+    "init.end_hook_skipped": {
+        "en": "Skipped. Run `mnemos install-end-hook --v1 --vault <path>` later.",
+        "tr": "Atlandi. Sonra: `mnemos install-end-hook --v1 --vault <yol>`",
+    },
+    "init.end_hook_done": {
+        "en": "SessionEnd hook installed.",
+        "tr": "SessionEnd hook kuruldu.",
+    },
 }
 
 

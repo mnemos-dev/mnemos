@@ -65,7 +65,9 @@ def test_bootstrap_creates_identity_file():
             "session_count_at_refresh: 3\nschema_version: 1\n---\n\n"
             "# User Identity\n\n## Çalışma stili\n- (general) Test stili\n"
         )
-        result = bootstrap(vault)
+        # force=True bypasses the v1.1 readiness gate; this test exercises the
+        # output-writing path, not the gate.
+        result = bootstrap(vault, force=True)
     identity_path = vault / "_identity" / "L0-identity.md"
     assert identity_path.exists()
     assert "User Identity" in identity_path.read_text(encoding="utf-8")
@@ -75,7 +77,7 @@ def test_bootstrap_creates_history_snapshot():
     vault = _make_test_vault(3)
     with patch("mnemos.identity._invoke_claude_print") as mock_invoke:
         mock_invoke.return_value = "---\ngenerated_from: 3 sessions\n---\n\n# User Identity\n"
-        bootstrap(vault)
+        bootstrap(vault, force=True)
     history_dir = vault / "_identity" / "_history"
     snapshots = list(history_dir.glob("*-bootstrap.md"))
     assert len(snapshots) == 1

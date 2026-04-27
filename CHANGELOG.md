@@ -2,6 +2,56 @@
 
 All notable changes to Mnemos are documented here.
 
+## v1.1.0 — SessionEnd-Driven Memory (2026-04-27)
+
+Spec: [`docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md`](docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md)
+Plan: [`docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md`](docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md)
+
+### Issue 1 — Refine pipeline configurability + Settings TUI
+- New `mnemos settings` numbered TUI for unified config (20 fields + refinement progress).
+- Configurable refine batch size (`refine.per_session`, default 3).
+- Configurable refine direction (`refine.direction`, default `newest`).
+- Configurable noise floor (`refine.min_user_turns`, default 3).
+- `mnemos init` now includes a quota dialog (subscription cost reality + per-session config) before writing yaml.
+
+### Issue 2 — Identity bootstrap + auto-refresh
+- Identity bootstrap eligibility gate (`identity.bootstrap_threshold_pct`, default 25%).
+- Auto-refresh from SessionEnd worker (`identity.auto_refresh`, `identity.refresh_session_delta`, `identity.refresh_min_days`).
+- New skill `mnemos-identity-refresh` for delta-based identity update.
+- Bootstrap + refresh prompts gain GOOD/BAD/EDGE classification examples + final self-check.
+
+### Issue 3 — Briefing readiness gate
+- New config: `briefing.readiness_pct` (default 60%) — below threshold the SessionStart inject path is silent (avoids anchoring the AI on partial history).
+
+### Issue 4 — Smart-layered revision-aware briefing
+- Briefing prompt rewritten as v3: previous brief as anchor + all-cwd Sessions decision-only + recent 5 sessions full body.
+- Revision detection: contradicting decisions explicitly marked in "Revize/iptal edilen kararlar".
+- Token budget raised to 25K hard cap with priority-driven truncation.
+
+### Issue 5 — In-session briefing usage
+- New config: `briefing.show_systemmessage` (default true) — visible "Mnemos: <cwd> briefing loaded · N sessions" line at session start.
+- New config: `briefing.enforce_consistency` (default true) — prepends a cross-check directive to additionalContext so Claude pauses when the user contradicts an established decision.
+
+### Architectural foundation
+- **NEW:** SessionEnd hook + detached worker (`mnemos.session_end_hook`).
+  - Hook returns under 100 ms (fits Claude Code's 5 s X-close grace window).
+  - Worker uses `CREATE_BREAKAWAY_FROM_JOB` (Windows) / `start_new_session` (POSIX) to survive Claude Code termination.
+  - 3-stage sequential pipeline: refine THIS transcript -> regen brief -> identity refresh check.
+- **NEW:** SessionStart sync fallback for missed SessionEnd cases (mid-stream X-close, kill -9).
+- **NEW:** CASE A first-visit vault-aware sync brief — if the vault already has Sessions for the cwd, brief inline instead of staying silent.
+- **NEW:** `mnemos install-end-hook` CLI (atomic install/uninstall, idempotent, surgical).
+- **NEW:** `mnemos/readiness.py` helpers — `count_eligible_jsonls`, `count_refined_sessions`, `compute_readiness_pct`, `per_cwd_readiness`.
+
+### Hard invariant
+**No Anthropic API calls anywhere.** All LLM operations route through `claude --print` subscription quota. CI grep enforces. `_child_env()` strips `ANTHROPIC_API_KEY` from every spawned subprocess.
+
+### Bug fixes
+- Re-entry guard placement regression coverage carried over from the v1.0 `a19cfb9` lesson — the SessionEnd worker has its own guard test ensuring `--worker` mode bypasses `HOOK_ACTIVE_ENV`.
+- Briefing junction `~/.claude/skills/mnemos-briefing` re-pointed at the v1.1 worktree path (post-migration cleanup) so the canonical-prompt zero-drift test no longer skips.
+
+### Test coverage
+- 65+ new tests; suite pass count grows from 455 (v1.0 baseline) to 527 with v1.1 G1-G10 implemented (G12 empirical validation pending).
+
 ## v1.0.0 — Narrative-First Pivot (2026-04-25)
 
 ### Breaking changes

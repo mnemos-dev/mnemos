@@ -135,6 +135,17 @@ def test_cmd_init_creates_recycled_directory(tmp_path, monkeypatch):
     # and stable regardless of the test machine's ~/.claude/projects state.
     monkeypatch.setattr("mnemos.onboarding.discover", lambda *_a, **_k: [])
 
+    # v1.1: bypass the new refine quota dialog + install-end-hook prompt
+    # so this test stays focused on the directory-structure invariant.
+    monkeypatch.setattr(
+        "mnemos.cli._init_refine_quota_dialog",
+        lambda *a, **kw: {"per_session": 3, "direction": "newest", "min_user_turns": 3},
+    )
+    monkeypatch.setattr(
+        "mnemos.cli._init_prompt_install_end_hook",
+        lambda *a, **kw: None,
+    )
+
     # Drive the interactive wizard with canned inputs:
     #   1. languages → "en"
     #   2. enable LLM → "n"

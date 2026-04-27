@@ -241,6 +241,32 @@ false positives.
 
 ---
 
+## Architectural rule (v1.1): No Anthropic API calls
+
+**Never** import `anthropic` or call `Anthropic().messages.create()` in
+`mnemos/` or `skills/`. All LLM operations must invoke skills via
+`claude --print --dangerously-skip-permissions --model sonnet "/<skill> <args>"`.
+The intent is that Mnemos costs the user nothing beyond their existing
+Claude Code subscription quota — no API spend, no surprise bills.
+
+CI enforces this via grep:
+
+```bash
+! grep -rn "anthropic\.Anthropic\|from anthropic" mnemos/ skills/ \
+    --include="*.py" --include="*.md" \
+    | grep -v "# noqa: no-api"
+```
+
+The `_child_env()` helper in `recall_briefing.py` and `session_end_hook.py`
+strips `ANTHROPIC_API_KEY` from subprocess env so even an inherited key
+cannot accidentally be used by a `claude --print` child.
+
+If you have a genuine need to call the Anthropic API directly (out-of-band
+benchmark scripts, research tools), document the rationale in the PR
+description and add a `# noqa: no-api` comment to bypass the grep.
+
+---
+
 ## License
 
 By contributing you agree your code is released under the project's MIT

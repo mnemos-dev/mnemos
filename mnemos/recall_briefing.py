@@ -269,21 +269,27 @@ def find_unrefined_jsonls_for_cwd(
     cwd_slug: str,
     projects_root: Path,
     ledger: Path,
+    cfg: "object | None" = None,
 ) -> list[Path]:
     """List .jsonl files in ~/.claude/projects/<slug>/ NOT in refine ledger.
 
-    Sorted by mtime (oldest first). JSONLs with fewer than MIN_USER_TURNS
-    real user turns are filtered out — they're fork-bomb byproducts,
+    Sorted by mtime (oldest first). JSONLs with fewer than the configured
+    user-turn threshold are filtered out — they're fork-bomb byproducts,
     '/clear' resume sessions, or aborted sessions that the briefing skill
-    would just SKIP anyway. Matches auto_refine's picker behavior (v0.3.11
-    min-user-turns filter). Without this, SUB-B2 could sync-refine 3
-    fork-bomb JSONLs for every session start, wasting minutes.
+    would just SKIP anyway. The threshold comes from
+    ``cfg.refine.min_user_turns`` when ``cfg`` is supplied, otherwise it
+    falls back to auto_refine's MIN_USER_TURNS default for backward compat.
 
     The caller should also skip any JSONL whose PID marker indicates a
     live session (handled in handle_session_start via transcript_path).
     """
     # Local import to avoid shuffling module-level import ordering
     from mnemos.auto_refine import _count_user_turns, MIN_USER_TURNS
+
+    if cfg is not None and hasattr(cfg, "refine"):
+        threshold = int(getattr(cfg.refine, "min_user_turns", MIN_USER_TURNS))
+    else:
+        threshold = MIN_USER_TURNS
 
     proj_dir = projects_root / cwd_slug
     if not proj_dir.exists():
@@ -293,7 +299,7 @@ def find_unrefined_jsonls_for_cwd(
     for jsonl in proj_dir.glob("*.jsonl"):
         if str(jsonl) in processed:
             continue
-        if _count_user_turns(jsonl) < MIN_USER_TURNS:
+        if _count_user_turns(jsonl) < threshold:
             continue
         candidates.append(jsonl)
     return sorted(candidates, key=lambda p: p.stat().st_mtime)
@@ -518,8 +524,10 @@ def catchup_and_cache(
         ledger = DEFAULT_REFINE_LEDGER
 
     slug = cwd_to_slug(cwd)
+    from mnemos.config import load_config
+    cfg = load_config(str(vault))
     pending = find_unrefined_jsonls_for_cwd(
-        cwd_slug=slug, projects_root=projects_root, ledger=ledger,
+        cwd_slug=slug, projects_root=projects_root, ledger=ledger, cfg=cfg,
     )
     if len(pending) > SUB_B2_PENDING_CAP:
         pending = pending[-SUB_B2_PENDING_CAP:]
@@ -569,6 +577,34 @@ def _spawn_bg_catchup(cwd: str, vault: Path) -> None:
 _spawn_bg_brief = _spawn_bg_catchup
 
 
+from mnemos.readiness import per_cwd_readiness
+
+
+# v1.1 Task 6.3 — cross-check directive prepended to additionalContext when
+# cfg.briefing.enforce_consistency. Goal: if the user contradicts an
+# established decision in the briefing, the AI must pause and ask, not
+# silently comply.
+CROSS_CHECK_DIRECTIVE = """[MNEMOS BRIEFING — CRITICAL READING INSTRUCTION]
+
+This briefing reflects the user's CURRENT decisions for this project.
+If the user's request CONTRADICTS items in "Geçerli kararlar" or
+"Revize/iptal edilen kararlar", PAUSE before acting. Politely ask:
+  "This conflicts with your decision <item> from <date> — do you want
+   to revise that decision now, or am I misunderstanding?"
+
+Do NOT silently follow contradictory requests.
+
+[BRIEFING CONTENT FOLLOWS]
+
+"""
+
+
+def wrap_with_directive(body: str, enforce: bool) -> str:
+    if not enforce:
+        return body
+    return CROSS_CHECK_DIRECTIVE + body
+
+
 def handle_session_start(
     inp: SessionStartInput,
     vault: Path,
@@ -613,6 +649,11 @@ def handle_session_start(
 
     cwd_info = state.cwds.get(slug)
 
+    # cfg threading: pick up cfg.refine.min_user_turns + cfg.briefing.* from yaml.
+    # Loaded BEFORE CASE A so the vault-aware first-visit gate has access.
+    from mnemos.config import load_config
+    cfg = load_config(str(vault))
+
     # CASE A — first visit ever
     if cwd_info is None:
         state.cwds[slug] = {
@@ -623,17 +664,37 @@ def handle_session_start(
             "last_session_id": None,
         }
         save_state(vault, state)
+
+        # v1.1 Task 6.5: vault-aware first-visit. The user may have a vault
+        # full of Sessions for this cwd from before they installed Mnemos /
+        # before the cwd was tracked in state. If so, brief now instead of
+        # waiting one more session for a silent reset.
+        readiness = per_cwd_readiness(
+            vault=vault,
+            cwd=inp.cwd,
+            cwd_slug=slug,
+            projects_root=projects_root,
+            min_user_turns=cfg.refine.min_user_turns,
+        )
+        if readiness["refined"] >= 1:
+            brief_and_cache(inp.cwd, vault)
+            cache_p = cache_path_for(vault, slug)
+            if cache_p.exists():
+                body = read_cache_body(cache_p)
+                return HandleOutcome(
+                    outcome="first_visit_sync_inject",
+                    injected_context=body,
+                )
         return HandleOutcome(outcome="first_visit")
 
     # CASE B — return visit
     cwd_info["last_seen"] = now
     cwd_info["visit_count"] = cwd_info.get("visit_count", 1) + 1
-
-    # Check for unrefined JSONLs in this cwd (live session excluded)
     pending = find_unrefined_jsonls_for_cwd(
         cwd_slug=slug,
         projects_root=projects_root,
         ledger=ledger,
+        cfg=cfg,
     )
     live = Path(inp.transcript_path) if inp.transcript_path else None
     if live is not None:
@@ -642,12 +703,44 @@ def handle_session_start(
     cache_p = cache_path_for(vault, slug)
     cache_exists = cache_p.exists()
 
+    # v1.1 Task 6.4: sync fallback when SessionEnd worker missed (pending
+    # JSONLs exist but no cache landed). Refining + briefing here costs the
+    # user a few seconds at session start, but gives them a real briefing
+    # NOW instead of waiting until next session.
+    if pending and not cache_exists:
+        capped = pending[-SUB_B2_PENDING_CAP:]
+        for jsonl in capped:
+            run_refine_sync(jsonl)
+        brief_and_cache(inp.cwd, vault)
+        save_state(vault, state)
+        if cache_p.exists():
+            body = read_cache_body(cache_p)
+            return HandleOutcome(
+                outcome="sync_fallback_inject",
+                injected_context=body,
+            )
+        return HandleOutcome(outcome="sync_fallback_brief_failed")
+
     # Always fire bg catchup — it's a no-op refine loop when pending is empty,
     # just refreshes the cache body. Hook path stays <1s either way.
     bg_spawn(inp.cwd, vault)
     save_state(vault, state)
 
     if cache_exists:
+        # v1.1 Task 6.1: readiness gate — refuse to inject a partial-history
+        # briefing that could anchor the AI's mental model on incomplete memory.
+        readiness = per_cwd_readiness(
+            vault=vault,
+            cwd=inp.cwd,
+            cwd_slug=slug,
+            projects_root=projects_root,
+            min_user_turns=cfg.refine.min_user_turns,
+        )
+        if readiness["pct"] < cfg.briefing.readiness_pct:
+            return HandleOutcome(
+                outcome=f"silent_readiness_below_threshold_{readiness['pct']:.0f}"
+            )
+
         body = read_cache_body(cache_p)
         if pending:
             return HandleOutcome(outcome="fast_path_injected_with_catchup", injected_context=body)
@@ -865,12 +958,41 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if result.injected_context:
-        out = {
+        # v1.1 Task 6.3: optionally prepend cross-check directive so the AI
+        # is primed to pause when the user contradicts established decisions.
+        try:
+            from mnemos.config import load_config
+            cfg = load_config(str(vault))
+        except Exception:
+            cfg = None
+        body = result.injected_context
+        if cfg is not None:
+            body = wrap_with_directive(body, cfg.briefing.enforce_consistency)
+        out: dict = {
             "hookSpecificOutput": {
                 "hookEventName": "SessionStart",
-                "additionalContext": result.injected_context,
+                "additionalContext": body,
             }
         }
+        # v1.1 Task 6.2: optional systemMessage display so the user sees a
+        # visible "briefing loaded" line in the Claude Code transcript.
+        try:
+            if cfg is not None and cfg.briefing.show_systemmessage:
+                cache_p = cache_path_for(vault, cwd_to_slug(inp.cwd))
+                session_n = "?"
+                if cache_p.exists():
+                    text = cache_p.read_text(encoding="utf-8", errors="replace")
+                    import re as _re
+                    m = _re.search(r"session_count_used:\s*(\d+)", text)
+                    if m:
+                        session_n = m.group(1)
+                cwd_short = inp.cwd.rsplit("\\", 1)[-1].rsplit("/", 1)[-1]
+                out["systemMessage"] = (
+                    f"📋 Mnemos: {cwd_short} briefing loaded · {session_n} sessions"
+                )
+        except Exception:
+            # Never let the systemMessage assembly crash the hook
+            pass
         print(json.dumps(out, ensure_ascii=False))
 
     return 0

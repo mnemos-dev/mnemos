@@ -222,6 +222,49 @@ def _read_ledger_paths(ledger_path: Path) -> set[str]:
     return paths
 
 
+def pick_jsonls(
+    cfg: "object",
+    projects_dir: Path,
+    ledger_path: Path,
+    exclude: set[str] | None = None,
+) -> list[Path]:
+    """Config-driven sibling of ``pick_recent_jsonls`` for the v1.1 SessionEnd
+    worker.
+
+    Reads ``cfg.refine.per_session`` (cap), ``cfg.refine.direction``
+    (``newest``/``oldest`` mtime sort) and ``cfg.refine.min_user_turns``
+    (eligibility threshold) instead of fixed kwargs. The
+    ``_is_recently_modified`` filter is intentionally omitted: this picker is
+    meant to run *after* a session has just ended, so the JSONL we want to
+    refine is by definition fresh on disk. Active in-progress sessions are
+    still excluded via ``exclude=active_paths``.
+    """
+    if not projects_dir.exists():
+        return []
+
+    ledger_paths = _read_ledger_paths(ledger_path)
+    excluded = {str(Path(p)) for p in (exclude or set())}
+    direction = getattr(cfg.refine, "direction", "newest")
+    candidates = sorted(
+        (p for p in projects_dir.rglob("*.jsonl") if not _is_subagent_jsonl(p)),
+        key=lambda p: p.stat().st_mtime,
+        reverse=(direction == "newest"),
+    )
+    per_session = int(getattr(cfg.refine, "per_session", 3))
+    min_turns = int(getattr(cfg.refine, "min_user_turns", MIN_USER_TURNS))
+    picked: list[Path] = []
+    for candidate in candidates:
+        key = str(candidate)
+        if key in ledger_paths or key in excluded:
+            continue
+        if min_turns > 0 and _count_user_turns(candidate) < min_turns:
+            continue
+        picked.append(candidate)
+        if len(picked) >= per_session:
+            break
+    return picked
+
+
 def pick_recent_jsonls(
     projects_dir: Path,
     ledger_path: Path,
