@@ -28,16 +28,16 @@ in newer sessions below.
 1. Glob `<vault>/Sessions/*.md`, read frontmatter, keep only matching cwd.
 2. Sort by date asc (chronological).
 3. From each session extract ONLY these sections (regex match section headers):
-   - `## Alınan Kararlar` (full content)
-   - `## Revize/iptal edilen kararlar` (full content)
-   - `## Sonraki Adımlar` (first 3 bullets)
+   - `## Alınan Kararlar` (Decisions — full content)
+   - `## Revize/iptal edilen kararlar` (Revised/cancelled decisions — full content)
+   - `## Sonraki Adımlar` (Next Steps — first 3 bullets)
 4. Format compactly: `Session YYYY-MM-DD: <decisions>`
 5. Budget: 6K tokens. If exceeded, drop oldest first (anchor preserves them).
 
 ## STEP 2B — Recent 5 cwd Sessions: full body
 
 1. Same filter as 2A, sort date desc, take first 5.
-2. Full session body (Özet, Yapılanlar, Sonraki Adımlar, Sorunlar, See Also).
+2. Full session body (Özet/Summary, Yapılanlar/Done, Sonraki Adımlar/Next Steps, Sorunlar/Problems, See Also).
 3. Budget: 8K tokens.
 
 ## STEP 3 — Cross-context backlinks (4K)
@@ -51,8 +51,8 @@ in newer sessions below.
 
 | Layer | Budget | Priority |
 |---|---|---|
-| Anchor (previous brief) | 4K | sabit |
-| Identity | 3K | sabit |
+| Anchor (previous brief) | 4K | fixed |
+| Identity | 3K | fixed |
 | 2A all decisions | 6K | priority 1 |
 | 2B recent 5 full | 8K | priority 1 |
 | Cross-context | 4K | priority 2 |
@@ -62,47 +62,49 @@ If 2B fills 8K and 2A fills 6K, drop cross-context first to stay under cap.
 
 ## STEP 5 — Synthesize (REVISION-AWARE)
 
-Output structure:
+Output structure (the section labels stay in Turkish — they are the
+user-facing format; only the placeholder descriptions below are
+documentation):
 
 ```markdown
-**Aktif durum:** <1-2 cümle, current cwd state>
+**Aktif durum:** <1-2 sentences, current cwd state>
 
 **Kullanıcı profili (önemli):**
-- <Identity'den seçili 2-3 madde, bu cwd'ye en alakalı>
+- <2-3 items selected from Identity, most relevant to this cwd>
 
 **Geçerli kararlar:**
-- <date> — <karar> [[wikilink]]
-- (anchor + 2A + 2B birleşimi; çelişki yoksa)
+- <date> — <decision> [[wikilink]]
+- (union of anchor + 2A + 2B; if no conflict)
 
 **Revize/iptal edilen kararlar:**
-- <eski karar> → <yeni karar>. Gerekçe: <kısa>. (Tarih: <revize-date>)
-- (foundational decisions revize edilmişse açıkça göster)
+- <old decision> → <new decision>. Gerekçe (rationale): <short>. (Tarih/Date: <revision-date>)
+- (if foundational decisions have been revised, show them explicitly)
 
 **Açık meseleler:**
-- <çözülmemiş sorun veya TODO> [[wikilink]]
+- <unresolved problem or TODO> [[wikilink]]
 
 **Sırada:**
-- <olası sonraki iş>
+- <likely next task>
 
 **İlgili (cross-context):**
-- [[Project X]] — <bu cwd'ye benzer pattern>
-- (max 3 madde)
+- [[Project X]] — <pattern similar to this cwd>
+- (max 3 items)
 ```
 
 ## SYNTHESIS DIRECTIVES (critical)
 
-- **Anchor preservation:** Anchor'daki "Geçerli kararlar" maddelerini koru, MEĞER newer session'larda explicit revize varsa.
-- **Revision marking:** Revize edilmiş kararları AÇIKÇA "Revize/iptal edilen" bölümüne taşı. Format: `<eski> → <yeni>. Gerekçe: ... (Tarih: ...)`.
-- **Contradiction detection:** Aynı konuda farklı tarihli kararlar varsa, en son tarihli'yi "Geçerli", önceki(ler)i "Revize edilen"e taşı.
-- **Foundational vs ephemeral:** Bir karar 1 session'da var ama hiç revize edilmediyse foundational sayar, koru. Sadece "bugün denedim" tarzı one-off statements drop.
+- **Anchor preservation:** Preserve the items in the anchor's "Geçerli kararlar" section, UNLESS there is an explicit revision in newer sessions.
+- **Revision marking:** Move revised decisions EXPLICITLY into the "Revize/iptal edilen" section. Format: `<old> → <new>. Gerekçe: ... (Tarih: ...)`.
+- **Contradiction detection:** If there are decisions with different dates on the same topic, move the most recent one to "Geçerli" and the earlier one(s) to "Revize edilen".
+- **Foundational vs ephemeral:** If a decision appears in only 1 session but was never revised, count it as foundational and preserve it. Drop only one-off statements like "I tried it today".
 
 ## RULES
 
-- **Wikilinks:** Her drawer/Session referansı `[[slug]]`. Obsidian'da tıklanabilir.
-- **Dil:** Sessions baskın dilini koru (TR/EN). Identity'nin de baskın dili.
-- **Ton:** Teknik, objektif. Boşluğa karşı dürüst ol.
-- **Boş cwd:** Hiç matching session yoksa: `No prior sessions recorded for this cwd yet. Mnemos will brief from the next session onwards.`
+- **Wikilinks:** Every drawer/Session reference is `[[slug]]`. Clickable in Obsidian.
+- **Language:** Preserve the dominant language of the Sessions (TR/EN). Same for Identity's dominant language.
+- **Tone:** Technical, objective. Be honest about gaps.
+- **Empty cwd:** If there are no matching sessions: `No prior sessions recorded for this cwd yet. Mnemos will brief from the next session onwards.`
 
 ## OUTPUT
 
-Yalnız markdown body to stdout. Frontmatter wrapper ekler (recall_briefing.write_cache). Direkt `**Aktif durum:**` ile başla.
+Only markdown body to stdout. The wrapper (recall_briefing.write_cache) adds the frontmatter. Start directly with `**Aktif durum:**`.

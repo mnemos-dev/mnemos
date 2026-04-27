@@ -19,21 +19,22 @@ Hundreds of Claude Code sessions live in `~/.claude/projects/*.jsonl`. Decisions
 debugging notes, preferences, hard-won context — all locked in files nobody
 re-opens. Every new session starts from zero. Your AI never *remembers you*.
 
-**v0.x bahis (MemPalace inspired):** atomic fragmentation — sohbetleri küçük
-"drawer" parçalarına bölüp vector index'le. Ölçüm çürüttü: RRF skor bandı
-0.014–0.017'de takıldı, sentez narrative'den iyi besleniyor, 600-node graph
-kullanılmıyor.
+**v0.x bet (MemPalace inspired):** atomic fragmentation — split conversations
+into small "drawer" pieces and vector-index them. Measurement disproved this:
+the RRF score band stuck at 0.014–0.017, synthesis fed better from narrative
+than from fragments, and the 600-node graph went unused.
 
-**v1.0 bahis (narrative-first pivot, 2026-04-25):**
-- **Sessions tek memory unit.** Her sohbet bir zengin markdown notu.
-- **Wikilink graph.** `[[Project X]]` eşleşmeleri Sessions'ları seyrek-anlamlı bağlar.
-- **Identity Layer** (`<vault>/_identity/L0-identity.md`). Tüm Sessions'tan damıtılan
-  kalıcı user profile. Briefing her oturumda bunu base layer olarak okur.
-- **3-katman briefing skill.** Identity (3K) + cwd Sessions (8K) + 1-hop wikilink
+**v1.0 bet (narrative-first pivot, 2026-04-25):**
+- **Sessions are the single memory unit.** Every conversation becomes one rich markdown note.
+- **Wikilink graph.** `[[Project X]]` matches connect Sessions sparsely but meaningfully.
+- **Identity Layer** (`<vault>/_identity/L0-identity.md`). A persistent user profile
+  distilled from all Sessions. The briefing reads this as the base layer every session.
+- **3-layer briefing skill.** Identity (3K) + cwd Sessions (8K) + 1-hop wikilink
   cross-context (4K), hard cap 15K.
 
-Mining pipeline (~3K LOC + ~200 test) silindi. Geri dönüş için
-`legacy/atomic-paradigm` branch + `v0.4.0-archived` tag korunuyor.
+The mining pipeline (~3K LOC + ~200 tests) was deleted. The
+`legacy/atomic-paradigm` branch and `v0.4.0-archived` tag are preserved as a
+fallback.
 
 ---
 
@@ -58,7 +59,7 @@ For early adopters: `pip install git+https://github.com/mnemos-dev/mnemos@v1.0.0
 - Each Session frontmatter carries: `tags: [session-log, proj/<wing>, tool/<svc>, person/<name>, file/<repeating>, skill/<cmd>]`
 - Each Session's `cwd:` field captured from JSONL first message
 - Prose entities wikilink'd on first mention (`[[Mnemos]]`, `[[Tugra]]`, `[[Supabase]]`)
-- Quality control checklist: ≥1 `proj/*` tag + ≥1 prose wikilink + tag-prose tutarlılığı
+- Quality control checklist: ≥1 `proj/*` tag + ≥1 prose wikilink + tag-prose consistency
 
 **Identity Layer (Task 10–14)**
 - `mnemos identity bootstrap` — read all Sessions (≤150K token cap with hybrid sampling), produce structured profile
@@ -69,10 +70,10 @@ For early adopters: `pip install git+https://github.com/mnemos-dev/mnemos@v1.0.0
 - `mnemos_status` MCP tool reports `identity_last_refreshed` + `identity_session_count_at_refresh`
 
 **3-layer briefing skill v2**
-- Identity Layer (3K cap, sabit) → Cwd Layer (8K priority-1) → Cross-context (4K priority-2)
+- Identity Layer (3K cap, fixed) → Cwd Layer (8K priority-1) → Cross-context (4K priority-2)
 - Hard cap 15K input, output 200–400 word narrative
 - Identity-less graceful: skips Identity section, cwd briefing still works
-- Boş cwd: "No prior sessions recorded for this cwd yet" mesajı
+- Empty cwd: emits "No prior sessions recorded for this cwd yet" message
 
 **MCP tool surface (6 tools, down from 8)**
 - `mnemos_search` (collection="raw" only, "mined"/"both" deprecated → warn + raw fallback)
@@ -138,7 +139,7 @@ For early adopters: `pip install git+https://github.com/mnemos-dev/mnemos@v1.0.0
 
 ### 🟡 Pending user actions
 
-1. **Identity bootstrap** (~5–10 dk LLM call, abonelik kotası): `mnemos identity bootstrap --vault "C:/Users/tugrademirors/OneDrive/Masaüstü/kasamd"`. Generates `_identity/L0-identity.md` from 79 Sessions.
+1. **Identity bootstrap** (~5–10 min LLM call, subscription quota): `mnemos identity bootstrap --vault "C:/Users/tugrademirors/OneDrive/Masaüstü/kasamd"`. Generates `_identity/L0-identity.md` from 79 Sessions.
 2. **More real-world testing**: open new Claude Code sessions in various cwds:
    - Re-test `C:\Projeler\Satın Alma\procuretrack` (now 2nd visit, SUB-B1 should brief)
    - Test `C:\Projeler\mnemos` (rich Sessions, briefing should pivot summary)
@@ -216,14 +217,14 @@ For early adopters: `pip install git+https://github.com/mnemos-dev/mnemos@v1.0.0
 - Old `C:/Projeler/mnemos-v1.0` worktree (feature/v1.0-pivot branch) STILL EXISTS as backup; can be removed later via `git worktree remove C:/Projeler/mnemos-v1.0`
 - Implementation paths in this STATUS + spec + plan reference `C:/Projeler/mnemos-v1.1`
 
-Bugünkü oturumun sonunda:
-1. v1.0 bug fix shipped — `recall_briefing.py` re-entry guard `--catchup`
-   parsing'inden sonraya taşındı (`a19cfb9`). `HOOK_ACTIVE_ENV=1` artık
-   bg subprocess'i bloklamıyor. +2 regression test, 455 pass full suite.
-   Empirical doğrulama: kasamd procuretrack için 4128B briefing cache
-   üretildi — bug öncesi hiçbir cache yazılmıyordu.
+At the end of that day's session:
+1. v1.0 bug fix shipped — `recall_briefing.py` re-entry guard moved to AFTER
+   `--catchup` parsing (`a19cfb9`). `HOOK_ACTIVE_ENV=1` no longer blocks the
+   bg subprocess. +2 regression tests, 455 pass full suite. Empirical
+   validation: produced a 4128 B briefing cache for kasamd procuretrack —
+   no cache was being written at all before the fix.
 
-2. v1.1 design conversation tamam (5 issue brainstormed, all resolved):
+2. v1.1 design conversation complete (5 issues brainstormed, all resolved):
    - Issue 1: Refine pipeline configurability + Settings TUI
    - Issue 2: Identity bootstrap eligibility gate + auto-refresh from SessionEnd
    - Issue 3: Briefing readiness gate (default 60%)
@@ -233,45 +234,48 @@ Bugünkü oturumun sonunda:
      with CREATE_BREAKAWAY_FROM_JOB for X-close survival
 
 3. Spec written + committed (`10fa3ca`):
-   `docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md` — 818 satır,
-   15 bölüm. Hard invariant: NO Anthropic API calls anywhere (subscription only
-   via `claude --print` skill subprocess, `_child_env` strips API key).
+   `docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md` — 818
+   lines, 15 sections. Hard invariant: NO Anthropic API calls anywhere
+   (subscription only via `claude --print` skill subprocess, `_child_env`
+   strips the API key).
 
 4. Implementation plan written + committed (`2e428e3`):
-   `docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md` — 4748 satır,
-   13 task group, 55 TDD task, ~275 step. Her task TDD pattern (failing test →
-   minimal impl → green → commit).
+   `docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md` — 4748 lines,
+   13 task groups, 55 TDD tasks, ~275 steps. Every task uses the TDD pattern
+   (failing test → minimal impl → green → commit).
 
 5. Empirical SessionEnd smoke (2026-04-26 cycle on kasamd farcry):
-   - /exit graceful close: SessionEnd ateşler, worker `with_breakaway` yaşar ✓
-   - X-close idle: SessionEnd ateşler, worker BREAKAWAY ile 30s yaşar ✓
-   - X-close mid-stream: SessionEnd kaçırır → SessionStart sync fallback yakalar
+   - /exit graceful close: SessionEnd fires, worker `with_breakaway` survives ✓
+   - X-close idle: SessionEnd fires, worker survives 30s via BREAKAWAY ✓
+   - X-close mid-stream: SessionEnd misses → SessionStart sync fallback catches it
    - Test infra: `~/.claude/test-session-end/` (hook + worker + inspect script)
-     ve settings.json'da `mnemos-end-smoke-test` SessionEnd entry'si ŞU AN AKTİF.
+     and the `mnemos-end-smoke-test` SessionEnd entry in settings.json are
+     CURRENTLY ACTIVE.
 
-**Sıradaki oturum başlangıcı:**
+**Next session start:**
 
-Plan'ı `superpowers:subagent-driven-development` veya `superpowers:executing-plans`
-skill'i ile uygula. Önerim subagent-driven (her task fresh subagent, two-stage
-review, paralel friendly). İlk task: **G1 Task 1.1 — Add schema_version field
-with backward-compat read** (`mnemos/config.py` + `tests/test_config_v1_1.py`,
-TDD pattern, ~5 step, ~15 dakika).
+Run the plan with `superpowers:subagent-driven-development` or
+`superpowers:executing-plans`. Recommendation: subagent-driven (fresh subagent
+per task, two-stage review, parallel-friendly). First task: **G1 Task 1.1 —
+Add schema_version field with backward-compat read** (`mnemos/config.py` +
+`tests/test_config_v1_1.py`, TDD pattern, ~5 steps, ~15 minutes).
 
-Group sırası: G1 (config foundation) → G2 (refine config) → G3 (identity gate)
+Group order: G1 (config foundation) → G2 (refine config) → G3 (identity gate)
 → G4 (refresh skill) → G5 (briefing v3) → G6 (SessionStart updates) → G7
 (SessionEnd worker) → G8 (install-end-hook CLI) → G9 (Settings TUI) → G10
 (init flow) → G11 (docs) → G12 (empirical validation, BLOCKING) → G13 (release).
 
 🟡 **Pending user actions (defer):**
-- Test infra cleanup: `~/.claude/test-session-end/` dir + settings.json'daki
-  `mnemos-end-smoke-test` SessionEnd entry. Implementation sırasında G7 için
-  reference olarak kalabilir, sonra cleanup.
-- Identity bootstrap (v1.0'dan beri pending): `mnemos identity bootstrap
-  --vault "C:/Users/tugrademirors/OneDrive/Masaüstü/kasamd"` — v1.1 G3 ile
-  birlikte threshold gate'e takılacak (~10% have, 25% need); --force ile
-  bypass mümkün. Implementation döneminde gerekirse force ile çalıştır.
-- PyPI publish v1.0.0a1 (deferred): `python -m twine upload dist/...` — v1.1
-  hazır olunca v1.1.0 doğrudan publish, v1.0.0a1 alpha tag GitHub'da kalır.
+- Test infra cleanup: `~/.claude/test-session-end/` dir + the
+  `mnemos-end-smoke-test` SessionEnd entry in settings.json. Can stay as
+  reference for G7 during implementation, then clean up.
+- Identity bootstrap (pending since v1.0): `mnemos identity bootstrap
+  --vault "C:/Users/tugrademirors/OneDrive/Masaüstü/kasamd"` — will hit
+  the threshold gate alongside v1.1 G3 (~10% have, 25% needed); bypassable
+  with `--force`. Run with --force during implementation if needed.
+- PyPI publish v1.0.0a1 (deferred): `python -m twine upload dist/...` — once
+  v1.1 is ready, publish v1.1.0 directly; the v1.0.0a1 alpha tag stays on
+  GitHub.
 
 
 1. Read `STATUS.md` (this file) — see §3 "v1.0 alpha rollout" for current state

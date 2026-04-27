@@ -1,181 +1,187 @@
 ---
 name: mnemos-refine-transcripts
 description: >
-  Claude Code JSONL transcript'lerini (~/.claude/projects/) Mnemos vault'una
-  yüksek-sinyalli Sessions/<YYYY-MM-DD>-<slug>.md notu olarak refine eder.
-  Tetikler: "/mnemos-refine-transcripts", "transcript refine et",
-  "JSONL'leri özetle ve Sessions'a yaz", "ham log'ları işle",
-  "Claude Code history'i vault'a aktar", "unprocessed transcriptleri işle".
-  mnemos API ÇAĞIRMAZ, LLM API ÇAĞIRMAZ — iş bu oturumdaki Claude tarafından yapılır.
+  Refines Claude Code JSONL transcripts (~/.claude/projects/) into
+  high-signal Sessions/<YYYY-MM-DD>-<slug>.md notes in the Mnemos vault.
+  Triggers: "/mnemos-refine-transcripts", "refine transcripts",
+  "summarize JSONLs and write to Sessions", "process raw logs",
+  "import Claude Code history to vault", "process unprocessed transcripts".
+  Does NOT call the mnemos API, does NOT call any LLM API — work is done by Claude in this session.
 ---
 
 <!--
 INSTALL NOTE (mnemos-dev ≥ v0.3):
-Bu skill makineye-özel path'ler kullanıyor. Kurulum:
+This skill uses machine-specific paths. Setup:
 
-1. Bu klasörü ~/.claude/skills/mnemos-refine-transcripts/ altına kopyala
-   (veya symlink/junction et — repo canonical, junction drift olmamalı).
-2. Aşağıdaki "Sabitler" bölümündeki path'leri kendi sistemine göre düzenle:
-   - mnemos kurulum yolu (canonical prompt + extractor buradan okunur)
-   - Claude Code transcripts kök klasörü (~/.claude/projects/)
-   - Obsidian vault Sessions/ yolu
-   - Ledger yolu (skill state)
+1. Copy this folder under ~/.claude/skills/mnemos-refine-transcripts/
+   (or symlink/junction it — repo is canonical, the junction must not drift).
+2. Edit the paths in the "Constants" section below for your own system:
+   - mnemos installation path (canonical prompt + extractor are read from here)
+   - Claude Code transcripts root folder (~/.claude/projects/)
+   - Obsidian vault Sessions/ path
+   - Ledger path (skill state)
 
-v0.3'te `mnemos init` wizard'ı bu path'leri çoğunlukla resolve ediyor;
-manuel edit hâlâ bazı non-standart kurulumlar için gerekli olabilir.
-Otomatik hook kurulumu için `mnemos install-hook` kullan.
+In v0.3 the `mnemos init` wizard resolves most of these paths;
+manual edits may still be needed for some non-standard setups.
+Use `mnemos install-hook` for automatic hook installation.
 -->
 
 # Mnemos — Refine Transcripts
 
-JSONL transcript → refined `Sessions/*.md` dönüşümü. Kurallar tek bir kaynakta
-tutulur; bu skill sadece **keşif + ledger + yazma** mekaniği sağlar.
+JSONL transcript → refined `Sessions/*.md` conversion. The rules are kept in
+a single source; this skill only provides the **discovery + ledger + write**
+mechanics.
 
-## Sabitler
+## Constants
 
 - **Canonical refinement prompt:** `C:\Projeler\mnemos\docs\prompts\refine-transcripts.md`
-  (çıktı formatı, wing mapping, SKIP kriterleri, filtre kuralları hep burada)
+  (output format, wing mapping, SKIP criteria, filter rules — all here)
 - **Prose extractor:** `C:\Projeler\mnemos\scripts\extract_jsonl_prose.py`
-- **Transcript kök:** `C:\Users\tugrademirors\.claude\projects\`
+- **Transcript root:** `C:\Users\tugrademirors\.claude\projects\`
 - **Vault Sessions:** `C:\Users\tugrademirors\OneDrive\Masaüstü\kasamd\Sessions\`
 - **Ledger:** `C:\Users\tugrademirors\.claude\skills\mnemos-refine-transcripts\state\processed.tsv`
 
-## Tetik örnekleri
+## Trigger examples
 
-- `/mnemos-refine-transcripts` — unprocessed taraması, pilot modu
-- `/mnemos-refine-transcripts <path.jsonl>` — tek dosya
-- `/mnemos-refine-transcripts <dir>` — dir altındaki tüm JSONL
+- `/mnemos-refine-transcripts` — unprocessed scan, pilot mode
+- `/mnemos-refine-transcripts <path.jsonl>` — single file
+- `/mnemos-refine-transcripts <dir>` — all JSONLs under dir
 - `/mnemos-refine-transcripts --limit 5` — pilot batch
-- `/mnemos-refine-transcripts --all` — tüm unprocessed, soru sormadan
-- `/mnemos-refine-transcripts --include-subagents` — subagent JSONL'lerini de dahil et (default: hariç)
+- `/mnemos-refine-transcripts --all` — all unprocessed, no questions asked
+- `/mnemos-refine-transcripts --include-subagents` — also include subagent JSONLs (default: excluded)
 
-## Akış
+## Flow
 
-### 1) Canonical promptu yükle
+### 1) Load the canonical prompt
 
-Her çalıştırmada ilk iş: `C:\Projeler\mnemos\docs\prompts\refine-transcripts.md`'yi
-Read ile oku. Kurallar oradan gelir — bu SKILL.md kuralları yeniden yazmaz.
+First task on every run: Read `C:\Projeler\mnemos\docs\prompts\refine-transcripts.md`
+with the Read tool. The rules come from there — this SKILL.md does not
+restate the rules.
 
-Dosya yoksa kullanıcıya söyle ve dur: "Canonical refinement prompt bulunamadı.
-Muhtemelen mnemos repo yolu değişti — beni güncelle."
+If the file is missing, tell the user and stop: "Canonical refinement prompt
+not found. The mnemos repo path probably changed — update me."
 
-### 2) Transcript listesini çıkar
+### 2) Build the transcript list
 
-Argümana göre:
+Based on the argument:
 
-| Girdi | Davranış |
+| Input | Behavior |
 |---|---|
-| `<path.jsonl>` | Tek dosya |
-| `<dir>` (klasör) | Glob `<dir>/**/*.jsonl` |
-| argsız / `--unprocessed` | Glob `~/.claude/projects/**/*.jsonl`, ledger'ı filtrele |
-| `--limit N` | İlk N tane |
-| `--all` | Tüm unprocessed, pilot atla |
+| `<path.jsonl>` | Single file |
+| `<dir>` (folder) | Glob `<dir>/**/*.jsonl` |
+| no args / `--unprocessed` | Glob `~/.claude/projects/**/*.jsonl`, filter by ledger |
+| `--limit N` | First N |
+| `--all` | All unprocessed, skip pilot |
 
-**Ledger filtresi:** `state/processed.tsv` dosyasını Read ile oku. Her satır
-`<abs-path>\t<OK|SKIP>\t<meta>` formatında. İlk kolondaki path'ler listede ise
-bu çağrıda tekrar işleme.
+**Ledger filter:** Read the `state/processed.tsv` file with the Read tool.
+Each line is in `<abs-path>\t<OK|SKIP>\t<meta>` format. If a path in the
+first column is in the list, do not process it again on this call.
 
-Dosya yoksa henüz hiç işlem yok demektir — filtre boş set.
+If the file is missing, no work has been done yet — the filter is the empty set.
 
-**Subagent filtresi (default ON):** Path'inde `/subagents/` veya `\subagents\`
-geçen JSONL'leri atla — bunlar kullanıcıyla değil parent session'ın alt-görevleriyle
-konuşulan transcript'lerdir, kalıcı değer nadirdir. Geri almak için
-`--include-subagents` bayrağı.
+**Subagent filter (default ON):** Skip JSONLs whose path contains `/subagents/`
+or `\subagents\` — these are transcripts of subtasks of the parent session,
+not conversations with the user, and rarely have lasting value. Use the
+`--include-subagents` flag to bring them back.
 
-### 3) Pilot protokolü
+### 3) Pilot protocol
 
-Eğer `--all` DEĞİL ve filtrelenmiş liste > 5 ise:
+If NOT `--all` and the filtered list > 5:
 
-1. İlk 5'i işle (adım 4-5)
-2. Ara özeti göster:
+1. Process the first 5 (steps 4-5)
+2. Show interim summary:
    ```
-   Pilot 5/N tamam. Wing dağılımı: X Mnemos, Y ProcureTrack, ...
-   SKIP oranı: K/5
-   Örnek yazılan dosya: <ilk OK filename>
+   Pilot 5/N done. Wing distribution: X Mnemos, Y ProcureTrack, ...
+   SKIP rate: K/5
+   Example written file: <first OK filename>
    ```
-3. Sor: "Devam edeyim mi? (`evet` / `N` ile limit / `dur`)"
-4. Yanıta göre devam/bitir
+3. Ask: "Should I continue? (`yes` / a number `N` to limit / `stop`)"
+4. Continue/finish based on the answer
 
-Tek dosya, dir veya `--limit N` ile çağrıldıysa pilot yok — direkt işle.
+If invoked with a single file, dir, or `--limit N`, no pilot — process directly.
 
-### 4) Her transcript için
+### 4) For each transcript
 
 ```bash
 PYTHONUTF8=1 python "C:/Projeler/mnemos/scripts/extract_jsonl_prose.py" "<abs-path>"
 ```
 
-Stdout digest. **Fast-path:** Digest header'ında `User turns detected: 0`
-görürsen canonical prompt'u değerlendirmeye gerek yok — otomatik SKIP ("boş
-transcript, 0 user turn"), ledger'a yaz, sonraki dosyaya geç.
+Stdout is the digest. **Fast-path:** If you see `User turns detected: 0`
+in the digest header, there is no need to evaluate the canonical prompt —
+auto SKIP ("empty transcript, 0 user turns"), write to the ledger, move
+on to the next file.
 
-Aksi halde digest'i canonical prompt'un kurallarıyla değerlendir:
+Otherwise, evaluate the digest against the canonical prompt's rules:
 
-- **SKIP ise** (prompt'taki kriterler):
-  - Tek satır rapor: `SKIP <basename> — <kısa gerekçe>`
-  - Ledger'a yaz: `<abs-path>\tSKIP\t<gerekçe>`
-  - Dosya YAZMA
-- **Değerli ise:**
-  - Dosya yolu: `<vault>/Sessions/<YYYY-MM-DD>-<slug>.md`
-  - Slug kuralı prompt dosyasındaki gibi (küçük harf, tire, Türkçe→ASCII, max 60)
-  - **Collision check:** Aynı slug+tarih varsa sonuna `-2`, `-3` ekle
-  - Write tool ile yaz
-  - Tek satır rapor: `OK <filename> — <wing>, ~N satır`
-  - Ledger'a yaz: `<abs-path>\tOK\t<filename>`
+- **If SKIP** (criteria from the prompt):
+  - One-line report: `SKIP <basename> — <short reason>`
+  - Write to ledger: `<abs-path>\tSKIP\t<reason>`
+  - DO NOT write a file
+- **If valuable:**
+  - File path: `<vault>/Sessions/<YYYY-MM-DD>-<slug>.md`
+  - Slug rule as in the prompt file (lowercase, hyphens, Turkish→ASCII, max 60)
+  - **Collision check:** If the same slug+date exists, append `-2`, `-3`
+  - Write with the Write tool
+  - One-line report: `OK <filename> — <wing>, ~N lines`
+  - Write to ledger: `<abs-path>\tOK\t<filename>`
 
 ### 5) Ledger append
 
-Her dosya sonrası ledger'a ekle. Dosya yoksa oluştur. Format:
+Append to the ledger after each file. Create the file if missing. Format:
 ```
 <abs-path>\t<OK|SKIP>\t<filename-or-reason>
 ```
 
-Header yok. Tab-separated. UTF-8.
+No header. Tab-separated. UTF-8.
 
-**Önemli:** Ledger'ı batch sonunda değil her transcript sonunda güncelle —
-oturum yarıda kesilirse resume için.
+**Important:** Update the ledger after each transcript, not at the end of
+the batch — for resume in case the session is interrupted.
 
-### 6) Final özet
+### 6) Final summary
 
-Prompt'taki format:
+Format from the prompt:
 ```
-İşlenen: N transcript
-Yazılan: M dosya (wing dağılımı: X Mnemos, Y ProcureTrack, ...)
-Atlanan: K (kısa: A, sonuçsuz: B, duplicate: C, ...)
+Processed: N transcripts
+Written: M files (wing distribution: X Mnemos, Y ProcureTrack, ...)
+Skipped: K (short: A, inconclusive: B, duplicate: C, ...)
 Ledger: <tsv-path>
 ```
 
-## v1.0 Tag/Wikilink Hibrit Kuralları
+## v1.0 Tag/Wikilink Hybrid Rules
 
-Her Session frontmatter'ında 5-prefix tag kategorisi ve prose'da entity wikilink üretiriz. Detaylı kurallar `docs/prompts/refine-transcripts.md`'de:
-- TAG PREFIX KATEGORİLERİ
-- PROSE İÇİNDE WIKILINK
-- KALİTE KONTROL checklist
+For each Session, we generate a 5-prefix tag category in the frontmatter
+and entity wikilinks in the prose. Detailed rules are in
+`docs/prompts/refine-transcripts.md`:
+- TAG PREFIX CATEGORIES
+- WIKILINKS IN PROSE
+- QUALITY CONTROL checklist
 
-Refine sırasında bu üç bölümü canlı referans olarak kullan.
+Use these three sections as a live reference during refinement.
 
-## Kritik prensipler
+## Critical principles
 
-- **mnemos API çağrısı YOK.** Refinement = Claude Code oturumunda yapılan
-  preprocess. Çıktı sadece dosya yazımı. (Kullanıcı ayrıca
-  `mnemos mine` çalıştırırsa yazılan Sessions/ dosyaları vault'a gider.)
-- **LLM API çağrısı YOK.** Her şey bu oturumdaki Claude.
-- **Canonical prompt kaynağı tek:** `mnemos/docs/prompts/refine-transcripts.md`.
-  Kural değişikliği orada yapılır, burada değil.
-- **Ledger kalıcı.** `state/processed.tsv` silinmedikçe aynı JSONL tekrar işlenmez.
-- **Skip de kaydedilir.** İki kere değer yok denilmesin.
+- **NO mnemos API calls.** Refinement = preprocess done in the Claude Code
+  session. The output is only file writes. (If the user separately runs
+  `mnemos mine`, the written Sessions/ files go into the vault.)
+- **NO LLM API calls.** Everything is Claude in this session.
+- **Single canonical prompt source:** `mnemos/docs/prompts/refine-transcripts.md`.
+  Rule changes are made there, not here.
+- **Ledger is persistent.** Unless `state/processed.tsv` is deleted, the same
+  JSONL will not be processed again.
+- **Skips are also recorded.** So nothing is judged "no value" twice.
 
-## Dosya yapısı
+## File structure
 
 ```
 ~/.claude/skills/mnemos-refine-transcripts/
-├── SKILL.md          ← Bu dosya
+├── SKILL.md          ← This file
 └── state/
-    └── processed.tsv ← Ledger (oturumlar arası kalıcı)
+    └── processed.tsv ← Ledger (persistent across sessions)
 ```
 
-## Sorun giderme
+## Troubleshooting
 
-- **Extractor Unicode hatası** → `PYTHONUTF8=1` prefix'i atlanmış olabilir
-- **Path boşluk içeriyor** → Bash çağrısında tırnakla sar
-- **Slug Türkçe karakter sızdırdı** → prompt dosyasındaki ASCII tablosunu tekrar uygula
-- **Ledger bozuldu / baştan başlamak istiyorum** → `processed.tsv`'yi sil, yeniden çağır
+- **Extractor Unicode error** → The `PYTHONUTF8=1` prefix may have been omitted
+- **Path contains a space** → Wrap it in quotes in the Bash call
+- **Slug leaked Turkish characters** → Reapply the ASCII table from the prompt file
+- **Ledger corrupted / want to start over** → Delete `processed.tsv`, recall

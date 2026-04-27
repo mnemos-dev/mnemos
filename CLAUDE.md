@@ -1,122 +1,135 @@
 # Mnemos — Claude Code Project Instructions
 
-Bu dosya Claude Code tarafından `C:\Projeler\mnemos` altında çalıştığında
-otomatik yüklenir. Sadece bu projeye özel kurallar burada; global kurallar
-`~/.claude/CLAUDE.md`'de.
+This file is auto-loaded by Claude Code whenever it operates under
+`C:\Projeler\mnemos`. Project-specific rules only; global rules live at
+`~/.claude/CLAUDE.md`.
 
 ---
 
-## Tek kelime resume protokolü 🧠
+## One-word resume protocol 🧠
 
-**Tetik:** Kullanıcı `/clear` sonrası şu ifadelerden birini yazdığında:
-- Tek başına `mnemos`
-- `devam`, `kaldığımız yer`, `resume`, `nerede kalmıştık`
+**Triggers:** when the user types one of the following after `/clear`:
+- Standalone `mnemos`
+- `devam`, `kaldığımız yer`, `resume`, `nerede kalmıştık` (Turkish triggers
+  preserved — the user is Turkish-speaking)
 - `mnemos'a devam`, `mnemos dev`
 
-**Bir şey implemente etme, önce bağlamı yükle.** Akış:
+**Don't implement anything yet — load the context first.** Flow:
 
-1. `STATUS.md` oku — projenin amacı + şu anki capability seti
-2. `docs/ROADMAP.md` oku — aktif sürümü (🔄) ve ilk işaretsiz `[ ]` veya `[~]` görevi bul
-3. `git log --oneline -10` + `git status --short` çalıştır — son commit'ler ve kirli dosyalar
-4. **<100 kelime özet ver:**
-   - Proje amacı (1 cümle, STATUS §1'den)
-   - Şu anki sürüm + faz (örn. "v0.4 AI Boost in-progress")
-   - Son tamamlanan görev + commit hash
-   - Sırada bekleyen ilk görev (ilk `[ ]` veya `[~]`)
-   - Kirli / uncommitted durum varsa işaret et
-5. **Sor:** "Devam mı, başka iş mi?" — kullanıcı onaylamadan implementasyona geçme
+1. Read `STATUS.md` — project purpose + current capability set
+2. Read `docs/ROADMAP.md` — find the active version (🔄) and the first
+   unchecked `[ ]` or in-progress `[~]` task
+3. Run `git log --oneline -10` + `git status --short` — recent commits and
+   dirty files
+4. **Give a <100-word summary:**
+   - Project purpose (one sentence, from STATUS §1)
+   - Current version + phase (e.g., "v0.4 AI Boost in-progress")
+   - Last completed task + commit hash
+   - Next pending task (first `[ ]` or `[~]`)
+   - Flag dirty / uncommitted state if present
+5. **Ask:** "Continue, or different work?" — don't start implementing without
+   user confirmation.
 
-**Not:** Kullanıcı doğrudan bir görev (örn. "3.3'ü yapalım") derse 1-4. adımları
-yine hızlıca yap ama 5. sormadan o göreve geç.
+**Note:** if the user names a task directly (e.g., "let's do 3.3"), still run
+steps 1–4 quickly but skip the question and go straight to that task.
 
 ---
 
-## Proje snapshot
+## Project snapshot
 
-- **Ne:** Obsidian-native AI memory palace. Claude Code JSONL transcript
-  geçmişini aranabilir markdown hafızaya çevirir.
-- **Canonical plan:** `docs/ROADMAP.md` — tek doğruluk kaynağı
-- **Dış durum:** `STATUS.md` — indiren kişi için ne yapıyor, nereye gidiyor
-- **Skill:** `skills/mnemos-refine-transcripts/` — `~/.claude/skills/` altına
-  junction'lı, bu repo canonical
+- **What:** Obsidian-native AI memory palace. Turns Claude Code JSONL
+  transcript history into searchable markdown memory.
+- **Canonical plan:** `docs/ROADMAP.md` — single source of truth
+- **External status:** `STATUS.md` — what the project does and where it's
+  heading, written for someone who just downloaded it
+- **Skill:** `skills/mnemos-refine-transcripts/` — junctioned into
+  `~/.claude/skills/`; this repo is canonical
 - **Canonical refinement prompt:** `docs/prompts/refine-transcripts.md`
-- **Yazarın vault'u (test/pilot için):** `C:\Users\tugrademirors\OneDrive\Masaüstü\kasamd`
-- **PyPI:** `mnemos-dev` — stable v0.3.3, v0.4.0 (AI Boost / Phase 1) hazırlıkta
+- **Author's vault (for testing/pilots):**
+  `C:\Users\tugrademirors\OneDrive\Masaüstü\kasamd`
+- **PyPI:** `mnemos-dev` — stable v0.3.3, v0.4.0 (AI Boost / Phase 1) in
+  preparation
 - **GitHub:** `github.com/mnemos-dev/mnemos`
 
 ---
 
-## Çalışma disiplini
+## Working discipline
 
-1. Göreve başlamadan ROADMAP'te checkbox `[ ] → [~]` (in progress)
-2. Görev bitince **tek commit'te:**
-   - ROADMAP checkbox `[~] → [x]` + commit hash + tarih
-   - STATUS.md'nin §2 "What works today" bölümüne ilgili capability ekle
-     (STATUS §3'ten §2'ye taşıma şeklinde olabilir)
-   - Kod + test
-3. Skill / script / docs değişikliğinden sonra otomatik `git add → commit →
-   push` (global kural)
-4. Scope değişirse ROADMAP'te satırı güncelle, gerekirse alt-görev böl
-5. Yeni phase başlarken önce `docs/specs/` altında design spec yaz (Phase 0
-   formatında); sonra implementasyon
-6. **Session-end STATUS discipline** — ROADMAP-takipli iş 2. maddeyle zaten
-   STATUS'u güncel tutuyor. Ama iki durumda elle STATUS'a yazılmazsa bilgi
-   sonraki resume'de kaybolur:
-   - **ROADMAP-dışı meta iş** (repo polish, CI workflow, README ELI5,
-     social preview, docs refresh — checkbox'ı olmayan iş): STATUS'a
-     `### Post-v0.x.y repo polish (YYYY-MM-DD, not a release)` bloğu
-     ekle. Gerekirse "Next session starts here" bloğunu da güncelle ki
-     meta iş sıradaki Phase'i gölgelemesin.
-   - **Pending user action** (GitHub UI upload, elle koşulacak komut,
-     dışarıdan token rotate — kodda/git'te izi olmayan iş): STATUS'a
-     `🟡 **Pending user action**` işaretli bir satır ekle. İşaret
-     zorunlu — resume protokolü bu glyph'i yakalamalı.
-   - Aynı zamanda STATUS'ta stale kalmış section varsa (eski istatistik,
-     artık geçerli olmayan hardening recap) trim et.
-   - **Tetik:** "tamam bu kadar", "kapatıyorum", "session'ı bitirelim",
-     "yeni session'a hazırlık", "/clear öncesi" gibi ifadelerde bu
-     checkpoint'i yap. Kullanıcı sormadıysa da batch commit sonrası
-     kendine sor: "bu işin STATUS izi var mı?"
+1. Before starting a task, flip the ROADMAP checkbox `[ ] → [~]` (in
+   progress)
+2. When the task is done, **in a single commit:**
+   - ROADMAP checkbox `[~] → [x]` + commit hash + date
+   - Add the relevant capability to STATUS.md §2 "What works today"
+     (often by moving an item up from §3 to §2)
+   - Code + tests
+3. After any skill / script / docs change, automatic `git add → commit →
+   push` (global rule)
+4. If scope changes, update the ROADMAP line; split into sub-tasks if
+   needed
+5. When starting a new phase, write a design spec under `docs/specs/`
+   first (Phase 0 format); implementation follows
+6. **Session-end STATUS discipline** — ROADMAP-tracked work already keeps
+   STATUS current via rule 2. But two situations are lost on the next
+   resume unless STATUS is manually updated:
+   - **Off-ROADMAP meta work** (repo polish, CI workflow, README ELI5,
+     social preview, docs refresh — work without a checkbox): add a
+     `### Post-v0.x.y repo polish (YYYY-MM-DD, not a release)` block to
+     STATUS. Update the "Next session starts here" block too if needed,
+     so meta work doesn't shadow the next Phase.
+   - **Pending user action** (GitHub UI upload, manual command, external
+     token rotate — work that leaves no trace in code/git): add a line
+     marked `🟡 **Pending user action**` to STATUS. The marker is
+     mandatory — the resume protocol grep's for this glyph.
+   - At the same time, trim any stale STATUS sections (old stats,
+     hardening recap that no longer applies).
+   - **Trigger:** phrases like "that's it", "I'm closing", "let's end the
+     session", "prep for new session", "before /clear" all warrant this
+     checkpoint. Even without a prompt, after a batch commit ask
+     yourself: "does this work need a STATUS trace?"
 
 ---
 
-## Mimari hatırlatıcılar
+## Architectural reminders
 
-- **Obsidian master, ChromaDB/sqlite-vec index.** Vault'ta olmayan memory
-  yoktur. Silmek için `.md` dosyasını `_recycled/`'a taşı — watcher index'i
-  temizler.
-- **mnemos LLM çağırmaz.** Kullanıcı `--llm` flag verirse Claude API kullanılır,
-  yoksa her şey regex + heuristic. Refinement skill de **Claude Code oturumu
-  içinde** çalışır — maliyet sıfır.
+- **Obsidian is master; ChromaDB/sqlite-vec is index.** No memory exists
+  outside the vault. To delete, move the `.md` file to `_recycled/` — the
+  watcher cleans the index.
+- **Mnemos does not call an LLM.** If the user passes the `--llm` flag,
+  the Claude API is used; otherwise everything is regex + heuristics. The
+  refinement skill also runs **inside the Claude Code session** —
+  zero cost.
 - **Dual collection:** `mnemos_raw` (verbatim, lossless) + `mnemos_mined`
-  (fragments). Arama RRF ile birleştirir. Raw = baseline, mined = precision.
-- **Phase eksenleri:** Phase 0 = API'sız foundation (delivered). Phase 1 =
-  AI boost. Phase 2 = automation. ROADMAP'te v0.x sürümleriyle eşlenmiş.
+  (fragments). Search merges them via RRF. Raw = baseline, mined =
+  precision.
+- **Phase axes:** Phase 0 = API-free foundation (delivered). Phase 1 =
+  AI boost. Phase 2 = automation. Aligned with v0.x versions in the
+  ROADMAP.
 
 ---
 
-## Yasak / ihtiyatlı alanlar
+## Forbidden / careful zones
 
-- Çıplak `pip install` ile üretim ortamını kirletme — dev için
-  `pip install -e ".[dev,llm]"` kullan
-- `mnemos mine --rebuild` büyük vault'ta data kaybına yol açabilir; atomic
-  rebuild implementasyonu Phase 0'da var ama her zaman `git status` +
-  ChromaDB backup ile çalış
-- ChromaDB `mnemos/.chroma/` ve SQLite `mnemos/graph.json` yerel runtime
-  data — gitignore'lı, commit etme
-- Benchmark data `benchmarks/longmemeval/data/` büyük — gitignore'lı
-- Junction (`~/.claude/skills/mnemos-refine-transcripts`) ↔ repo:
-  drift olmamalı. Skill güncellemesi sadece repo'daki `SKILL.md`'ye yapılır;
-  junction aynısını görür.
+- Don't pollute the production environment with bare `pip install` — for
+  dev use `pip install -e ".[dev,llm]"`
+- `mnemos mine --rebuild` can cause data loss on a large vault; the
+  atomic-rebuild implementation in Phase 0 is in place, but always work
+  with `git status` + a ChromaDB backup
+- ChromaDB `mnemos/.chroma/` and SQLite `mnemos/graph.json` are local
+  runtime data — gitignored, do not commit
+- Benchmark data under `benchmarks/longmemeval/data/` is large —
+  gitignored
+- Junction (`~/.claude/skills/mnemos-refine-transcripts`) ↔ repo: must
+  not drift. Skill updates go to the repo's `SKILL.md` only; the junction
+  reflects the same file.
 
 ---
 
-## Kısa komut sözlüğü
+## Short command glossary
 
-| Komut | Ne yapar |
+| Command | What it does |
 |---|---|
-| `pytest tests/ -v` | Tüm testler |
-| `python -m mnemos --vault <path>` | MCP server manuel başlat |
-| `mnemos benchmark longmemeval --limit 10` | Hızlı benchmark smoke |
-| `mnemos mine Sessions/ --rebuild` | Vault'u baştan indexle (atomic) |
-| `git push origin main` | Skill/docs/script commit sonrası refleks |
+| `pytest tests/ -v` | All tests |
+| `python -m mnemos --vault <path>` | Start the MCP server manually |
+| `mnemos benchmark longmemeval --limit 10` | Quick benchmark smoke |
+| `mnemos mine Sessions/ --rebuild` | Reindex the vault from scratch (atomic) |
+| `git push origin main` | Reflex after any skill/docs/script commit |

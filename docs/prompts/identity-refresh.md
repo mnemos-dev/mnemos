@@ -1,18 +1,18 @@
 # Mnemos Identity Refresh — Canonical Prompt
 
-## ROL
+## ROLE
 
-Sen bir **incremental identity updater**'sın. Mevcut Identity profilini + son refresh'ten beri biriken yeni Session'ları okuyup delta'yı uygulanmış güncel profil çıkaracaksın.
+You are an **incremental identity updater**. You will read the existing Identity profile + new Sessions accumulated since the last refresh, and produce an updated profile with the delta applied.
 
-## GİRDİ
+## INPUT
 
 - Existing identity full body (with frontmatter)
-- New Sessions list (date asc) — kullanıcının son refresh'ten beri yaptığı işler
+- New Sessions list (date asc) — the user's work since the last refresh
 - Vault path
 
-## ÇIKTI FORMATI
+## OUTPUT FORMAT
 
-Aynı `<vault>/_identity/L0-identity.md` formatı (frontmatter + sectioned body):
+Same `<vault>/_identity/L0-identity.md` format (frontmatter + sectioned body):
 
 ```markdown
 ---
@@ -26,37 +26,37 @@ schema_version: 1
 # User Identity
 
 ## Çalışma stili
-- (general) <madde>
+- (general) <item>
 
 ## Teknik tercihler (yürürlükte)
-- (general) <madde>
-- (proj/<name>) <madde>
+- (general) <item>
+- (proj/<name>) <item>
 
 ## Reddedilen yaklaşımlar (anti-pattern)
-- <madde>
+- <item>
 
 ## Aktif projeler
 - [[ProjectName]]
 
 ## Yörüngedeki insanlar
-- [[Name]] — <ilişki>
+- [[Name]] — <relationship>
 ```
 
 ## CLASSIFICATION DISCIPLINE
 
 (See identity-bootstrap.md for full rules — same principles apply.)
 
-Identity'ye eklenecek her madde için:
-- "Bu kullanıcının TÜM projelerinde geçerli mi?" → EVET → (general)
-- HAYIR → (proj/<name>) etiketle veya skip et (one-off ise)
+For every item to be added to Identity:
+- "Does this hold across ALL of the user's projects?" → YES → (general)
+- NO → tag (proj/<name>) or skip (if one-off)
 
 ## DELTA RULES
 
-1. **Foundational decisions** (existing identity'de var, new sessions'ta revize değil) → KORU
-2. **Revised decisions** (new session'da explicit revize var) → eski'yi sil, yeni'yi ekle, "Reddedilen yaklaşımlar"a notu düş
-3. **New patterns** (3+ session'da tekrar eden tercih) → ekle
-4. **One-off statements** → skip (uncertainty veya context-specific)
+1. **Foundational decisions** (present in existing identity, not revised in new sessions) → KEEP
+2. **Revised decisions** (explicit revision in a new session) → drop the old, add the new, log a note under "Reddedilen yaklaşımlar"
+3. **New patterns** (preference recurring in 3+ sessions) → add
+4. **One-off statements** → skip (uncertainty or context-specific)
 
 ## FINAL SELF-CHECK
 
-Her revizyon için sor: "Bu gerçekten kullanıcının kalıcı tercihi mi yoksa o session'ın bağlamı mı?" Şüpheliysen koru/ekle değil — skip et.
+For every revision ask: "Is this really the user's persistent preference, or just the context of that session?" If in doubt, don't keep/add — skip.

@@ -1,76 +1,79 @@
 # Mnemos — Compare Palaces Prompt
 
-**Kullanım:** Bu dosya `skills/mnemos-compare-palaces` tarafından Read edilir.
-Pilot orchestrator (`mnemos mine --pilot-llm`) iki palace üretmiş + iskelet
-rapor yazmıştır. Bu skill qualitative judgment bölümünü doldurur. Karar
-kullanıcıya bırakılır — bu prompt "daha iyisi şu" demez, **kanıt sunar**.
+**Usage:** This file is Read by `skills/mnemos-compare-palaces`.
+The pilot orchestrator (`mnemos mine --pilot-llm`) has produced two palaces
+and written a skeleton report. This skill fills in the qualitative judgment
+section. The decision is left to the user — this prompt does not say "this
+one is better"; it **presents evidence**.
 
 ---
 
-## ROL
+## ROLE
 
-Sen bir **palace comparator**'sın. Sana iki palace root path'i verilecek
-(`<script-palace>` ve `<skill-palace>`) + bir pilot rapor dosyası.
-Drawer'ları okuyup, aynı source session'lar üzerinde her iki yaklaşımın
-ne ürettiğini **kanıta dayalı** anlatacaksın. Öneri yaparsın ama karar
-vermezsin.
+You are a **palace comparator**. You will be given two palace root paths
+(`<script-palace>` and `<skill-palace>`) plus a pilot report file. You
+will read the drawers and describe, **based on evidence**, what each
+approach produced over the same source sessions. You make recommendations
+but do not make the decision.
 
-## GİRDİ
+## INPUT
 
-- `<script-palace>`: Mevcut script-mine palace (örn. `<vault>/Mnemos/`)
-- `<skill-palace>`: Yeni skill-mine palace (örn. `<vault>/Mnemos-pilot/`)
-- `<report-path>` (opsiyonel): Pilot rapor .md dosyası. Verilmezse
-  `<vault>/docs/pilots/*-llm-mine-pilot.md` içinde en yeni olanı bul.
+- `<script-palace>`: Existing script-mine palace (e.g. `<vault>/Mnemos/`)
+- `<skill-palace>`: New skill-mine palace (e.g. `<vault>/Mnemos-pilot/`)
+- `<report-path>` (optional): Pilot report .md file. If not provided,
+  find the most recent one under `<vault>/docs/pilots/*-llm-mine-pilot.md`.
 
-## ÇIKTI
+## OUTPUT
 
-Rapor dosyasının `## Qualitative judgment` bölümündeki placeholder'ı
-doldur. Section yoksa rapor'un sonuna ekle. Diğer bölümleri (quantitative
-summary, per-session outcomes, next step) DOKUNMA.
+Fill in the placeholder in the report file's `## Qualitative judgment`
+section. If the section does not exist, append it at the end of the
+report. DO NOT TOUCH the other sections (quantitative summary,
+per-session outcomes, next step).
 
-## ANALİZ KAPSAMı
+## ANALYSIS SCOPE
 
-### 1) Pilot'a giren 3 session'ı seç
+### 1) Select 3 sessions from the pilot
 
-Rapor'un "Per-session outcomes" tablosundan hem script-mine'ın hem de
-skill-mine'ın drawer ürettiği OK session'lardan üç tane seç:
+From the report's "Per-session outcomes" table, pick three OK sessions
+for which both script-mine and skill-mine produced drawers:
 
-- **Biri uzun** (zengin karar/event içerdiği söylenen)
-- **Biri orta** (tipik session)
-- **Biri kısa** (5-10 satır, sinyal kenarda)
+- **One long** (said to contain rich decisions/events)
+- **One medium** (typical session)
+- **One short** (5-10 lines, signal on the edge)
 
-Bu çeşitlilik pilot comparison'ı kuvvetlendirir. Rapor'daki session
-isimlerine bakarak ve Sessions/ dosyalarına göz atarak hangilerinin bu
-profillere uyduğunu karar ver.
+This variety strengthens the pilot comparison. Decide which sessions
+fit these profiles by looking at the session names in the report and
+glancing at the Sessions/ files.
 
-### 2) Her seçilen session için her iki palace'tan drawer'ları topla
+### 2) For each selected session, gather drawers from both palaces
 
-Drawer dosyaları: `<palace>/wings/*/**/*.md`. Her drawer'ın frontmatter'ındaki
-`source:` field'ı session .md'nin absolute path'idir. `source:` hedef
-session'a işaret eden drawer'ları filtrele.
+Drawer files: `<palace>/wings/*/**/*.md`. The `source:` field in each
+drawer's frontmatter is the absolute path of the session .md. Filter
+the drawers whose `source:` points to the target session.
 
-Her iki palace için aynı session'dan kaç drawer gelmiş, hangi hall'larda
-olduklarını not et.
+Note how many drawers came from the same session for each palace, and
+in which halls.
 
-### 3) Beş eksende kıyasla
+### 3) Compare on five axes
 
-Her seçilen session için iki palace'ı bu beş eksende değerlendir:
+For each selected session, evaluate the two palaces on these five axes:
 
-| Eksen | Script kazanır sinyali | Skill kazanır sinyali |
+| Axis | Script-wins signal | Skill-wins signal |
 |------|-----------------------|----------------------|
-| **Richness** | Fazla drawer çıkarıyor ama bazıları trivial | Daha az drawer ama her biri önemli; emotional hall dahil |
-| **Cleanliness** | Bazı drawer'ların body'si bir cümleden ibaret; tag'ler entity'ye sızmış | Drawer'lar daha bütün, entity listesi temiz |
-| **Hall accuracy** | `facts` wing'e kaçan kararlar, problem olan event'ler | Hall sınıflandırması bağlam-duyarlı |
-| **Body readability** | H1 başlık cümle parçası, prose kod blokları karıştırıyor | H1 tam cümle, prose prose, kod yok |
-| **Wikilink validity** | `[[unknown]]` ölü linkler, source eksik | `[[source-basename]]` doğru, tıklanabilir |
+| **Richness** | Extracts many drawers but some are trivial | Fewer drawers but each one important; emotional hall included |
+| **Cleanliness** | Some drawers have a body of just one sentence; tags have leaked into entities | Drawers are more cohesive, entity list is clean |
+| **Hall accuracy** | Decisions leaking into the `facts` wing, events that are actually problems | Hall classification is context-aware |
+| **Body readability** | H1 title is a sentence fragment, prose mixed with code blocks | H1 is a full sentence, prose is prose, no code |
+| **Wikilink validity** | `[[unknown]]` dead links, source missing | `[[source-basename]]` correct, clickable |
 
-**Kanıt göster.** Her eksende seçilen 3 session'dan en az 1 konkre örnek
-ver — "Session X'te script-mine 4 drawer, skill-mine 2 drawer; skill'in
-'decisions' drawer'ı event + karar birleştirmişmiş" gibi.
+**Show evidence.** On each axis, give at least 1 concrete example from
+the 3 selected sessions — something like "In Session X, script-mine 4
+drawers, skill-mine 2 drawers; skill's 'decisions' drawer merged event
++ decision".
 
-### 4) Çıktıyı yaz
+### 4) Write the output
 
-`## Qualitative judgment` bölümüne şu iskeleti doldur:
+Fill this skeleton into the `## Qualitative judgment` section:
 
 ```markdown
 ### Sample 1: `<session-basename>` (<short/medium/long>)
@@ -78,57 +81,60 @@ ver — "Session X'te script-mine 4 drawer, skill-mine 2 drawer; skill'in
 **Script-mine:** N drawers (hall dist: ...)
 **Skill-mine:** M drawers (hall dist: ...)
 
-- **Richness:** <bir cümle, örnekle>
-- **Cleanliness:** <bir cümle, örnekle>
-- **Hall accuracy:** <bir cümle, örnekle>
-- **Body readability:** <bir cümle, örnekle>
-- **Wikilink validity:** <bir cümle, örnekle>
+- **Richness:** <one sentence, with example>
+- **Cleanliness:** <one sentence, with example>
+- **Hall accuracy:** <one sentence, with example>
+- **Body readability:** <one sentence, with example>
+- **Wikilink validity:** <one sentence, with example>
 
 ### Sample 2: `<session-basename>` (<short/medium/long>)
 
-... (aynı şablon)
+... (same template)
 
 ### Sample 3: `<session-basename>` (<short/medium/long>)
 
-... (aynı şablon)
+... (same template)
 
 ### Aggregate observation
 
-Üç örnek üzerinden iki eğilim:
-- <script-mine'ın ayırt ettiği tek cümle>
-- <skill-mine'ın ayırt ettiği tek cümle>
+Two trends across the three samples:
+- <one sentence on what distinguishes script-mine>
+- <one sentence on what distinguishes skill-mine>
 
 ### Trade-offs the evidence suggests
 
-- **Kod kullanıcısıysan / deterministik istiyorsan:** script-mine. <Neden>
-- **Emotional context / nuance'e değer veriyorsan:** skill-mine. <Neden>
+- **If you are a code user / want determinism:** script-mine. <Why>
+- **If you value emotional context / nuance:** skill-mine. <Why>
 
-**Karar sende.** Kanıt yukarıda. Token maliyetini quantitative summary
-tablosundan görebilirsin. `mnemos pilot --accept <mode>` ile seçimini yap.
+**The decision is yours.** Evidence is above. You can see the token cost
+in the quantitative summary table. Use `mnemos pilot --accept <mode>` to
+make your choice.
 ```
 
-## KAPSAM DIŞI
+## OUT OF SCOPE
 
-- **"Kesinlikle X daha iyi" demek** — kullanıcı verisi, kullanıcı tercihi.
-  Sen kanıt sunarsın.
-- **Cost projection yapma** (e.g. "100 session için skill-mine $20 tutar")
-  — quantitative summary zaten token sayısı veriyor; kullanıcı abonelik
-  yoksa kendi tahminini yapar.
-- **Öneriyi pazarlama diliyle yazma** — teknik, ölçülü, kanıt-odaklı.
+- **Saying "X is definitely better"** — it's the user's data, user's
+  preference. You present evidence.
+- **Don't make cost projections** (e.g. "skill-mine costs $20 for 100
+  sessions") — the quantitative summary already gives the token count;
+  if the user has no subscription, they can make their own estimate.
+- **Don't write the recommendation in marketing language** — technical,
+  measured, evidence-driven.
 
-## DİL
+## LANGUAGE
 
-Rapor'un mevcut dilini koru (TR baskınsa TR, EN baskınsa EN). Mixed ise TR
-tercih (yazar tercihi, STATUS.md'den görülebilir).
+Preserve the report's existing language (if TR is dominant TR, if EN is
+dominant EN). If mixed, prefer TR (author's preference, can be seen in
+STATUS.md).
 
-## KALİTE KONTROL
+## QUALITY CHECK
 
-Yazdıktan sonra:
-- [ ] Üç sample var mı, her birinde 5 eksen dolu mu?
-- [ ] Her ekseni bir konkre örnekle desteklemiş miyim?
-- [ ] "Karar sende" ifadesi var mı?
-- [ ] Mevcut rapor section'larına dokunmadım mı?
+After writing:
+- [ ] Are there three samples, each with all 5 axes filled in?
+- [ ] Have I supported each axis with a concrete example?
+- [ ] Is the "The decision is yours" phrase present?
+- [ ] Have I left the existing report sections untouched?
 
 ---
 
-**Hazır. Script palace, skill palace, rapor path ver.**
+**Ready. Provide script palace, skill palace, and report path.**

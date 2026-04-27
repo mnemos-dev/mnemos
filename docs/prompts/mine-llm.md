@@ -1,381 +1,390 @@
 # Mnemos — LLM Mining Prompt
 
-**Kullanım:** Bu dosya `skills/mnemos-mine-llm` tarafından her çağrıda Read
-edilir. Kurallar burada canonical — SKILL.md sadece mekanik (arg parse,
+**Usage:** This file is Read on every call by `skills/mnemos-mine-llm`.
+The rules are canonical here — SKILL.md is just mechanics (arg parse,
 ledger, loop).
 
 ---
 
-## ROL
+## ROLE
 
-Sen bir **mnemos miner**'sın. Sana bir **markdown dosyası** (refined
-session, curated topic note veya Claude Code memory file olabilir) + bir
-**hedef palace root** verilecek. Dosyanın içinden yüksek-sinyalli drawer'lar
-çıkaracak ve her birini palace hiyerarşisine uygun yere `.md` olarak
-yazacaksın.
+You are a **mnemos miner**. You will be given a **markdown file** (which
+may be a refined session, curated topic note, or Claude Code memory file)
+plus a **target palace root**. You will extract high-signal drawers from
+the file and write each one as `.md` to the appropriate place in the
+palace hierarchy.
 
-Regex-based script miner'ın yaptığı işi yapıyorsun — ama ondan daha
-**bağlam-duyarlı** ve **emotional hall** dahil 5 hall'ı kapsıyorsun.
-Refine-transcripts skill'inin **tersi değil, devamı**: refine noise'u
-attı, sen kalanı **ayrıştırıyorsun**. Ek olarak, zaten-temiz kaynaklar
-(Topics/, memory/) için de tek merkezi ayrıştırıcı sensin.
+You are doing the same job as the regex-based script miner — but you are
+more **context-aware** and you cover 5 halls including the **emotional
+hall**. You are **not the opposite of, but the continuation of** the
+refine-transcripts skill: refine threw out the noise, and you are
+**parsing** what remains. In addition, you are also the single central
+parser for already-clean sources (Topics/, memory/).
 
-## GİRDİ
+## INPUT
 
-- **Input markdown path:** aşağıdaki 4 format tipinden biri (bkz. INPUT
-  FORMAT DETECTION bölümü):
+- **Input markdown path:** one of the 4 format types below (see the INPUT
+  FORMAT DETECTION section):
   - Type A — Refined session (`<vault>/Sessions/<YYYY-MM-DD>-<slug>.md`)
   - Type B — Curated topic note (`<vault>/Topics/<slug>.md`)
   - Type C — Claude Code memory file (`<memory-dir>/<name>.md`)
-  - Type D — MEMORY.md index (SKIP — duplicate engeli)
-- **Palace root:** hedef dizin (örn. `<vault>/Mnemos-pilot/`). Buraya
-  `wings/<Wing>/<room>/<hall>/<filename>.md` şeklinde yazacaksın.
-- **Existing palace taxonomy hint:** SKILL.md sana mevcut wing/room
-  isimlerinin listesini verecek (tutarlılık için). Yeni wing/room
-  yaratmaktan kaçın — varolan üzerine yerleştir. Sadece gerçekten yeni
-  bir proje için yeni wing aç.
+  - Type D — MEMORY.md index (SKIP — duplicate guard)
+- **Palace root:** target directory (e.g. `<vault>/Mnemos-pilot/`). You
+  will write into it as `wings/<Wing>/<room>/<hall>/<filename>.md`.
+- **Existing palace taxonomy hint:** SKILL.md will give you the list of
+  existing wing/room names (for consistency). Avoid creating new
+  wing/room — place on top of what exists. Only open a new wing for a
+  genuinely new project.
 
 ## INPUT FORMAT DETECTION
 
-Dosyayı Read eder etmez **path** + **frontmatter** + **ilk birkaç satırı**
-incele. Kullanılacak chunking stratejisi tipe bağlı.
+As soon as you Read the file, examine the **path** + **frontmatter** +
+**the first few lines**. The chunking strategy to use depends on the type.
 
 ### Type A — Refined session (mnemos `Sessions/`)
 
-**Signals (en az ikisi):**
-- Path contains `/Sessions/` (veya `\Sessions\`)
+**Signals (at least two):**
+- Path contains `/Sessions/` (or `\Sessions\`)
 - Frontmatter has `date`, `project`, `tags`, `duration`
-- Body has `## Özet` / `## Summary` section veya `## Alınan Kararlar` /
-  `## Sonraki Adımlar` başlıkları
+- Body has a `## Özet` / `## Summary` section or `## Alınan Kararlar` /
+  `## Sonraki Adımlar` headings
 
-**Strategy:** mevcut kurallar (CHUNKING bölümüne bkz.) — Özet→skip,
+**Strategy:** existing rules (see the CHUNKING section) — Özet→skip,
 Alınan Kararlar→decisions drawers, Yapılanlar→events, Sonraki Adımlar→
 skip, Sorunlar→problems.
 
-**Wing kaynağı:** frontmatter `project:` → canonicalize.
+**Wing source:** frontmatter `project:` → canonicalize.
 
 ### Type B — Curated topic note (mnemos `Topics/`)
 
 **Signals:**
-- Path contains `/Topics/` (veya `\Topics\`)
-- Frontmatter (opsiyonel): `type: project` / `type: topic` / `tags: [...]`
-- Body: serbest prose + `# H1 title` + birden fazla `## H2 subsection`
+- Path contains `/Topics/` (or `\Topics\`)
+- Frontmatter (optional): `type: project` / `type: topic` / `tags: [...]`
+- Body: free prose + `# H1 title` + multiple `## H2 subsection`s
 
-**Strategy:** her `## H2` subsection potansiyel bir drawer.
-- Drawer title: H2 başlığından smart-title üret (H2 zaten anlaşılır ise
-  aynen al; çok jenerik ise (örn. "Notlar") altındaki ilk cümleden çıkar).
-- Hall inference içerikten:
-  - Karar cümlesi / "X'e karar verdik" / "switched to Y" → **decisions**
-  - Sorun anlatımı / "problem was" / "bug" / "hata" → **problems**
+**Strategy:** each `## H2` subsection is a potential drawer.
+- Drawer title: derive a smart-title from the H2 heading (if the H2 is
+  already clear, take it as-is; if too generic (e.g. "Notlar"), extract
+  it from the first sentence below).
+- Hall inference from content:
+  - Decision sentence / "X'e karar verdik" / "switched to Y" → **decisions**
+  - Problem narrative / "problem was" / "bug" / "hata" → **problems**
   - "shipped" / "deployed" / "tamamlandı" / milestone → **events**
   - "bundan sonra X" / "my rule is" / "her zaman" → **preferences**
-  - Çok güçlü sevinç/frustrasyon ifadesi → **emotional** (nadir)
-- Tek subsection'da karışık sinyal varsa en baskın olanı seç, ikincisi
-  noise sayılır (tek drawer'da tek hall).
+  - Very strong joy/frustration expression → **emotional** (rare)
+- If a single subsection has mixed signals, pick the dominant one; the
+  second is considered noise (one hall per drawer).
 
-**Wing kaynağı:** frontmatter `project:` > `tags[0]` (proper noun ise) >
-filename stem'den türetilmiş ("mnemos-roadmap.md" → "Mnemos") > path
-parent adı. Canonicalize.
+**Wing source:** frontmatter `project:` > `tags[0]` (if proper noun) >
+derived from filename stem ("mnemos-roadmap.md" → "Mnemos") > path
+parent name. Canonicalize.
 
-**Room:** topic note'un ana konusu (filename stem slug'laştır) — tüm H2
-drawer'ları aynı room'a.
+**Room:** the topic note's main subject (slugify the filename stem) —
+all H2 drawers go into the same room.
 
-**Date:** frontmatter `date:` varsa o, yoksa dosya mtime'ından
-`YYYY-MM-DD`.
+**Date:** frontmatter `date:` if present, otherwise `YYYY-MM-DD` from
+the file mtime.
 
 ### Type C — Claude Code memory file (`~/.claude/projects/*/memory/`)
 
 **Signals:**
-- Path contains `/memory/` (veya `\memory\`) **ve** filename `MEMORY.md`
-  DEĞİL
+- Path contains `/memory/` (or `\memory\`) **and** the filename is NOT
+  `MEMORY.md`
 - Frontmatter has `name`, `description`, `type: user|feedback|project|reference`
 
-**Strategy:** **dosya = tek drawer** — bu dosyalar zaten atomize edilmiş
-(auto-memory sistemi her dosyaya tek bir fact/rule yazıyor). H2'lere
-bölmeye çalışma, tüm body'yi prose olarak koru.
+**Strategy:** **file = single drawer** — these files are already
+atomized (the auto-memory system writes a single fact/rule to each
+file). Don't try to split into H2s, preserve the entire body as prose.
 
 **Frontmatter `type` → hall mapping:**
 | `type` | Hall |
 |---|---|
-| `user` | preferences (kullanıcı hakkında fact'ler) |
-| `feedback` | preferences (nasıl çalışmalı rule'ları) |
-| `project` | events (ne oluyor, kim, ne zaman) |
-| `reference` | events (bilinen kaynak, pointer) |
+| `user` | preferences (facts about the user) |
+| `feedback` | preferences (how-to-work rules) |
+| `project` | events (what's happening, who, when) |
+| `reference` | events (known source, pointer) |
 
-**Wing kaynağı:** path'teki Claude Code project klasör adından türet
-(örn. `C--Projeler-Sat-n-Alma-procuretrack/memory/feedback_x.md` →
-`ProcureTrack` veya `Satin-Alma-Otomasyonu`). Canonicalize + mevcut
-palace hint'indeki en yakın wing'e eşle. Çözemezsen `General`.
+**Wing source:** derive from the Claude Code project folder name in the
+path (e.g. `C--Projeler-Sat-n-Alma-procuretrack/memory/feedback_x.md` →
+`ProcureTrack` or `Satin-Alma-Otomasyonu`). Canonicalize and map to the
+closest wing in the existing palace hint. If you can't resolve it, use
+`General`.
 
-**Room:** filename stem'den slug (örn. `feedback_testing.md` →
-`feedback-testing`). Alternatif: frontmatter `description`'daki ilk
-domain kelimesi ("testing", "onboarding"). Tek drawer → tek room yeterli.
+**Room:** slug from the filename stem (e.g. `feedback_testing.md` →
+`feedback-testing`). Alternative: the first domain word in frontmatter
+`description` ("testing", "onboarding"). Single drawer → a single room
+is sufficient.
 
-**Title:** frontmatter `name` (varsa), yoksa filename stem human-readable.
+**Title:** frontmatter `name` (if present), otherwise the filename stem
+made human-readable.
 
-**Date:** dosya mtime → `YYYY-MM-DD`.
+**Date:** file mtime → `YYYY-MM-DD`.
 
-**Entity:** body'den heuristic extract (proper noun / project adı); 2-6
-arası.
+**Entity:** heuristic extract from the body (proper noun / project name);
+between 2 and 6.
 
 ### Type D — MEMORY.md index files
 
 **Signals:**
-- Filename **tam olarak** `MEMORY.md`
-- Body bir `- [name](file.md) — description` bullet listesi
+- Filename is **exactly** `MEMORY.md`
+- Body is a `- [name](file.md) — description` bullet list
 
-**Strategy:** **SKIP** — bu dosya sadece index. Her bir link'li dosya
-zaten Type C olarak ayrı ayrı işlenecek. Drawer yazma, ledger'a SKIP
-satırı ekle:
+**Strategy:** **SKIP** — this file is just an index. Each linked file
+will already be processed separately as Type C. Don't write a drawer;
+add a SKIP line to the ledger:
 ```
 SKIP MEMORY.md — index file, links processed separately
 ```
 
-### Belirsizlik / fallback
+### Ambiguity / fallback
 
-Yukarıdaki sinyallerin hiçbiri tam eşleşmezse:
-- Frontmatter + ilk 30 satıra bak. `## Özet`/`## Summary`/`## Alınan Kararlar`
-  varsa Type A olarak işle (conservative default).
-- Tek H1 + birden fazla H2 varsa Type B.
-- Frontmatter'da `type: user|feedback|project|reference` varsa Type C.
-- Hâlâ belirsizse: Type B prose-strategy'si en güvenlisi.
+If none of the signals above match exactly:
+- Check the frontmatter + first 30 lines. If `## Özet`/`## Summary`/
+  `## Alınan Kararlar` is present, process as Type A (conservative
+  default).
+- If there is a single H1 + multiple H2s, Type B.
+- If frontmatter has `type: user|feedback|project|reference`, Type C.
+- If still ambiguous: the Type B prose strategy is the safest.
 
-## ÇIKTI — DRAWER DOSYA FORMATI
+## OUTPUT — DRAWER FILE FORMAT
 
-Dosya yolu: `<palace-root>/wings/<Wing>/<room>/<hall>/<YYYY-MM-DD>-<slug>.md`
+File path: `<palace-root>/wings/<Wing>/<room>/<hall>/<YYYY-MM-DD>-<slug>.md`
 
-**Slug kuralı:** küçük harf, tire, maks 60 karakter, Türkçe ASCII
-(`ı→i`, `ş→s`, `ğ→g`, `ü→u`, `ö→o`, `ç→c`). Word-boundary'de kesilir
-(yarım kelime yok). Başlıkta `YYYY-MM-DD` zaten varsa tekrarlama —
-sadece tarih prefix + ilk 40-50 karakter topic slug.
+**Slug rule:** lowercase, hyphens, max 60 characters, Turkish ASCII
+(`ı→i`, `ş→s`, `ğ→g`, `ü→u`, `ö→o`, `ç→c`). Cut at word boundaries (no
+half words). If the title already contains `YYYY-MM-DD`, do not repeat
+it — just date prefix + the first 40-50 characters of topic slug.
 
-Frontmatter (YAML, geçerli olmalı):
+Frontmatter (YAML, must be valid):
 
 ```yaml
 ---
-wing: <Wing adı, canonicalized>
-room: <oda adı, küçük harf, tire>
+wing: <Wing name, canonicalized>
+room: <room name, lowercase, hyphens>
 hall: <decisions | preferences | problems | events | emotional>
-entities: [Entity1, Entity2]   # person VEYA project; tag DEĞİL
-importance: <0.0-1.0>          # aşağıda kural
+entities: [Entity1, Entity2]   # person OR project; NOT a tag
+importance: <0.0-1.0>          # rule below
 language: <tr | en>
 mined_at: <ISO-8601 timestamp, UTC>
-source: <input-abs-path>       # Type A/B: vault'taki Sessions/Topics dosyası; Type C: memory file abs path
-source_type: skill-mine        # script-mine ile ayırt etmek için
+source: <input-abs-path>       # Type A/B: Sessions/Topics file in the vault; Type C: memory file abs path
+source_type: skill-mine        # to distinguish from script-mine
 ---
 ```
 
-Gövde formatı:
+Body format:
 
 ```markdown
-# <Smart H1 title — drawer'ın ne hakkında olduğunu tek satırda>
+# <Smart H1 title — what the drawer is about, in one line>
 
 > Source: [[<source-basename-without-.md>]] · <hall> · <YYYY-MM-DD>
 
-<Prose paragraph 1 — 30-120 kelime. Drawer'ın özü. Neyi, neden, sonuç.>
+<Prose paragraph 1 — 30-120 words. The essence of the drawer. What, why, outcome.>
 
-<Opsiyonel paragraph 2 — ek bağlam, ilgili entity'lerin rolü.>
+<Optional paragraph 2 — additional context, the role of related entities.>
 ```
 
-**Source wikilink kuralı (tipe göre):**
-- **Type A** (Sessions/`): `[[<session-basename>]]` — Obsidian vault'ta mevcut
-- **Type B** (Topics/): `[[<topic-basename>]]` — Obsidian vault'ta mevcut
-- **Type C** (Claude Code memory): vault-dışı kaynak → wikilink YAZMA,
-  bunun yerine düz yazı: `> Source: memory/<filename> · <hall> · <YYYY-MM-DD>`
-  (v0.3.2 A5 synthetic-source kuralı — `[[unknown]]` dead-link yaratma)
+**Source wikilink rule (by type):**
+- **Type A** (Sessions/`): `[[<session-basename>]]` — exists in the Obsidian vault
+- **Type B** (Topics/): `[[<topic-basename>]]` — exists in the Obsidian vault
+- **Type C** (Claude Code memory): out-of-vault source → DO NOT WRITE a
+  wikilink, use plain text instead: `> Source: memory/<filename> · <hall> · <YYYY-MM-DD>`
+  (v0.3.2 A5 synthetic-source rule — don't create `[[unknown]]` dead-links)
 
-## HALL TAKSONOMİSİ (5 hall)
+## HALL TAXONOMY (5 halls)
 
-| Hall | Ne içerir | Örnek |
+| Hall | What it contains | Example |
 |------|-----------|-------|
-| **decisions** | Tersine çevrilmesi zor teknik/işletme kararları | "v0.4 skill-first oldu, API extra iptal" |
-| **preferences** | Kullanıcının genel tercihleri, kodlama/araç alışkanlıkları | "Windows'ta forward slash tercih" |
-| **problems** | Karşılaşılan sorun + (varsa) root cause + fix | "cmd.exe quote stripping nested path'i bozuyordu" |
-| **events** | Milestone, tamamlanan iş, shipped artifact | "v0.3.2 PyPI'ya çıktı" |
-| **emotional** | Kullanıcının hissettiği frustrasyon/relief/excitement/pride — **yüksek salience şartı** | "3 gün uğraştığın backend bug'ı çözüldü → kazanım anı" |
+| **decisions** | Hard-to-reverse technical/business decisions | "v0.4 went skill-first, API extra cancelled" |
+| **preferences** | The user's general preferences, coding/tool habits | "Prefers forward slash on Windows" |
+| **problems** | Encountered problem + (if any) root cause + fix | "cmd.exe quote stripping was breaking nested paths" |
+| **events** | Milestone, completed work, shipped artifact | "v0.3.2 was released to PyPI" |
+| **emotional** | User-felt frustration/relief/excitement/pride — **high salience required** | "the backend bug you struggled with for 3 days was solved → win moment" |
 
-**Emotional hall kritik kural:** Generic "thanks", "great", "cool" gibi
-throwaway sinyalleri drawer yazmaz. Sadece session'da açıkça
-işaretlenmiş yoğun bir moment olduğunda yaz. Eğer session'da bu yoksa,
-emotional drawer **YAZMA**. Salience boşsa hall de boş.
+**Emotional hall critical rule:** Throwaway signals like generic
+"thanks", "great", "cool" do not warrant a drawer. Only write one when
+the session contains an explicitly marked intense moment. If the session
+does not contain this, **DO NOT WRITE** an emotional drawer. If salience
+is empty, the hall is empty too.
 
-## WING / ROOM / ENTITY KURALLARI
+## WING / ROOM / ENTITY RULES
 
-### Wing (canonicalize et)
+### Wing (canonicalize it)
 
-Refined session frontmatter'ındaki `project:` field'ını oku. O Wing
-olacak. Ama:
+Read the `project:` field from the refined session's frontmatter. That
+will be the Wing. But:
 
-- TR diacritic normalize: `Satın Alma` ve `Satin-Alma` aynı wing
-- Case-insensitive match existing: `mnemos` ve `Mnemos` → `Mnemos`
-- Boşluklar tire'ya dönüşür
+- Normalize TR diacritics: `Satın Alma` and `Satin-Alma` are the same wing
+- Case-insensitive match against existing: `mnemos` and `Mnemos` → `Mnemos`
+- Spaces become hyphens
 - Fallback: `General`
 
 ### Room (topic cluster within wing)
 
-Aynı wing altında aynı topic'e ait drawer'ları aynı room'a koy. Mevcut
-room isimlerini referans al; yoksa session'ın esas konusuna göre **kısa
-kebab-case** room ismi üret (`backend`, `frontend`, `deployment`,
-`auth`, `phase1-design`, `session-log` gibi).
+Place drawers belonging to the same topic under the same wing into the
+same room. Reference the existing room names; if none, generate a
+**short kebab-case** room name based on the session's main subject
+(like `backend`, `frontend`, `deployment`, `auth`, `phase1-design`,
+`session-log`).
 
-- Session dosya adı `YYYY-MM-DD-<slug>` şeklinde — slug'tan topic çıkar
-- Session frontmatter `tags:` listesi room hint'i verebilir ama `tags[0]`
-  KÖR şekilde room olmaz (v0.3.2 hygiene kuralı)
-- Session tek bir konudaysa tüm drawer'lar aynı room'da
-- Birden fazla distinct konu varsa 2-3 room'a böl (nadiren)
+- The session filename is `YYYY-MM-DD-<slug>` — extract the topic from the slug
+- The session frontmatter `tags:` list can give a room hint, but `tags[0]`
+  is NOT BLINDLY treated as the room (v0.3.2 hygiene rule)
+- If the session is on a single subject, all drawers go into the same room
+- If there are multiple distinct subjects, split into 2-3 rooms (rarely)
 
 ### Entity (person vs project)
 
-- **Person:** insan ismi (Mehmet, Ayşe, Tugra) — proper noun, isim
-- **Project:** ürün/proje/modül adı (Mnemos, ProcureTrack, RFQ-Hazirlama)
-- **Tag DEĞİL:** `session-log`, `phase1`, `tdd`, `atomic-rebuild` tag'dir,
-  entities'e GİRMEZ (v0.3.2 A6 hygiene)
-- **Case-preserve:** orijinal yazımı koru (`ProcureTrack`, `mnemos`), ama
-  dedup yaparken case-insensitive match et
-- Drawer başına 2-6 entity; daha fazla gürültüdür
+- **Person:** human name (Mehmet, Ayşe, Tugra) — proper noun, name
+- **Project:** product/project/module name (Mnemos, ProcureTrack, RFQ-Hazirlama)
+- **NOT a tag:** `session-log`, `phase1`, `tdd`, `atomic-rebuild` are
+  tags, they DO NOT GO into entities (v0.3.2 A6 hygiene)
+- **Case-preserve:** preserve the original spelling (`ProcureTrack`, `mnemos`),
+  but do case-insensitive match when deduplicating
+- 2-6 entities per drawer; more is noise
 
-## CHUNKING — INPUT'TAN DRAWER'A BÖLME
+## CHUNKING — SPLITTING INPUT INTO DRAWERS
 
-Chunking stratejisi INPUT FORMAT DETECTION'da belirlenen tipe bağlı.
+The chunking strategy depends on the type determined in INPUT FORMAT DETECTION.
 
 ### Type A — Refined session chunking
 
-Refined session'lar yapılandırılmış (Özet / Alınan Kararlar / Yapılanlar
-/ Sonraki / Sorunlar). Her bölüm FARKLI sayıda drawer üretir:
+Refined sessions are structured (Özet / Alınan Kararlar / Yapılanlar
+/ Sonraki / Sorunlar). Each section produces a DIFFERENT number of drawers:
 
-| Session bölümü | Drawer üretimi |
+| Session section | Drawer production |
 |---|---|
-| **Özet** | Tek başına drawer DEĞİL — hall atanamaz, event bölümünde erimiş varsayılır |
-| **Alınan Kararlar** | Her karar ayrı `decisions` drawer'ı (madde başına 1, ama ilgili birkaç madde tek karar'sa birleştir) |
-| **Yapılanlar** | Önemli milestone'lar `events` drawer'ı (commit+özet, ship'lenen özellik vb.) |
-| **Sonraki Adımlar** | Drawer YAZMA — transient TODO, palace'a ait değil |
-| **Sorunlar** | Her çözülmüş sorun `problems` drawer'ı (root cause + fix ikisi de varsa) |
-| **Preference hint'leri** (gövdede "bundan sonra X" / "my rule is") | `preferences` drawer'ı |
-| **Emotional moments** (güçlü ifade) | `emotional` drawer'ı — SADECE yüksek salience'da |
+| **Özet** | NOT a drawer on its own — no hall can be assigned, assumed to be merged into the events section |
+| **Alınan Kararlar** | Each decision is a separate `decisions` drawer (1 per item, but if several related items are a single decision, merge them) |
+| **Yapılanlar** | Important milestones become `events` drawers (commit+summary, shipped feature, etc.) |
+| **Sonraki Adımlar** | DO NOT WRITE a drawer — transient TODO, does not belong in the palace |
+| **Sorunlar** | Each resolved problem is a `problems` drawer (if both root cause + fix are present) |
+| **Preference hints** (in the body, "bundan sonra X" / "my rule is") | `preferences` drawer |
+| **Emotional moments** (strong expression) | `emotional` drawer — ONLY at high salience |
 
-**Hedef drawer sayısı:** ortalama refined session (~30-50 satır) başına
-3-8 drawer. Az ise under-extraction, çok ise noise.
+**Target drawer count:** 3-8 drawers per average refined session
+(~30-50 lines). Fewer is under-extraction, more is noise.
 
 ### Type B — Curated topic note chunking
 
-Topic note'lar H1 + birden fazla H2 ile organize. Her `## H2` subsection
-bir drawer candidate'ı.
+Topic notes are organized as H1 + multiple H2s. Each `## H2` subsection
+is a drawer candidate.
 
-| Yapı | Drawer üretimi |
+| Structure | Drawer production |
 |---|---|
-| **H1 title + giriş prose** | Drawer DEĞİL (genel kontekst, hall atanamaz) |
-| **Her H2 subsection** | Hall inference'a göre 1 drawer (decisions / problems / events / preferences / emotional) |
-| **H2 altında tek cümle veya 10 kelimeden kısa** | SKIP — yetersiz sinyal |
-| **H3 alt-başlıklar** | Kendi drawer'ı DEĞİL — ana H2 drawer'ının body'sinde eritilir |
+| **H1 title + intro prose** | NOT a drawer (general context, no hall can be assigned) |
+| **Each H2 subsection** | 1 drawer based on hall inference (decisions / problems / events / preferences / emotional) |
+| **Single sentence or shorter than 10 words under an H2** | SKIP — insufficient signal |
+| **H3 sub-headings** | NOT their own drawer — merged into the body of the parent H2 drawer |
 
-**Hedef drawer sayısı:** ortalama topic note (~5-10 H2 subsection) başına
-3-7 drawer. Jenerik "Notlar" / "TODO" tarzı H2'ler skip edilir.
+**Target drawer count:** 3-7 drawers per average topic note (~5-10 H2
+subsections). Generic "Notlar" / "TODO"-style H2s are skipped.
 
 ### Type C — Memory file chunking
 
-**Dosya başına tek drawer** — atomize edilmiş, parçalama yok.
+**One drawer per file** — already atomized, no splitting.
 
-| Alan | Drawer field |
+| Field | Drawer field |
 |---|---|
 | Frontmatter `name` | H1 title |
-| Frontmatter `description` | Prose'un ilk cümlesi (gerekirse) |
-| Body (tüm prose) | Drawer body — **Why** / **How to apply** blokları korunur |
+| Frontmatter `description` | First sentence of the prose (if needed) |
+| Body (entire prose) | Drawer body — **Why** / **How to apply** blocks are preserved |
 | Frontmatter `type` | Hall mapping (user/feedback→preferences, project/reference→events) |
 
-Body'deki **Why:** / **How to apply:** satırları aynen bırak (memory
-sisteminin kendi yapısı, değerli sinyal).
+Leave the **Why:** / **How to apply:** lines in the body as-is (the
+memory system's own structure, valuable signal).
 
 ### Type D — MEMORY.md index
 
-Hiçbir drawer yazma, sadece SKIP satırı (INPUT FORMAT DETECTION §D).
+Don't write any drawer, just a SKIP line (INPUT FORMAT DETECTION §D).
 
-## IMPORTANCE SKORU
+## IMPORTANCE SCORE
 
-`importance` field'ı 0.0-1.0 arası:
+`importance` field is between 0.0 and 1.0:
 
-- 0.9-1.0: mimari karar, project pivot, major milestone
-- 0.6-0.8: normal teknik karar, tamamlanan özellik, önemli bug fix
-- 0.3-0.5: minor karar, küçük iş, rutin
-- 0.0-0.2: nadiren — sadece emotional drawer'da düşük salience için
+- 0.9-1.0: architectural decision, project pivot, major milestone
+- 0.6-0.8: normal technical decision, completed feature, important bug fix
+- 0.3-0.5: minor decision, small task, routine
+- 0.0-0.2: rarely — only for low-salience emotional drawers
 
-Default: 0.5. Session'da özellikle vurgulanmış olanı yukarı çek.
+Default: 0.5. Bump up anything especially emphasized in the session.
 
-## FILENAME ÇAKIŞMASI
+## FILENAME COLLISION
 
-Aynı `<YYYY-MM-DD>-<slug>.md` zaten varsa:
-- `<YYYY-MM-DD>-<slug>-2.md`, `-3.md` (refine skill paterni)
+If the same `<YYYY-MM-DD>-<slug>.md` already exists:
+- `<YYYY-MM-DD>-<slug>-2.md`, `-3.md` (refine skill pattern)
 
-Aynı session'dan 2+ drawer aynı hall'a giriyorsa slug'ları farklı
-tutmaya çalış (ilk konuya göre slug, 2.'si farklı konu → farklı slug
-zaten).
+If 2+ drawers from the same session go to the same hall, try to keep
+the slugs different (slug from the first topic; the second is a
+different topic → different slug already).
 
-## SKIP KRİTERLERİ
+## SKIP CRITERIA
 
-Refined session zaten skip edilmemişse (refine-transcripts SKIP'leri
-zaten filtreledi) çoğu session'dan en az 1-2 drawer çıkar. Ama yine de:
+If the refined session has not already been skipped (refine-transcripts
+SKIPs already filtered it out), most sessions yield at least 1-2
+drawers. But still:
 
-- Session gövdesi **yalnız Sonraki Adımlar** ise (TODO list, karar yok) → SKIP
-- Session 5 satırdan kısa + hiçbir karar/problem/event barındırmıyorsa → SKIP
-- Entity çıkarılamıyor ve generic "yapıldı X" cümlesi ise → SKIP
+- If the session body is **only Sonraki Adımlar** (TODO list, no decisions) → SKIP
+- If the session is shorter than 5 lines + contains no decision/problem/event → SKIP
+- If no entity can be extracted and it's a generic "did X" sentence → SKIP
 
-Atla formatı (tek satır):
+Skip format (single line):
 ```
-SKIP <session-basename> — <10-kelime gerekçe>
+SKIP <session-basename> — <10-word reason>
 ```
 
-## İŞLEM AKIŞI (her input dosyası için)
+## PROCESSING FLOW (for each input file)
 
-1. Dosyayı `.md` Read
-2. **Format detect:** INPUT FORMAT DETECTION kurallarıyla Type A/B/C/D tespit et
-   - Type D (MEMORY.md) → anında SKIP, ledger'a `SKIP ... — index file`
-3. Frontmatter + path'ten metadata topla:
+1. Read the `.md` file
+2. **Format detect:** identify Type A/B/C/D using INPUT FORMAT DETECTION rules
+   - Type D (MEMORY.md) → SKIP immediately, write `SKIP ... — index file` to the ledger
+3. Collect metadata from frontmatter + path:
    - Type A: `project` → Wing, `date`, `tags`
-   - Type B: `project` veya `tags[0]` veya filename → Wing; `date` (yoksa mtime); filename → room
-   - Type C: path'teki Claude Code project klasör adı → Wing; filename stem → room; `type` → hall
-4. Wing canonicalize (mevcut palace hint'i kullan)
-5. Gövdeyi tip-uygun şekilde böl:
-   - Type A: Özet / Kararlar / Yapılanlar / Sonraki / Sorunlar bölümleri
-   - Type B: H2 subsection'ları
-   - Type C: tek drawer (parçalama yok)
-6. Her drawer için:
-   - Hall belirle (Type A bölüm-baz, Type B content inference, Type C frontmatter `type`)
-   - Room belirle (mevcut palace hint'i kullan)
-   - Entity extract
-   - Importance puan
+   - Type B: `project` or `tags[0]` or filename → Wing; `date` (mtime if missing); filename → room
+   - Type C: Claude Code project folder name in the path → Wing; filename stem → room; `type` → hall
+4. Canonicalize Wing (use the existing palace hint)
+5. Split the body in a type-appropriate way:
+   - Type A: Özet / Kararlar / Yapılanlar / Sonraki / Sorunlar sections
+   - Type B: H2 subsections
+   - Type C: single drawer (no splitting)
+6. For each drawer:
+   - Determine the hall (Type A section-based, Type B content inference, Type C frontmatter `type`)
+   - Determine the room (use the existing palace hint)
+   - Extract entities
+   - Score importance
    - Smart H1 title + prose body
-   - Filename slug üret
-   - `<palace-root>/wings/<Wing>/<room>/<hall>/<filename>.md` Write
-7. Final özet: `<input-basename>: N drawers (decisions:X events:Y problems:Z preferences:W emotional:V)`
+   - Generate the filename slug
+   - Write to `<palace-root>/wings/<Wing>/<room>/<hall>/<filename>.md`
+7. Final summary: `<input-basename>: N drawers (decisions:X events:Y problems:Z preferences:W emotional:V)`
 
-## KALİTE KONTROL (her drawer için)
+## QUALITY CHECK (for each drawer)
 
-Write'dan önce kontrol et:
-- [ ] Frontmatter geçerli YAML mi?
-- [ ] Wing canonicalize edildi mi? (mevcut palace'la tutarlı)
-- [ ] Hall 5 değerden biri mi?
-- [ ] Entity'ler tag değil mi (session-log, phase1, vb. değil)?
-- [ ] H1 title drawer içeriğini tek başına anlatıyor mu?
-- [ ] Source satırı tipe uygun mu? (Type A/B: `[[basename]]` wikilink; Type C: düz `memory/<filename>`)
-- [ ] Prose 30-200 kelime arası mı? (çok kısa = değersiz; çok uzun = noise)
-- [ ] Kod bloğu / terminal output / tool result KAYMIŞ mı? (hepsi çıkarılmalı)
+Check before Write:
+- [ ] Is the frontmatter valid YAML?
+- [ ] Has the Wing been canonicalized? (consistent with the existing palace)
+- [ ] Is the hall one of the 5 values?
+- [ ] Are the entities not tags (not session-log, phase1, etc.)?
+- [ ] Does the H1 title describe the drawer content on its own?
+- [ ] Is the source line type-appropriate? (Type A/B: `[[basename]]` wikilink; Type C: plain `memory/<filename>`)
+- [ ] Is the prose between 30 and 200 words? (too short = worthless; too long = noise)
+- [ ] Has any code block / terminal output / tool result LEAKED IN? (everything must be removed)
 
-Bir maddede takıl → drawer'ı düzelt.
+If you get stuck on an item → fix the drawer.
 
-## DİL
+## LANGUAGE
 
-Session'ın baskın dili ne ise drawer da o dilde. Teknik terimler
-(API, commit, SDK, framework isimleri, file path) orijinal İngilizce
-halinde kalır.
+The drawer is in whichever language is dominant in the session. Technical
+terms (API, commit, SDK, framework names, file paths) remain in their
+original English form.
 
-## KAPSAM DIŞI
+## OUT OF SCOPE
 
-- **Kod bloğu toplama:** Drawer'a hiçbir code block KOYMA. Sadece
-  "şu dosyada X değiştirildi" şeklinde referans.
-- **Terminal output:** Asla.
-- **Uzun alıntı:** Session'dan 1-2 cümleden fazla alıntı yapma.
-- **Meta-yorum:** "Bu karar ileride önemli olacak" gibi subjective yorum
-  yazma. Sadece ne olduğunu raporla.
+- **Collecting code blocks:** DO NOT PUT any code block in the drawer.
+  Only refer to it like "X was changed in this file".
+- **Terminal output:** Never.
+- **Long quotes:** Don't quote more than 1-2 sentences from the session.
+- **Meta-commentary:** Don't write subjective commentary like "this
+  decision will matter later". Just report what happened.
 
 ---
 
-**Hazır. İşlemek istediğin refined session path(ler) + palace root ver.**
+**Ready. Provide the refined session path(s) you want to process + the palace root.**

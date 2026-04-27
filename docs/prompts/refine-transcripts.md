@@ -1,101 +1,101 @@
 # Mnemos — Transcript Refinement Prompt
 
-**Kullanım:** Claude Code chat'ine bu dosyanın tamamını yapıştır, ardından işlenmesini istediğin transcript yollarını ver. Claude her transcript'i okur, değerli olanlar için `Sessions/<YYYY-MM-DD>-<slug>.md` yazar, değersizleri atlar.
+**Usage:** Paste this entire file into the Claude Code chat, then provide the transcript paths you want processed. Claude reads each transcript, writes `Sessions/<YYYY-MM-DD>-<slug>.md` for the valuable ones, and skips the worthless ones.
 
 ---
 
-## ROL
+## ROLE
 
-Sen bir **transcript refiner**'sın. Sana Claude Code'un JSONL konuşma log dosyaları verilecek. Her dosyayı okuyup Mnemos memory palace'ın işleyebileceği yüksek-sinyalli bir session note'a dönüştüreceksin. Veri kaybını önlemek öncelik, ama gürültüyü elemek de öncelik — ikisi arasında dengeli yargı kullan.
+You are a **transcript refiner**. You will be given Claude Code JSONL conversation log files. You will read each file and convert it into a high-signal session note that the Mnemos memory palace can process. Preventing data loss is a priority, but eliminating noise is also a priority — use balanced judgment between the two.
 
-## GİRDİ
+## INPUT
 
-- **Transcript path(ler):** kullanıcı sana bir veya birden fazla `.jsonl` yolu verecek
-- **Vault yolu:** `C:\Users\tugrademirors\OneDrive\Masaüstü\kasamd` (Sessions/ altına yaz)
-- **Varsayılan dil:** Türkçe gövde + İngilizce teknik terimler (API, commit, file path, framework isimleri İngilizce kalır)
+- **Transcript path(s):** the user will give you one or more `.jsonl` paths
+- **Vault path:** `C:\Users\tugrademirors\OneDrive\Masaüstü\kasamd` (write under Sessions/)
+- **Default language:** Turkish body + English technical terms (API, commit, file path, framework names stay in English)
 
-## ÇIKTI FORMATI (her değerli transcript için)
+## OUTPUT FORMAT (for each valuable transcript)
 
-Dosya yolu: `<vault>/Sessions/<YYYY-MM-DD>-<project-slug>-<topic-slug>.md`
+File path: `<vault>/Sessions/<YYYY-MM-DD>-<project-slug>-<topic-slug>.md`
 
-Dosya slug kuralı: küçük harf, tire ayıracı, maksimum 60 karakter, Türkçe karakterler ASCII'ye çevrilir (`ı→i`, `ş→s`, `ğ→g`, `ü→u`, `ö→o`, `ç→c`).
+Filename slug rule: lowercase, hyphen separator, maximum 60 characters, Turkish characters converted to ASCII (`ı→i`, `ş→s`, `ğ→g`, `ü→u`, `ö→o`, `ç→c`).
 
-İçerik iskelet:
+Content skeleton:
 
 ```markdown
 ---
 date: YYYY-MM-DD
-project: <Wing — aşağıdaki mapping'e göre>
-cwd: <absolute Windows path, transcript'in kaynaklandığı çalışma dizini>
+project: <Wing — per the mapping below>
+cwd: <absolute Windows path, the working directory the transcript came from>
 tags: [session-log, proj/<wing-slug>, tool/<svc>, person/<name>, file/<repeating>, skill/<cmd>]
-duration: <~Xs / ~Xm / ~Xh — kaba tahmin, transcript uzunluğundan>
+duration: <~Xs / ~Xm / ~Xh — rough estimate, from transcript length>
 ---
 
-# YYYY-MM-DD — <Kısa başlık, transcript'in esas konusu, Türkçe>
+# YYYY-MM-DD — <Short title, the transcript's main topic, Turkish>
 
 ## Özet
-<1 paragraf, 3-6 cümle. Ne yapıldı, neden, sonuç ne oldu. Cevapsız kaldıysa onu söyle.>
+<1 paragraph, 3-6 sentences. What was done, why, what was the outcome. If unresolved, say so.>
 
 ## Alınan Kararlar
-- <Somut, tersine çevrilmesi zor tercihler. "X yapacağız" "Y kullanacağız" tipi>
-- <Yoksa bu bölümü komple sil>
+- <Concrete, hard-to-reverse choices. "We'll do X", "We'll use Y" type>
+- <If none, delete this section entirely>
 
 ## Yapılanlar
-- <Kod/dosya/commit bazında çıktılar. Dosya adı + bir cümle gerekçe>
-- <Tool output'ları paste'leme — özetle>
+- <Code/file/commit-level outputs. Filename + one-sentence rationale>
+- <Don't paste tool outputs — summarize>
 
 ## Sonraki Adımlar
-- [ ] <Açık kalmış maddeler; transcript sonunda kararlaştırılmamış şeyler>
-- [ ] <Yoksa bu bölümü sil>
+- [ ] <Open items; things left undecided at the end of the transcript>
+- [ ] <If none, delete this section>
 
 ## Sorunlar
-- <Yaşanan hatalar ve çözümleri — "debug'larken takıldık, şöyle çözdük"; kalıcı öğretici değer taşıyan>
-- <Yoksa sil>
+- <Errors encountered and their solutions — "we got stuck while debugging, solved it like this"; with lasting instructional value>
+- <If none, delete>
 
 ## See Also
-<İlgili diğer session note'u veya doküman varsa Obsidian wikilink ile; yoksa boş bırak>
+<Related other session notes or documents as Obsidian wikilinks; otherwise leave empty>
 ```
 
-## TAG PREFIX KATEGORİLERİ (v1.0)
+## TAG PREFIX CATEGORIES (v1.0)
 
-Her Session frontmatter'ına `tags: [session-log, ...]` eklenir. Diğer tag'ler şu prefix sözlüğünden:
+Each Session frontmatter gets `tags: [session-log, ...]`. Other tags come from this prefix dictionary:
 
-- `proj/<name>` — proje (wing eşdeğeri): `proj/mnemos`, `proj/procuretrack`, `proj/gyp`
-- `tool/<name>` — araç/servis: `tool/supabase`, `tool/outlook`, `tool/chromadb`, `tool/claude-code`
-- `person/<name>` — kişi: `person/tugra`, `person/safa-clutch`
-- `file/<name>` — kaynak dosya **sadece tekrar eden, ≥2 Session'da geçen**: `file/test_orchestrator`
-- `skill/<name>` — skill/CLI komut: `skill/po-olusturma`, `skill/mnemos-catch-up`
+- `proj/<name>` — project (wing equivalent): `proj/mnemos`, `proj/procuretrack`, `proj/gyp`
+- `tool/<name>` — tool/service: `tool/supabase`, `tool/outlook`, `tool/chromadb`, `tool/claude-code`
+- `person/<name>` — person: `person/tugra`, `person/safa-clutch`
+- `file/<name>` — source file **only if recurring, appears in ≥2 Sessions**: `file/test_orchestrator`
+- `skill/<name>` — skill/CLI command: `skill/po-olusturma`, `skill/mnemos-catch-up`
 
-`session-log` etiketi tip filter için her Session'da kalır.
+The `session-log` tag stays in every Session for type filtering.
 
-## PROSE İÇİNDE WIKILINK
+## WIKILINKS WITHIN PROSE
 
-Prose'da geçen entity'leri **ilk geçtiği yerde** wikilink olarak sar.
+Wrap entities mentioned in prose as wikilinks **on first occurrence**.
 
-**Wikilink olur:**
-- Proje/wing adları (Mnemos, ProcureTrack, GYP)
-- Tutarlı araç/servis isimleri (Supabase, Outlook, ChromaDB, Claude Code)
-- Skill/CLI komut isimleri (po-olusturma, mnemos-catch-up)
-- İnsan/şirket isimleri (Tugra, Safa Clutch, GYP Energy)
-- Tekrar eden konsept hub'ları (auto-refine-hook, sqlite-vec)
+**Becomes a wikilink:**
+- Project/wing names (Mnemos, ProcureTrack, GYP)
+- Consistent tool/service names (Supabase, Outlook, ChromaDB, Claude Code)
+- Skill/CLI command names (po-olusturma, mnemos-catch-up)
+- Person/company names (Tugra, Safa Clutch, GYP Energy)
+- Recurring concept hubs (auto-refine-hook, sqlite-vec)
 
-**Wikilink olmaz:**
-- Tek-kullanımlık dosya isimleri (test_orchestrator.py)
-- Generic teknoloji (Python, JSON, Excel)
-- Kod blok içindeki tüm isimler
-- Versiyon numaraları (3.12, v0.4.0)
-- Tarih/sayı
+**Does NOT become a wikilink:**
+- Single-use file names (test_orchestrator.py)
+- Generic technology (Python, JSON, Excel)
+- Any names inside code blocks
+- Version numbers (3.12, v0.4.0)
+- Dates/numbers
 
-LLM yargısı için kural: "Bu entity başka bir Session'da da geçer mi?" Eğer evet (tekrar eden hub) → wikilink. Eğer hayır (tek-kullanım) → düz metin.
+Rule for LLM judgment: "Will this entity also appear in another Session?" If yes (recurring hub) → wikilink. If no (single-use) → plain text.
 
-## WING MAPPING (transcript yolundan)
+## WING MAPPING (from transcript path)
 
-Transcript path'inin içindeki project klasör ismine göre:
+Based on the project folder name inside the transcript path:
 
-| Path içerir | → project frontmatter |
+| Path contains | → project frontmatter |
 |---|---|
-| `C--Projeler-Sat-n-Alma-procuretrack` veya `procuretrack` | `ProcureTrack` |
-| `C--Projeler-Sat-n-Alma` (procuretrack içermeyen) | `ProcureTrack` |
+| `C--Projeler-Sat-n-Alma-procuretrack` or `procuretrack` | `ProcureTrack` |
+| `C--Projeler-Sat-n-Alma` (without procuretrack) | `ProcureTrack` |
 | `C--Projeler-mnemos` | `Mnemos` |
 | `C--Projeler-burak` | `General` |
 | `C--Users-...-GDS-Ar-za` | `GYP` |
@@ -103,112 +103,113 @@ Transcript path'inin içindeki project klasör ismine göre:
 | `C--Users-...-03-Faturalar` | `GYP` |
 | `C--Users-...-Claude--al--ma-Dosyas-` | `General` |
 | `C--Users-...-Claude-Yurti-i-Sat-nalma-*` | `Satin-Alma-Otomasyonu` |
-| `C--Users-tugrademirors-OneDrive-Masa-st-` (diğerleri) | `General` |
-| Yukarıdaki hiçbirine uymuyor | `General` |
+| `C--Users-tugrademirors-OneDrive-Masa-st-` (others) | `General` |
+| None of the above match | `General` |
 
-**Override:** Transcript içeriği path'le çelişiyorsa (örn. ProcureTrack path ama tamamen LinkedIn post'u konuşulmuş), içeriğe göre karar ver. Bunu açıkça belirt — çıktının başına `<!-- wing overridden: path suggested ProcureTrack, content is LinkedIn -->` yorumu ekleme ama frontmatter'a doğru wing'i yaz.
+**Override:** If transcript content contradicts the path (e.g. ProcureTrack path but the conversation is entirely about a LinkedIn post), decide based on content. State this explicitly — do not add a `<!-- wing overridden: path suggested ProcureTrack, content is LinkedIn -->` comment at the top of the output, but write the correct wing into frontmatter.
 
 ## CWD FIELD
 
-JSONL'in satırlarında her mesajda `"cwd":"C:\\..."` field'ı bulunur
-(Claude Code her turn'de kaydeder). İlk non-metadata satırdaki değeri
-çıkar, Windows absolute path olarak yaz:
+In each line of the JSONL, every message has a `"cwd":"C:\\..."` field
+(Claude Code records it on every turn). Extract the value from the first
+non-metadata line and write it as a Windows absolute path:
 
-- Doğru: `cwd: C:\Users\tugrademirors\OneDrive\Masaüstü\farcry`
-- Yanlış: `cwd: /c/Users/...` (POSIX form — etme)
-- Yanlış: `cwd: ./farcry` (relative — etme)
+- Correct: `cwd: C:\Users\tugrademirors\OneDrive\Masaüstü\farcry`
+- Wrong: `cwd: /c/Users/...` (POSIX form — don't)
+- Wrong: `cwd: ./farcry` (relative — don't)
 
-JSONL'de `"cwd"` field'ı yoksa (eski Claude Code versiyonu, nadir) `cwd:`
-satırını **hiç yazma** (boş `cwd: ` de yazma — satırı tamamen bırak).
-Frontmatter `date`, `project`, `tags`, `duration` ile devam etsin —
-briefing hook cwd'siz session'ları sessizce filter'lar.
+If there is no `"cwd"` field in the JSONL (older Claude Code version, rare),
+**do not write the `cwd:` line at all** (don't write an empty `cwd: `
+either — leave the line out entirely). Let the frontmatter continue with
+`date`, `project`, `tags`, `duration` — the briefing hook silently filters
+sessions without cwd.
 
-## SKIP KRİTERLERİ (dosya yazma, sadece atla)
+## SKIP CRITERIA (don't write file, just skip)
 
-Aşağıdakilerden biri doğruysa transcript'i işleme, atla:
+If any of the following is true, don't process the transcript, skip it:
 
-- **Kısa**: User'dan 3'ten az anlamlı turn var (kaba ölçü: 3 prompt ve 3 yanıt altı)
-- **Sonuçsuz**: Sadece debug deneme, hiçbir karar alınmamış, hiçbir dosya commit edilmemiş
-- **Tek-soru-yardım**: "X nasıl yapılır?" tipi, kalıcı değer üretmemiş
-- **Başarısız başlangıç**: Kullanıcı sessionu iptal etmiş, hata aldığı için bırakmış
-- **Duplicate**: Başka bir yeni Sessions/ dosyası (bu batch veya önceki) aynı işi daha iyi kapsıyor
-- **Tek-seferlik dış talep**: Arkadaş/çocuk/3. şahıs için bir kereye mahsus yapılmış iş (ödev, kitap, sunum hazırlığı vb.). Çıktı somut olsa bile palace'a getirilecek kalıcı bilgi/karar/tercih yok — palace ürünün değil, *projelerinin hafızası*.
+- **Short**: Fewer than 3 meaningful turns from the user (rough measure: under 3 prompts and 3 responses)
+- **Inconclusive**: Only debug attempts, no decision made, no file committed
+- **Single-question help**: "How do I do X?" type, did not produce lasting value
+- **Failed start**: User cancelled the session, abandoned it because of an error
+- **Duplicate**: Another new Sessions/ file (this batch or previous) covers the same work better
+- **One-off external request**: One-time work done for a friend/child/third party (homework, book, presentation prep, etc.). Even if the output is concrete, there's no lasting knowledge/decision/preference to bring into the palace — the palace is not the memory of products but of *your projects*.
 
-Atlama formatı (tek satır, dosya yazma):
-
-```
-SKIP <transcript-path> — <kısa gerekçe, 10 kelime>
-```
-
-Örnek: `SKIP f7a2d5b9.jsonl — 2 turn, sadece "npm install çalışmıyor" sorusu, çözülmemiş`
-
-## FİLTRE KURALLARI (işlenen transcript'ler için)
-
-**Çıkar:**
-- Tool output'ları (Bash result, file dump, grep sonuçları) — gerekirse 1 cümle özet
-- "Let me check X", "Reading file Y", "I'll now Z" tipi Claude anlatımları
-- Hatalı başlatılmış ve geri alınmış denemeler
-- System message'lar, reminder'lar, hook çıktıları
-- Code block'ların tamamı — sadece dosya adı + "şu fonksiyon eklendi" gibi tek cümle kalır
-
-**Koru:**
-- Alınan kararlar ve gerekçeleri
-- Edit edilen dosyalar (dosya adı + neden)
-- Yaşanan hatalar ve çözümleri (öğretici değeri varsa)
-- Push edilen commit'ler, hash + özet
-- Kullanıcının net talimatları ve tercihleri ("bundan sonra X kullan")
-
-## DİL
-
-Transcript'in baskın dilini koru. User Türkçe konuşmuşsa Türkçe yaz. User İngilizce konuşmuşsa İngilizce yaz. Teknik terimler (API, commit, SDK, framework isimleri, file path) orijinal İngilizce halinde kalır, Türkçeleştirme.
-
-## HACİM
-
-- Uzun bir session (~2 saat, ~500 turn) → ~40-80 satır refined note
-- Orta session (~30 dk) → ~15-30 satır
-- Çok kısa (~5 turn) → ya ~5-10 satır ya da SKIP
-
-Kural: Amaç kısaltmak değil, **sinyal/gürültü oranını yükseltmek**. Bilgiyi kaybetme, sadece anlatımı sıkılaştır.
-
-## TARİH TESPİTİ
-
-JSONL entry'lerinde `"timestamp"` alanı var. İlk user mesajının timestamp'ini al, YYYY-MM-DD formatına çevir. Yoksa dosyanın mtime'ı.
-
-## İŞLEM AKIŞI
-
-Sana verilen transcript listesinin her biri için sırayla:
-
-1. Dosyayı oku (Read tool)
-2. SKIP mi değer mi karar ver
-3. SKIP ise tek satır çıktı ver, devam et
-4. Değerliyse:
-   - Tarih, başlık, wing'i belirle
-   - Yukarıdaki formata sığdır
-   - `<vault>/Sessions/<filename>.md` olarak yaz (Write tool)
-   - Tek satır rapor: `OK <filename> — <wing>, ~N satır`
-
-En sonda özet tablo:
+Skip format (single line, no file written):
 
 ```
-İşlenen: N transcript
-Yazılan: M dosya (wing dağılımı: X ProcureTrack, Y General, ...)
-Atlanan: K (kısa: A, sonuçsuz: B, duplicate: C)
+SKIP <transcript-path> — <short rationale, 10 words>
 ```
 
-## KALİTE KONTROL (her yazdığın dosya için)
+Example: `SKIP f7a2d5b9.jsonl — 2 turns, only "npm install not working" question, unresolved`
 
-Bitirdikten sonra kendine sor:
-- [ ] Frontmatter geçerli YAML mi?
-- [ ] `project:` varolan bir wing adıyla eşleşiyor mu?
-- [ ] Özet okununca "ne oldu, neden, sonuç" üçü de geliyor mu?
-- [ ] Bir başkası bunu okusa konuyu anlar mı?
-- [ ] Gereksiz tool output veya kod kalabalığı var mı?
-- [ ] En az 1 `proj/*` tag'i frontmatter'da var mı?
-- [ ] En az 1 wikilink prose içinde geçiyor mu?
-- [ ] Tag-prose tutarlılığı: tag'de `tool/supabase` varsa prose'da `[[Supabase]]` var mı?
+## FILTER RULES (for processed transcripts)
 
-Bir madde takılıyorsa düzelt.
+**Remove:**
+- Tool outputs (Bash results, file dumps, grep results) — 1-sentence summary if needed
+- "Let me check X", "Reading file Y", "I'll now Z" type Claude narration
+- Misstarted and reverted attempts
+- System messages, reminders, hook outputs
+- Entire code blocks — keep only filename + a single sentence like "added the X function"
+
+**Preserve:**
+- Decisions made and their rationales
+- Edited files (filename + why)
+- Errors encountered and their solutions (if instructional value)
+- Pushed commits, hash + summary
+- User's clear instructions and preferences ("from now on use X")
+
+## LANGUAGE
+
+Preserve the dominant language of the transcript. If the user spoke Turkish, write Turkish. If the user spoke English, write English. Technical terms (API, commit, SDK, framework names, file paths) stay in original English form — do not Turkify.
+
+## VOLUME
+
+- Long session (~2 hours, ~500 turns) → ~40-80 lines of refined note
+- Medium session (~30 min) → ~15-30 lines
+- Very short (~5 turns) → either ~5-10 lines or SKIP
+
+Rule: The goal is not to shorten but to **raise the signal-to-noise ratio**. Don't lose information, just tighten the prose.
+
+## DATE DETECTION
+
+JSONL entries have a `"timestamp"` field. Take the timestamp of the first user message and convert it to YYYY-MM-DD format. If absent, use the file's mtime.
+
+## PROCESSING FLOW
+
+For each transcript in the list given to you, in order:
+
+1. Read the file (Read tool)
+2. Decide SKIP or valuable
+3. If SKIP, output one line, continue
+4. If valuable:
+   - Determine date, title, wing
+   - Fit it into the format above
+   - Write as `<vault>/Sessions/<filename>.md` (Write tool)
+   - One-line report: `OK <filename> — <wing>, ~N lines`
+
+At the very end, a summary table:
+
+```
+Processed: N transcripts
+Written: M files (wing distribution: X ProcureTrack, Y General, ...)
+Skipped: K (short: A, inconclusive: B, duplicate: C)
+```
+
+## QUALITY CONTROL (for each file you write)
+
+After finishing, ask yourself:
+- [ ] Is the frontmatter valid YAML?
+- [ ] Does `project:` match an existing wing name?
+- [ ] When the summary is read, do all three of "what happened, why, outcome" come through?
+- [ ] Would someone else reading this understand the topic?
+- [ ] Is there unnecessary tool output or code clutter?
+- [ ] Is there at least 1 `proj/*` tag in frontmatter?
+- [ ] Is there at least 1 wikilink in prose?
+- [ ] Tag-prose consistency: if `tool/supabase` is in tags, is `[[Supabase]]` in prose?
+
+If any item is failing, fix it.
 
 ---
 
-**Hazır. Şimdi işlemek istediğin transcript yollarını ver.**
+**Ready. Now give me the transcript paths you want processed.**
