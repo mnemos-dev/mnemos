@@ -23,9 +23,13 @@ yours.**
 
 ## What do I need?
 
+**Required:**
 - A computer (Windows, macOS, or Linux)
 - **Python 3.10 or newer** — type `python --version` in your terminal to check
 - **Claude Code** already installed and working — type `claude --version` to check
+
+**Optional but most people install it (more on this below):**
+- **Obsidian** — a free app that makes the notebook prettier to browse
 
 That's it. No account. No cloud. No bills.
 
@@ -107,10 +111,7 @@ in any text editor. It's just text. It's just yours.
 
 If you don't like a note → delete the file. Gone.
 
-If you want to make it nicer → install **Obsidian** (free) and point it
-at the folder. Now your notes are a connected note-taking system, with
-links and graph view and search. Mnemos doesn't require this; it's just
-a free upgrade if you want one.
+(For a much nicer way to browse them, see the Obsidian section below.)
 
 ### 3. There's no AI bill
 
@@ -119,6 +120,47 @@ for. It does not call any API on its own. The refinement work happens
 inside your Claude Code session, on the quota you have anyway.
 
 Your Anthropic dashboard will not show new charges from Mnemos. Ever.
+
+---
+
+## What about Obsidian?
+
+**Short answer:** You don't need Obsidian. Mnemos works without it. But
+most people install it anyway because it makes the notebook a lot nicer
+to use, and it's free.
+
+### What is Obsidian?
+
+[Obsidian](https://obsidian.md) is a free desktop app. Point it at a
+folder of `.md` files and it shows them as a beautiful, connected
+note-taking system — with sidebar navigation, full-text search, a graph
+view of how your notes link to each other, and a clean reader.
+
+It does **not** upload anything. It does **not** need an account. It is
+just a viewer/editor for the folder you already have.
+
+### Do I need it?
+
+| You're someone who... | Obsidian recommendation |
+|---|---|
+| Just wants Claude to remember you, doesn't care about reading the notes | **Skip it.** You're done. Mnemos works fine without it. |
+| Wants to occasionally read what got written | **Optional.** Any text editor (Notepad, VS Code, TextEdit) opens `.md` files. |
+| Wants to actually browse/search/explore your memory | **Get it.** This is the experience the project was built around. |
+
+### How do I install Obsidian?
+
+1. Go to [obsidian.md](https://obsidian.md) and download for your OS
+2. Open Obsidian
+3. Click **"Open folder as vault"**
+4. Pick the same folder you gave to `mnemos init`
+
+Done. Your `Sessions/` notes now show up in Obsidian's sidebar. Click
+any wikilink (`[[like this]]`) inside a note to jump to the linked
+note. Try the **graph view** (left sidebar icon that looks like a
+constellation) — it draws every link between every Session as a map.
+
+That's the "memory palace" the project name hints at. The palace is
+just your folder; Obsidian is the lights.
 
 ---
 
