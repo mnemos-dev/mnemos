@@ -22,6 +22,7 @@
 <p align="center">
   📖 <strong><a href="STATUS.md">Project Status</a></strong> — what works today vs. what's coming ·
   🗺️ <strong><a href="docs/ROADMAP.md">Roadmap</a></strong> — the single canonical plan ·
+  📜 <strong><a href="HISTORY.md">History</a></strong> — how we got here, which bets broke ·
   🤝 <strong><a href="CONTRIBUTING.md">Contributing</a></strong> — dev setup + conventions
 </p>
 

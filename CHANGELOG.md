@@ -1,6 +1,8 @@
 # Changelog
 
-All notable changes to Mnemos are documented here.
+All notable changes to Mnemos are documented here. For the narrative
+version of how the project evolved across paradigms, see
+[`HISTORY.md`](HISTORY.md).
 
 ## v1.1.0 — SessionEnd-Driven Memory (2026-04-27)
 
