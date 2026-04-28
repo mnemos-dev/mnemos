@@ -50,7 +50,11 @@ def config(tmp_vault: Path) -> MnemosConfig:
 
 @pytest.fixture()
 def sample_session_tr(tmp_vault: Path) -> Path:
-    """Turkish session log about ProcureTrack / Supabase RLS decisions."""
+    """Legacy Turkish session log (## Alınan Kararlar, ## Sonraki Adımlar)
+    — represents pre-v1.2.0 vault content. Use this fixture when a test
+    needs to exercise TR-header back-compat. New Sessions (v1.2.0+) emit
+    English headers (## Decisions, ## Next Steps); see sample_session_en
+    for an English-headered example."""
     note = tmp_vault / "Sessions" / "2026-04-10-procuretrack.md"
     note.write_text(
         textwrap.dedent(

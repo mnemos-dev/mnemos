@@ -176,11 +176,11 @@ def test_read_cache_body_strips_frontmatter(tmp_path: Path) -> None:
     cache.parent.mkdir()
     cache.write_text(
         "---\ncwd: C:\\x\ngenerated_at: 2026-04-23\nsession_count_used: 3\n---\n"
-        "\n**Aktif durum:** Body content here.\n",
+        "\n**Current State:** Body content here.\n",
         encoding="utf-8",
     )
     body = read_cache_body(cache)
-    assert "**Aktif durum:**" in body
+    assert "**Current State:**" in body
     assert "session_count_used" not in body
 
 
@@ -188,7 +188,7 @@ def test_write_cache_round_trip(tmp_path: Path) -> None:
     cache = tmp_path / ".mnemos-briefings" / "slug.md"
     write_cache(
         cache,
-        body="**Aktif durum:** x\n",
+        body="**Current State:** x\n",
         cwd="C:\\Projects\\farcry",
         session_count=5,
         drawer_count=12,
@@ -198,7 +198,7 @@ def test_write_cache_round_trip(tmp_path: Path) -> None:
     assert text.startswith("---\n")
     assert "cwd: C:\\Projects\\farcry" in text
     assert "session_count_used: 5" in text
-    assert "**Aktif durum:**" in text
+    assert "**Current State:**" in text
 
 
 def test_count_refined_sessions_for_cwd(tmp_path: Path) -> None:
@@ -442,7 +442,7 @@ def test_run_refine_sync_nonzero_exit_fails(tmp_path: Path) -> None:
 def test_run_brief_sync_captures_stdout(tmp_path: Path) -> None:
     def fake_runner_with_output(cmd, stdout_path=None):
         if stdout_path is not None:
-            Path(stdout_path).write_text("**Aktif durum:** test briefing body.\n", encoding="utf-8")
+            Path(stdout_path).write_text("**Current State:** test briefing body.\n", encoding="utf-8")
         return 0
 
     result = run_brief_sync(
@@ -450,7 +450,7 @@ def test_run_brief_sync_captures_stdout(tmp_path: Path) -> None:
         runner=fake_runner_with_output,
     )
     assert result.ok is True
-    assert "**Aktif durum:**" in result.body
+    assert "**Current State:**" in result.body
 
 
 # --- handle_session_start: decision tree ---
@@ -525,7 +525,7 @@ def test_return_visit_cache_fresh_injects_and_bg_regen(tmp_path: Path) -> None:
         "---\ncwd: C:\\Projects\\farcry\n---\nbody\n", encoding="utf-8"
     )
     cache_p = cache_path_for(tmp_path, slug)
-    write_cache(cache_p, body="**Aktif durum:** x\n", cwd="C:\\Projects\\farcry", session_count=2, drawer_count=0)
+    write_cache(cache_p, body="**Current State:** x\n", cwd="C:\\Projects\\farcry", session_count=2, drawer_count=0)
 
     inp = SessionStartInput(cwd="C:\\Projects\\farcry", source="startup", transcript_path="x")
 
@@ -538,7 +538,7 @@ def test_return_visit_cache_fresh_injects_and_bg_regen(tmp_path: Path) -> None:
         brief_runner=lambda cmd, stdout_path=None: 0,
     )
     assert result.outcome == "fast_path_injected"
-    assert "**Aktif durum:**" in result.injected_context
+    assert "**Current State:**" in result.injected_context
 
 
 def test_return_visit_cache_present_always_injects_no_sync_regen(tmp_path: Path) -> None:
@@ -635,7 +635,7 @@ def _setup_cwd_with_pending(tmp_path: Path, cwd: str, with_cache: bool) -> tuple
 
     if with_cache:
         cache = cache_path_for(tmp_path, slug)
-        write_cache(cache, body="**Aktif durum:** cached body\n", cwd=cwd,
+        write_cache(cache, body="**Current State:** cached body\n", cwd=cwd,
                     session_count=0, drawer_count=0)
     return slug, pending
 
@@ -662,7 +662,7 @@ def test_return_visit_pending_with_cache_injects_and_bg_catches_up(tmp_path: Pat
         bg_spawn=fake_bg_spawn,
     )
     assert result.outcome == "fast_path_injected_with_catchup"
-    assert "**Aktif durum:** cached body" in result.injected_context
+    assert "**Current State:** cached body" in result.injected_context
     assert len(bg_calls) == 1
     assert bg_calls[0] == (cwd, tmp_path)
 
@@ -711,7 +711,7 @@ def test_sub_b2_does_not_invoke_mine_skill(tmp_path: Path) -> None:
     def fake_brief_runner(cmd, stdout_path=None):
         captured_commands.append(" ".join(str(c) for c in cmd))
         if stdout_path is not None:
-            Path(stdout_path).write_text("**Aktif durum:** fresh\n", encoding="utf-8")
+            Path(stdout_path).write_text("**Current State:** fresh\n", encoding="utf-8")
         return 0
 
     catchup_and_cache(
@@ -772,7 +772,7 @@ def test_catchup_and_cache_runs_refine_then_brief_no_mine(tmp_path: Path) -> Non
     def fake_brief_runner(cmd, stdout_path=None):
         order.append("brief")
         if stdout_path is not None:
-            Path(stdout_path).write_text("**Aktif durum:** fresh\n", encoding="utf-8")
+            Path(stdout_path).write_text("**Current State:** fresh\n", encoding="utf-8")
         return 0
 
     ok = catchup_and_cache(
@@ -788,7 +788,7 @@ def test_catchup_and_cache_runs_refine_then_brief_no_mine(tmp_path: Path) -> Non
 
     cache = cache_path_for(tmp_path, slug)
     assert cache.exists()
-    assert "**Aktif durum:** fresh" in cache.read_text(encoding="utf-8")
+    assert "**Current State:** fresh" in cache.read_text(encoding="utf-8")
 
 
 def test_catchup_and_cache_refine_fail_continues_to_brief(tmp_path: Path) -> None:
@@ -820,7 +820,7 @@ def test_catchup_and_cache_refine_fail_continues_to_brief(tmp_path: Path) -> Non
     def fake_brief_runner(cmd, stdout_path=None):
         brief_called[0] = True
         if stdout_path is not None:
-            Path(stdout_path).write_text("**Aktif durum:** partial\n", encoding="utf-8")
+            Path(stdout_path).write_text("**Current State:** partial\n", encoding="utf-8")
         return 0
 
     ok = catchup_and_cache(
@@ -878,7 +878,7 @@ def test_catchup_and_cache_caps_pending_to_most_recent_N(tmp_path: Path) -> None
 
     def fake_brief_runner(cmd, stdout_path=None):
         if stdout_path is not None:
-            Path(stdout_path).write_text("**Aktif durum:** brief\n", encoding="utf-8")
+            Path(stdout_path).write_text("**Current State:** brief\n", encoding="utf-8")
         return 0
 
     catchup_and_cache(
@@ -957,7 +957,7 @@ def test_main_parses_hook_input_and_emits_context(tmp_path: Path, capsys, monkey
     save_state(tmp_path, state)
 
     cache_p = cache_path_for(tmp_path, slug)
-    write_cache(cache_p, body="**Aktif durum:** hi\n", cwd="C:\\Projects\\farcry", session_count=0, drawer_count=0)
+    write_cache(cache_p, body="**Current State:** hi\n", cwd="C:\\Projects\\farcry", session_count=0, drawer_count=0)
 
     hook_input = json.dumps({
         "cwd": "C:\\Projects\\farcry",
@@ -974,7 +974,7 @@ def test_main_parses_hook_input_and_emits_context(tmp_path: Path, capsys, monkey
     out = json.loads(captured.out)
     assert "hookSpecificOutput" in out
     assert out["hookSpecificOutput"]["hookEventName"] == "SessionStart"
-    assert "**Aktif durum:** hi" in out["hookSpecificOutput"]["additionalContext"]
+    assert "**Current State:** hi" in out["hookSpecificOutput"]["additionalContext"]
 
 
 def test_main_first_visit_emits_no_context(tmp_path: Path, capsys, monkeypatch) -> None:
@@ -1068,7 +1068,7 @@ def test_main_stdout_handles_turkish_body_without_crash(tmp_path: Path, monkeypa
     # Cache body contains the exact Turkish char combinations from a real
     # brief: ş (ş), ğ (ğ), ü (ü). cp1252 maps none of these.
     turkish_body = (
-        "**Aktif durum:** farcry klasörü boş; proje sıfırdan başlayacak. "
+        "**Current State:** farcry klasörü boş; proje sıfırdan başlayacak. "
         "Davranış listesi ve teknoloji seçimi kullanıcı yanıtını bekliyor.\n"
     )
     cache = cache_path_for(tmp_path, slug)
@@ -1148,7 +1148,7 @@ def test_brief_and_cache_writes_cache_from_briefing_skill(tmp_path: Path) -> Non
     from mnemos.recall_briefing import brief_and_cache
 
     cwd = "C:\\Users\\u\\TestProject"
-    fake_body = "**Aktif durum:** test briefing body.\n"
+    fake_body = "**Current State:** test briefing body.\n"
 
     def fake_runner(cmd, stdout_path=None):
         if stdout_path is not None:
@@ -1162,7 +1162,7 @@ def test_brief_and_cache_writes_cache_from_briefing_skill(tmp_path: Path) -> Non
     assert cache.exists(), "brief_and_cache did not write cache file"
     text = cache.read_text(encoding="utf-8")
     assert text.startswith("---\n"), "cache missing frontmatter"
-    assert "**Aktif durum:**" in text
+    assert "**Current State:**" in text
     assert f"cwd: {cwd}" in text
 
 
@@ -1387,7 +1387,7 @@ def test_handle_session_start_inject_when_readiness_above_threshold(tmp_path, mo
     cache_dir = tmp_path / ".mnemos-briefings"
     cache_dir.mkdir()
     (cache_dir / "test-cwd.md").write_text(
-        "---\ncwd: C:/test\n---\n**Aktif durum:** test\n", encoding="utf-8"
+        "---\ncwd: C:/test\n---\n**Current State:** test\n", encoding="utf-8"
     )
     monkeypatch.setattr(
         "mnemos.recall_briefing.per_cwd_readiness",
@@ -1406,7 +1406,7 @@ def test_handle_session_start_inject_when_readiness_above_threshold(tmp_path, mo
         ledger=tmp_path / "ledger.tsv",
     )
     assert result.injected_context != ""
-    assert "**Aktif durum:**" in result.injected_context
+    assert "**Current State:**" in result.injected_context
 
 
 def test_main_emits_systemmessage_when_briefing_show_enabled(tmp_path, monkeypatch, capsys):
@@ -1423,7 +1423,7 @@ def test_main_emits_systemmessage_when_briefing_show_enabled(tmp_path, monkeypat
     cache_dir = tmp_path / ".mnemos-briefings"
     cache_dir.mkdir()
     (cache_dir / "test-cwd.md").write_text(
-        "---\ncwd: C:/test\nsession_count_used: 5\n---\n**Aktif durum:** ProcureTrack ready.\n",
+        "---\ncwd: C:/test\nsession_count_used: 5\n---\n**Current State:** ProcureTrack ready.\n",
         encoding="utf-8",
     )
     _make_state_file(tmp_path)
@@ -1460,7 +1460,7 @@ def test_inject_includes_cross_check_directive_when_enabled(tmp_path, monkeypatc
     cache_dir = tmp_path / ".mnemos-briefings"
     cache_dir.mkdir()
     (cache_dir / "test-cwd.md").write_text(
-        "---\ncwd: C:/test\n---\n**Aktif durum:** body\n",
+        "---\ncwd: C:/test\n---\n**Current State:** body\n",
         encoding="utf-8",
     )
     _make_state_file(tmp_path)
@@ -1496,7 +1496,7 @@ def test_inject_no_directive_when_disabled(tmp_path, monkeypatch, capsys):
     cache_dir = tmp_path / ".mnemos-briefings"
     cache_dir.mkdir()
     (cache_dir / "test-cwd.md").write_text(
-        "---\n---\n**Aktif durum:** body\n", encoding="utf-8"
+        "---\n---\n**Current State:** body\n", encoding="utf-8"
     )
     _make_state_file(tmp_path)
     monkeypatch.setattr("mnemos.recall_briefing.cwd_to_slug", lambda c: "test-cwd")
@@ -1507,7 +1507,58 @@ def test_inject_no_directive_when_disabled(tmp_path, monkeypatch, capsys):
     out = _json.loads(capsys.readouterr().out)
     ctx = out["hookSpecificOutput"]["additionalContext"]
     assert "MNEMOS BRIEFING" not in ctx
-    assert "**Aktif durum:** body" in ctx
+    assert "**Current State:** body" in ctx
+
+
+def test_inject_legacy_tr_briefing_cache_still_works(tmp_path, monkeypatch, capsys):
+    """v1.2.0 dual-match — a briefing cache file written by a pre-v1.2.0
+    Mnemos still has Turkish bold labels (`**Aktif durum:**`,
+    `**Geçerli kararlar:**`, `**Revize/iptal edilen kararlar:**`).
+    The directive wrapper must NOT regex-match those labels — it speaks
+    in language-agnostic terms about "active decisions" — so the legacy
+    cache injects cleanly with the directive prepended."""
+    from mnemos.recall_briefing import main
+    import json as _json
+    import io as _io
+
+    (tmp_path / "mnemos.yaml").write_text(
+        "schema_version: 2\nrecall_mode: skill\n"
+        "briefing:\n  enforce_consistency: true\n  readiness_pct: 0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MNEMOS_VAULT", str(tmp_path))
+    cache_dir = tmp_path / ".mnemos-briefings"
+    cache_dir.mkdir()
+    legacy_tr_body = (
+        "**Aktif durum:** ProcureTrack 2. ziyaret, Supabase Auth aktif.\n\n"
+        "**Geçerli kararlar:**\n- 2026-04-12 — RLS tüm tablolarda zorunlu.\n\n"
+        "**Revize/iptal edilen kararlar:**\n- (yok)\n\n"
+        "**Açık uçlar:**\n- Edge function deploy.\n"
+    )
+    (cache_dir / "test-cwd.md").write_text(
+        f"---\ncwd: C:/test\n---\n{legacy_tr_body}",
+        encoding="utf-8",
+    )
+    _make_state_file(tmp_path)
+    monkeypatch.setattr("mnemos.recall_briefing.cwd_to_slug", lambda c: "test-cwd")
+    monkeypatch.setattr(
+        "mnemos.recall_briefing._spawn_bg_catchup",
+        lambda cwd, vault: None,
+    )
+    monkeypatch.setattr(
+        "sys.stdin",
+        _io.StringIO(_json.dumps({"cwd": "C:/test", "source": "startup", "transcript_path": "/x"})),
+    )
+
+    main()
+    out = _json.loads(capsys.readouterr().out)
+    ctx = out["hookSpecificOutput"]["additionalContext"]
+
+    assert "MNEMOS BRIEFING" in ctx, "directive header missing"
+    assert "PAUSE" in ctx and "contradicts" in ctx.lower(), \
+        "language-agnostic directive must not be language-specific"
+    assert "**Aktif durum:**" in ctx, "legacy TR body must pass through unchanged"
+    assert "**Geçerli kararlar:**" in ctx, "legacy TR body must pass through unchanged"
 
 
 def test_handle_session_start_sync_fallback_when_pending(tmp_path, monkeypatch):

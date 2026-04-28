@@ -587,8 +587,9 @@ from mnemos.readiness import per_cwd_readiness
 CROSS_CHECK_DIRECTIVE = """[MNEMOS BRIEFING — CRITICAL READING INSTRUCTION]
 
 This briefing reflects the user's CURRENT decisions for this project.
-If the user's request CONTRADICTS items in "Geçerli kararlar" or
-"Revize/iptal edilen kararlar", PAUSE before acting. Politely ask:
+If the user's request CONTRADICTS any active decision listed in the
+briefing, or any item explicitly marked as revised or cancelled,
+PAUSE before acting. Politely ask:
   "This conflicts with your decision <item> from <date> — do you want
    to revise that decision now, or am I misunderstanding?"
 

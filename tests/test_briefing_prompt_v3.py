@@ -19,7 +19,7 @@ def test_prompt_v3_has_all_steps():
 
 def test_prompt_v3_revision_directive_present():
     text = PROMPT.read_text(encoding="utf-8")
-    assert "Revision marking" in text or "Revize" in text
+    assert "Revision marking" in text
     assert "Anchor preservation" in text
 
 
@@ -51,7 +51,7 @@ def test_prompt_documents_recency_relevance_sorting():
 
 def test_prompt_output_includes_user_profile_section():
     text = PROMPT.read_text(encoding="utf-8")
-    assert "Kullanıcı profili" in text
+    assert "User Profile" in text
 
 
 SKILL_PATH = Path(__file__).parent.parent / "skills" / "mnemos-briefing" / "SKILL.md"
