@@ -1,6 +1,6 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-28 — v1.2.0 implementation complete on local branch `feature/v1.2.0` (worktree `C:/Projeler/mnemos-v1.1`). Strategy pivoted mid-implementation from the plan's "dual-match" (EN-only output, accept either) to "locale-aware" (output matches user's dominant language; code+docs always English) per the project author's clarification. All five F-groups landed: F2 refine-transcripts locale-aware schema, F3 identity layer locale-aware + `_REFRESH_PROMPT_TEMPLATE` translated to English, F4 briefing prompt v3 locale-aware + language-agnostic `CROSS_CHECK_DIRECTIVE`, F5 docs (this file + CHANGELOG + ROADMAP), F6 verification (529 pytest pass, +2 vs 527 baseline; junction zero-drift green; no-API grep clean). F7 migration helper deferred — locale-aware obviates it. v1.1.0 GitHub release still live on 2026-04-27 ([tag](https://github.com/mnemos-dev/mnemos/releases/tag/v1.1.0)) — PyPI publish + tag still 🟡 pending user go-ahead. 🟡 **Pending user actions:** v1.2.0 F6.3 empirical smoke on kasamd, v1.2.0 merge to main, v1.2.0 + v1.1.0 PyPI publish, identity bootstrap on kasamd.
+**Last updated:** 2026-04-28 — v1.2.0 implementation complete on local branch `feature/v1.2.0`. Strategy pivoted mid-implementation from the plan's "dual-match" to "locale-aware" (output matches user's dominant language; code+docs always English). F6.3 empirical smoke ran on kasamd farcry cwd: locale-aware behavior **PASSED** (Turkish transcript → Turkish headers + Turkish body, exactly the goal). However the smoke **surfaced a pre-existing v1.1.0 bug**: duplicate-refine race condition (a single `/exit` produces two `Sessions/.md` files for the same JSONL). Root cause: three concurrent refine entry points with no ledger lock + legacy v1.0 `mnemos-auto-refine` SessionStart entry not removed by `install-hook --v1`. Diagnosis + fix in [`docs/specs/2026-04-28-v1.2.1-duplicate-refine-race.md`](docs/specs/2026-04-28-v1.2.1-duplicate-refine-race.md); deferred to v1.2.1 hot-fix per agreement that v1.2.0 (locale-aware) and v1.2.1 (race fix) are orthogonal scopes. v1.2.0 ships as-is with the known issue documented in CHANGELOG. v1.1.0 GitHub release still live on 2026-04-27 ([tag](https://github.com/mnemos-dev/mnemos/releases/tag/v1.1.0)) — PyPI publish + tag still 🟡 pending user go-ahead. 🟡 **Pending user actions:** v1.2.0 merge to main, v1.2.1 hot-fix branch, manual workaround on kasamd settings.json, v1.2.0 + v1.1.0 PyPI publish, identity bootstrap on kasamd.
 **Stable PyPI version:** `v0.3.3` (v0.x atomic-paradigm — still default `pip install mnemos-dev` until v1.1.0 PyPI upload)
 **Alpha:** `v1.0.0a1` — tag pushed to GitHub, never uploaded to PyPI (superseded by v1.1.0)
 **Released:** `v1.1.0` — SessionEnd-driven memory architecture, GitHub release live, PyPI pending
@@ -165,30 +165,30 @@ For early adopters: `pip install git+https://github.com/mnemos-dev/mnemos@v1.0.0
 | F4 Briefing template + directive | 5 | done | prompt v3 locale-aware bold labels with EN/TR table, `CROSS_CHECK_DIRECTIVE` language-agnostic, 26 test fixture flips, 1 new back-compat test |
 | F5 Documentation | 3 | done | STATUS, CHANGELOG, ROADMAP |
 | F6 Verification | 2 | done | pytest 529 pass (+2), junction zero-drift green, no-API grep clean |
-| F6.3 Empirical smoke | 1 | 🟡 deferred | needs real Claude Code session in kasamd cwd |
+| F6.3 Empirical smoke | 1 | done | kasamd farcry: TR transcript → TR headers + TR body. Locale-aware contract holds. **Surfaced pre-existing v1.1.0 duplicate-refine race — see v1.2.1 spec.** |
 | F7 Migration helper | 0 | not needed | locale-aware behavior obviates the need for a one-shot vault flip |
 
 🟡 **Pending user actions:**
 
-1. **F6.3 empirical smoke** — open a real Claude Code session in any
-   kasamd cwd (`C:\Users\tugrademirors\OneDrive\Masaüstü\kasamd\<proj>`),
-   `/exit`, then check:
-   - The new `Sessions/<date>-<slug>.md` matches the conversation's
-     dominant language. If you spoke Turkish, the headers should be
-     `## Özet` / `## Alınan Kararlar`. If English, `## Summary` /
-     `## Decisions`. Mixed → English default.
-   - Open a fresh session in the same cwd → SessionStart briefing
-     renders bold labels in the cwd's dominant language
-     (`**Aktif durum:**` for a Turkish-history cwd, `**Current State:**`
-     for an English-history cwd). Single-language family — never half
-     EN / half TR.
-   - `mnemos identity refresh --force` — verifies the existing
-     `_identity/L0-identity.md` (if bootstrapped) parses without error
-     and the refresh output preserves whichever header language was
-     already on disk.
-2. **Merge `feature/v1.2.0` → main** — once F6.3 passes, fast-forward
-   merge, push, optionally tag `v1.2.0`.
-3. **PyPI v1.1.0 + v1.2.0 publish** (still deferred):
+1. **Manual workaround for the duplicate-refine race** (until v1.2.1
+   ships) — edit `~/.claude/settings.json`, remove the
+   `mnemos-auto-refine` SessionStart entry. Keep only
+   `mnemos-recall-briefing` (SessionStart) and `mnemos-session-end`
+   (SessionEnd). Without this manual step, every `/exit` on kasamd
+   will keep producing duplicate `Sessions/.md` files.
+2. **Pick which duplicate(s) to keep** — `kasamd/Sessions/` currently
+   has at least two same-conversation duplicates from today
+   (`2026-04-28-desktop-tavuk-sprite-teknoloji-kararlari.md` +
+   `2026-04-28-desktop-tavuk-tech-stack-sprite-strateji.md`, plus
+   the v1.2 implementation session was double-refined too). Compare,
+   pick the better one, move the loser to `_recycled/`.
+3. **Merge `feature/v1.2.0` → main** — fast-forward merge, push,
+   optionally tag `v1.2.0`.
+4. **v1.2.1 hot-fix branch** — implement
+   [`docs/specs/2026-04-28-v1.2.1-duplicate-refine-race.md`](docs/specs/2026-04-28-v1.2.1-duplicate-refine-race.md).
+   Required scope: install-hook removes legacy v1.0 auto-refine entry,
+   ledger atomic claim via file lock, ledger normalize CLI.
+5. **PyPI v1.1.0 + v1.2.0 publish** (still deferred):
    ```bash
    python -m twine upload C:/Projeler/mnemos-v1.1/dist/mnemos_dev-1.1.0*
    # rebuild for v1.2.0:
@@ -196,9 +196,9 @@ For early adopters: `pip install git+https://github.com/mnemos-dev/mnemos@v1.0.0
    python -m twine upload dist/mnemos_dev-1.2.0*
    gh release create v1.2.0 --title "v1.2.0 — Locale-Aware Output" --notes-file CHANGELOG.md
    ```
-4. **Identity bootstrap** (still pending):
+6. **Identity bootstrap** (still pending):
    `mnemos identity bootstrap --vault "C:/Users/tugrademirors/OneDrive/Masaüstü/kasamd"` — bootstrap eligibility gate (25%) may need `--force`.
-5. **Test infra cleanup** — `~/.claude/test-session-end/` and
+7. **Test infra cleanup** — `~/.claude/test-session-end/` and
    `mnemos-end-smoke-test` SessionEnd entry in `settings.json`. Run
    `mnemos install-end-hook --uninstall` to clean.
 

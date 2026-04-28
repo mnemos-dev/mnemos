@@ -20,7 +20,8 @@ archive; if they conflict, this file wins.
 | ~~v0.4.0~~ | ~~AI Boost / Phase 1~~ — superseded by v1.0 narrative-first pivot | 🗄️ archived | — |
 | **v1.0.0a1** | **Narrative-first pivot (atomic-fragmentation dropped, Sessions = unit, Identity Layer)** | ✅ shipped 2026-04-26 | ⏸ deferred |
 | **v1.1.0** | **SessionEnd-driven memory (refine+brief+identity-refresh worker, settings TUI, briefing v3, readiness gates, in-session cross-check)** | ✅ shipped 2026-04-27 | ⏸ deferred 24h |
-| **v1.2.0** | **Locale-aware output (EN code+docs, runtime headers match dominant Session language; defaults English when mixed)** | **✅ implementation done 2026-04-28** *(empirical smoke + merge pending)* | — |
+| **v1.2.0** | **Locale-aware output (EN code+docs, runtime headers match dominant Session language; defaults English when mixed)** | **✅ shipped 2026-04-28** *(empirical smoke green, merge + PyPI pending)* | — |
+| **v1.2.1** | **Hot-fix: duplicate-refine race condition (3 hooks refine same JSONL → ledger lock + install-hook legacy cleanup + ledger normalize CLI)** | **🔄 spec ready 2026-04-28** | — |
 | v1.3.0 | Polish + LongMemEval benchmark (R@5 ≥ 93% baseline, JSONL-direct identity bootstrap?) | ⏸ | — |
 | v0.5.0 | Automation / Phase 2 — superseded by v1.1 SessionEnd hook | 🗄️ archived | — |
 | v0.6.0 | Community & Ecosystem (Obsidian plugin, multi-language markers, demo video) | ⏸ | — |
@@ -53,13 +54,40 @@ out-of-scope; in practice it was the right answer. See CHANGELOG v1.2.0
 
 ### Acceptance criteria (plan §9)
 
-- [x] All canonical prompts emit English-only schema
+- [x] All canonical prompts emit locale-aware schema (EN canonical + TR translation table)
 - [x] `CROSS_CHECK_DIRECTIVE` uses language-agnostic phrasing
 - [x] Test suite 529 with 3 explicit TR back-compat tests (one per schema)
-- [ ] **F6.3** — Empirical smoke on kasamd (user-triggered)
+- [x] **F6.3** — Empirical smoke on kasamd: TR transcript → TR headers + body, locale-aware contract holds. Surfaced unrelated v1.1.0 race condition → see v1.2.1 spec
 - [x] STATUS.md, CHANGELOG.md, ROADMAP.md updated
 - [x] No Anthropic API calls (CI grep passes — all `ANTHROPIC_API_KEY` references are intentional `env.pop()` strips)
 - [x] Zero-drift skill junction tests pass (3 tests green)
+
+---
+
+## v1.2.1 — Duplicate-Refine Race Hot-Fix 🔄 *(spec ready 2026-04-28)*
+
+Pre-existing v1.1.0 race condition surfaced during v1.2.0 F6.3 smoke.
+Three independent code paths (`auto_refine_hook` SessionStart,
+`recall_briefing --catchup` SessionStart, `session_end_hook` SessionEnd)
+refine the same JSONL concurrently — produces duplicate `Sessions/.md`
+files with different LLM-chosen slugs. No ledger lock + the v1.0
+`mnemos-auto-refine` SessionStart entry that `install-hook --v1` failed
+to remove on upgrade.
+
+Diagnosis + fix plan: [`docs/specs/2026-04-28-v1.2.1-duplicate-refine-race.md`](specs/2026-04-28-v1.2.1-duplicate-refine-race.md)
+
+### Required scope
+
+- [ ] `install-end-hook` removes legacy v1.0 `mnemos-auto-refine` SessionStart entry; new test asserts post-install state
+- [ ] Ledger atomic claim — `msvcrt.locking` (Windows) / `fcntl.flock` (POSIX) around the read-modify-write of the pending check
+- [ ] `mnemos refine-ledger --normalize` CLI for one-shot TSV repair (heuristic fix corrupted lines, dedup, drop dead paths)
+- [ ] Pre-refine duplicate guard (defense in depth): check `Sessions/<date>-<slug-prefix>*.md` before invoking `claude --print`
+
+### Tests
+
+- [ ] `test_install_end_hook_removes_legacy_auto_refine_entry`
+- [ ] `test_concurrent_refine_workers_dedup_via_lock`
+- [ ] `test_refine_ledger_normalize_repairs_corrupted_lines`
 
 ---
 

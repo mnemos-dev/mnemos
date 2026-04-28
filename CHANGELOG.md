@@ -111,6 +111,25 @@ LANGUAGE rules and a few callouts), and all tests still pass without
 revision because the prompt files still document the canonical English
 schema; only the runtime behavior rule changed.
 
+### Known issue → deferred to v1.2.1
+
+**Duplicate-refine race condition.** During v1.2.0 F6.3 empirical
+smoke a single Claude Code transcript was observed being refined
+twice and producing TWO `Sessions/<date>-<slug>.md` files. Root cause
+is a race between three independent refine entry points
+(`auto_refine_hook` SessionStart, `recall_briefing --catchup`
+SessionStart, `session_end_hook` SessionEnd) with no ledger lock —
+this bug pre-dates v1.2.0 and surfaces consistently on every `/exit`
+under v1.1.0 + the legacy v1.0 `mnemos-auto-refine` SessionStart
+entry that `install-hook --v1` failed to remove on upgrade.
+
+Full diagnosis + fix plan: [`docs/specs/2026-04-28-v1.2.1-duplicate-refine-race.md`](docs/specs/2026-04-28-v1.2.1-duplicate-refine-race.md).
+
+User-facing workaround until v1.2.1 ships: manually remove the
+`mnemos-auto-refine` SessionStart entry from `~/.claude/settings.json`,
+leaving only `mnemos-recall-briefing` (SessionStart) and
+`mnemos-session-end` (SessionEnd).
+
 ---
 
 ## v1.1.0 — SessionEnd-Driven Memory (2026-04-27)
