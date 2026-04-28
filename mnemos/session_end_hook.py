@@ -246,19 +246,34 @@ def _parse_worker_args(argv: list[str]):
 
 
 def _run_refine(transcript: str) -> None:
-    """Sync refine via /mnemos-refine-transcripts skill subprocess."""
-    cmd = [
-        "claude", "--print", "--dangerously-skip-permissions",
-        "--model", "sonnet",
-        f"/mnemos-refine-transcripts {transcript}",
-    ]
-    subprocess.call(
-        cmd,
-        env=_child_env(),
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    """Sync refine via /mnemos-refine-transcripts skill subprocess.
+
+    Gated by `mnemos.refine_lock.claim_jsonl_for_refine` so concurrent
+    workers (SessionStart auto_refine + recall_briefing --catchup +
+    this SessionEnd worker) cannot produce duplicate Sessions/.md
+    files. If another worker holds the lock or the ledger already
+    records OK/SKIP for this transcript, this call is a no-op.
+    """
+    from mnemos.refine_lock import claim_jsonl_for_refine
+    from mnemos.recall_briefing import DEFAULT_REFINE_LEDGER
+
+    jsonl = Path(transcript)
+    claim = claim_jsonl_for_refine(jsonl, DEFAULT_REFINE_LEDGER)
+    if claim is None:
+        return  # busy or already done — silent skip
+    with claim:
+        cmd = [
+            "claude", "--print", "--dangerously-skip-permissions",
+            "--model", "sonnet",
+            f"/mnemos-refine-transcripts {transcript}",
+        ]
+        subprocess.call(
+            cmd,
+            env=_child_env(),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
 
 def _run_brief_regen(cwd: str) -> None:

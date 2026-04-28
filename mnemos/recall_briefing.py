@@ -415,10 +415,27 @@ def _build_skill_cmd(skill: str, arg: str) -> list[str]:
     ]
 
 
-def run_refine_sync(jsonl: Path, runner=None) -> RefineResult:
-    runner = runner or _default_runner
-    cmd = _build_skill_cmd("mnemos-refine-transcripts", str(jsonl))
-    rc = runner(cmd)
+def run_refine_sync(jsonl: Path, runner=None, ledger: Path | None = None) -> RefineResult:
+    """Sync refine. Gated by per-JSONL lock + ledger recheck (v1.2.1).
+
+    If another worker holds the lock for this JSONL, or the ledger already
+    records OK/SKIP for it, this call is a no-op (returns ok=True so the
+    caller's "no error" path runs — the work was already done by someone
+    else, that's success from the user's point of view).
+    """
+    from mnemos.refine_lock import claim_jsonl_for_refine
+
+    if ledger is None:
+        ledger = DEFAULT_REFINE_LEDGER
+
+    claim = claim_jsonl_for_refine(jsonl, ledger)
+    if claim is None:
+        return RefineResult(ok=True, jsonl=jsonl)  # already done / in flight
+
+    with claim:
+        runner = runner or _default_runner
+        cmd = _build_skill_cmd("mnemos-refine-transcripts", str(jsonl))
+        rc = runner(cmd)
     return RefineResult(ok=(rc == 0), jsonl=jsonl)
 
 

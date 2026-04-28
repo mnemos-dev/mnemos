@@ -572,6 +572,8 @@ def _run_locked(
     ok_count = 0
     skip_count = 0
 
+    from mnemos.refine_lock import claim_jsonl_for_refine
+
     for i, jsonl in enumerate(picked, start=1):
         backlog = compute_backlog(projects_dir, ledger_path)
         write_status(
@@ -579,16 +581,31 @@ def _run_locked(
             last_ok=ok_count, last_skip=skip_count,
             triggering_session_id=triggering_session_id,
         )
-        with log_path.open("a", encoding="utf-8") as fh:
-            fh.write(f"[{datetime.now(timezone.utc).isoformat(timespec='seconds')}] refine {jsonl}\n")
-        rc = runner([
-            "claude",
-            "--print",
-            "--dangerously-skip-permissions",
-            f"/mnemos-refine-transcripts {jsonl}",
-        ])
-        with log_path.open("a", encoding="utf-8") as fh:
-            fh.write(f"  exit={rc}\n")
+        # v1.2.1 — per-JSONL claim gate: if another caller (SessionEnd
+        # worker or recall_briefing --catchup) is already refining this
+        # JSONL, or the ledger already records it, skip silently. Without
+        # this, two parallel `claude --print` calls produce non-deterministic
+        # slugs and either silently overwrite each other (data loss) or
+        # leave duplicate Sessions/.md siblings.
+        claim = claim_jsonl_for_refine(jsonl, ledger_path)
+        if claim is None:
+            with log_path.open("a", encoding="utf-8") as fh:
+                fh.write(
+                    f"[{datetime.now(timezone.utc).isoformat(timespec='seconds')}] "
+                    f"skip-claimed-elsewhere {jsonl}\n"
+                )
+            continue
+        with claim:
+            with log_path.open("a", encoding="utf-8") as fh:
+                fh.write(f"[{datetime.now(timezone.utc).isoformat(timespec='seconds')}] refine {jsonl}\n")
+            rc = runner([
+                "claude",
+                "--print",
+                "--dangerously-skip-permissions",
+                f"/mnemos-refine-transcripts {jsonl}",
+            ])
+            with log_path.open("a", encoding="utf-8") as fh:
+                fh.write(f"  exit={rc}\n")
         outcome = _latest_outcome_for_path(ledger_path, jsonl)
         if outcome == "OK":
             ok_count += 1
