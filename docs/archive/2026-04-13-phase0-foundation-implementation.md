@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** API kullanmadan MemPalace ile esit recall (%96+) yakalamak — raw verbatim storage, dual collection, conversation normalizer, mining engine overhaul, benchmark.
+**Goal:** Reach recall parity (96%+) with MemPalace without using an API — raw verbatim storage, dual collection, conversation normalizer, mining engine overhaul, benchmark.
 
 **Architecture:** ChromaDB dual collection (mnemos_raw + mnemos_mined) with Reciprocal Rank Fusion search merge. Conversation normalizer converts 5 chat formats to standard transcript. Mining engine uses exchange-pair chunking, 72+ room patterns, heuristic entity detection, 87+ EN + ~80 TR markers with scoring/disambiguation, and code line filtering. LongMemEval benchmark measures Recall@5/10.
 

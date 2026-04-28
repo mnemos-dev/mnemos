@@ -2,77 +2,77 @@
 
 **Date:** 2026-04-13
 **Status:** Approved
-**Goal:** API kullanmadan MemPalace ile esit recall (%96+) yakalamak.
-API (Phase 1) sadece %96'nin ustune cikmak icin kullanilacak.
+**Goal:** Reach recall parity (96%+) with MemPalace without using an API.
+The API (Phase 1) will only be used to push above 96%.
 
 ---
 
 ## Background
 
-### Neden %96 degil?
+### Why not 96%?
 
-Mnemos v0.1 **lossy mining** yapiyor:
-- Dosyalari paragraflara boluyor, regex ile siniflandiriyor, sadece fragment'lari sakliyor
-- Orijinal baglam (conversation akisi, soru-cevap iliskisi) kayboluyor
-- Mining pattern'lari yetersiz: EN 25 pattern, TR 24 pattern (MemPalace: 115+)
-- Room detection: sadece dosya adi + ilk H2 (MemPalace: 72 pattern)
-- Entity detection: sadece CamelCase (MemPalace: heuristic scoring)
-- Conversation format destegi yok (MemPalace: 5 format)
+Mnemos v0.1 does **lossy mining**:
+- Splits files into paragraphs, classifies with regex, and stores only the fragments
+- The original context (conversation flow, question-answer relationship) is lost
+- Mining patterns are insufficient: 25 EN patterns, 24 TR patterns (MemPalace: 115+)
+- Room detection: only filename + first H2 (MemPalace: 72 patterns)
+- Entity detection: only CamelCase (MemPalace: heuristic scoring)
+- No conversation format support (MemPalace: 5 formats)
 
-### MemPalace %96'yi nasil yakaliyor?
+### How does MemPalace reach 96%?
 
-3 temel sac ayagi — hicbiri API gerektirmiyor:
-1. **Raw verbatim storage** — dosyanin tamami ChromaDB'de korunuyor
-2. **Exchange-pair chunking** — soru+cevap birlikte chunk'laniyor, baglam korunuyor
-3. **Metadata filtering** — wing/room ile arama alani daraltiliyor (+%34 iyilestirme)
+Three fundamental pillars — none requiring an API:
+1. **Raw verbatim storage** — the entire file is preserved in ChromaDB
+2. **Exchange-pair chunking** — question+answer are chunked together, context is preserved
+3. **Metadata filtering** — wing/room narrows the search space (+34% improvement)
 
-### Strateji
+### Strategy
 
 ```
-Phase 0: API'siz %96+ recall
+Phase 0: 96%+ recall without an API
   0.1 + 0.3  Raw storage + dual collection
-  0.2        Metadata filtering guclendirme
+  0.2        Strengthen metadata filtering
   0.5        Conversation format normalizer
-  0.6        Mining engine guclendirme (API'siz)
-  0.7        Benchmark (LongMemEval) — %96 hedefi
+  0.6        Strengthen mining engine (API-free)
+  0.7        Benchmark (LongMemEval) — 96% target
 
-Phase 1: API ile %96'nin ustune cik
-  1.1  LLM mining (regex'in yakalayamadiklarini yakala)
+Phase 1: Push above 96% with the API
+  1.1  LLM mining (catch what regex misses)
   1.2  LLM reranking
   1.3  Contradiction detection
-  1.4  Benchmark tekrari — %100 hedefi
+  1.4  Rerun benchmark — 100% target
 ```
 
 ---
 
 ## 0.1 + 0.3: Raw Verbatim Storage + Dual Collection
 
-### Tasarim
+### Design
 
-Mevcut tek collection yerine iki ChromaDB collection:
+Two ChromaDB collections instead of the current single one:
 
 ```
 ChromaDB
-├── mnemos_raw       ← orijinal dosya tam metin (verbatim, kayipsiz)
-└── mnemos_mined     ← cikarilmis fragment'lar (mevcut yapi)
+├── mnemos_raw       ← original full file text (verbatim, lossless)
+└── mnemos_mined     ← extracted fragments (existing structure)
 ```
 
 ### mnemos_raw Collection
 
-- Mine edilen her dosyanin **tam icerigi** tek dokuman olarak saklanir
-- Dosya buyukse chunk'lanir (ChromaDB embedding limiti ~8191 token / ~30K karakter)
-  - Chunk'lar arasi overlap ile baglam korunur
-  - MemPalace yaklasimi: 800 char chunk, fazlasi sonraki chunk'a tasar, hicbir sey atilmaz
-- Metadata: `wing`, `room`, `source_path`, `language`, `mined_at`, `chunk_index` (chunk varsa)
-- Document ID: `raw-<source_path_hash>` (veya chunk varsa `raw-<hash>-<chunk_index>`)
+- The **full content** of each mined file is stored as a single document
+- If the file is large it is chunked (ChromaDB embedding limit is ~8191 tokens / ~30K characters)
+  - Context is preserved with overlap between chunks
+  - MemPalace approach: 800-char chunks, the overflow carries to the next chunk, nothing is dropped
+- Metadata: `wing`, `room`, `source_path`, `language`, `mined_at`, `chunk_index` (if chunked)
+- Document ID: `raw-<source_path_hash>` (or `raw-<hash>-<chunk_index>` when chunked)
 
 ### mnemos_mined Collection
 
-- Mevcut `mnemos_drawers` collection'i `mnemos_mined` olarak yeniden adlandirilir
-- Mevcut davranis aynen devam eder
-- Yeni metadata: `raw_id` (iliskili raw dokumana referans)
+- The existing `mnemos_drawers` collection is renamed to `mnemos_mined`
+- Existing behavior continues unchanged
+- New metadata: `raw_id` (a reference to the related raw document)
 
-### SearchEngine Degisiklikleri
+### SearchEngine Changes
 
 ```python
 class SearchEngine:
@@ -84,72 +84,73 @@ class SearchEngine:
         self._mined = client.get_or_create_collection(COLLECTION_MINED, ...)
 
     def index_raw(self, doc_id, text, metadata):
-        """Tam dosya icerigini raw collection'a yaz."""
+        """Write the full file content into the raw collection."""
 
     def index_drawer(self, drawer_id, text, metadata):
-        """Fragment'i mined collection'a yaz (mevcut davranis)."""
+        """Write a fragment into the mined collection (existing behavior)."""
 
     def search(self, query, ..., collection="both"):
         """
-        collection="raw"   -> sadece raw'da ara
-        collection="mined" -> sadece mined'da ara
-        collection="both"  -> ikisinde de ara, RRF ile birlestir
+        collection="raw"   -> search raw only
+        collection="mined" -> search mined only
+        collection="both"  -> search both, merge with RRF
 
-        Merge stratejisi: Reciprocal Rank Fusion (RRF)
-        - Her collection'dan top-N sonuc al
-        - RRF skoru = sum(1 / (k + rank)) her collection icin, k=60
-        - Ayni source_path'e sahip sonuclari dedup et (en yuksek RRF skorunu tut)
-        - Nihai liste RRF skoruna gore sirala
+        Merge strategy: Reciprocal Rank Fusion (RRF)
+        - Take the top-N results from each collection
+        - RRF score = sum(1 / (k + rank)) for each collection, k=60
+        - Dedup results that share the same source_path (keep the highest RRF score)
+        - Sort the final list by RRF score
 
-        Neden RRF:
-        - Weighted merge'de skor kalibrasyon sorunu var (raw vs mined skorlar karsilastirilamaz)
-        - Raw-first yaklasimda mined'in yapisal avantaji kaybolur
-        - RRF rank-based, skor-agnostic — farkli collection'lardan gelen
-          sonuclari adil sekilde birlestirir
+        Why RRF:
+        - Weighted merge has a score calibration problem (raw vs mined scores
+          can't be compared)
+        - In a raw-first approach, the structural advantage of mined is lost
+        - RRF is rank-based and score-agnostic — it merges results from
+          different collections fairly
         """
 ```
 
-### Miner / Server Degisiklikleri
+### Miner / Server Changes
 
-- `handle_mine()`: once `index_raw()` ile tam icerigi sakla, sonra fragment'lari `index_drawer()` ile sakla
-- `mnemos_search` tool'u: Yeni `collection` parametresi (default: "both")
-- Mevcut drawer .md dosyalari Obsidian'da aynen kalir — raw collection sadece ChromaDB'de
+- `handle_mine()`: first store the full content via `index_raw()`, then store the fragments via `index_drawer()`
+- `mnemos_search` tool: new `collection` parameter (default: "both")
+- The existing drawer .md files in Obsidian remain unchanged — the raw collection lives only in ChromaDB
 
 ### Migration
 
-- Mevcut `mnemos_drawers` collection varsa silinip `mnemos_mined` olarak yeniden olusturulur (alpha, kullanici uyarilir)
-- Mevcut mine edilen dosyalar icin raw collection bos baslar
-- `mnemos mine --rebuild` komutu: mine_log sifirlanir, tum kaynaklar tekrar taranir, hem raw hem mined doldurulur
-- Rebuild islemi mevcut drawer .md dosyalarini silmez — ayni icerik upsert ile guncellenir
+- If an existing `mnemos_drawers` collection is present, it is deleted and recreated as `mnemos_mined` (alpha, the user is warned)
+- For files that have already been mined, the raw collection starts empty
+- `mnemos mine --rebuild` command: the mine_log is reset, all sources are rescanned, and both raw and mined are populated
+- The rebuild operation does not delete existing drawer .md files — the same content is updated via upsert
 
 ### Atomic Rebuild
 
-`--rebuild` crash-safe olmali:
-1. Yeni gecici collection'lar olustur (`mnemos_raw_new`, `mnemos_mined_new`)
-2. Tum kaynaklari gecici collection'lara mine et
-3. Basarili bitince eski collection'lari sil, gecici olanlari yeniden adlandir
-4. Crash olursa eski collection'lar dokunulmamis kalir — gecici olanlar temizlenir
+`--rebuild` must be crash-safe:
+1. Create new temporary collections (`mnemos_raw_new`, `mnemos_mined_new`)
+2. Mine all sources into the temporary collections
+3. On success, delete the old collections and rename the temporary ones
+4. If a crash occurs, the old collections remain untouched — the temporary ones are cleaned up
 
-Bu buyuk vault'larda (1000+ dosya) rebuild sirasinda veri kaybi riskini ortadan kaldirir.
+This eliminates the risk of data loss during rebuild on large vaults (1000+ files).
 
 ---
 
-## 0.2: Metadata Filtering Guclendirme
+## 0.2: Strengthen Metadata Filtering
 
-### Iyilestirmeler
+### Improvements
 
-1. **`$in` destegi**: Birden fazla wing/room/hall'de arama
+1. **`$in` support**: search across multiple wings/rooms/halls
    ```python
-   # ProcureTrack VEYA GYP wing'inde ara
+   # Search in the ProcureTrack OR GYP wing
    search(query, wing=["ProcureTrack", "GYP"])
    ```
-   - Parametreler `str | list[str]` kabul eder
-   - Tek deger: `{"wing": "X"}` (mevcut)
-   - Liste: `{"wing": {"$in": ["X", "Y"]}}` (yeni)
+   - Parameters accept `str | list[str]`
+   - Single value: `{"wing": "X"}` (existing)
+   - List: `{"wing": {"$in": ["X", "Y"]}}` (new)
 
-2. **Hall-only filter**: Wing belirtmeden hall bazli arama (zaten calisiyor, test eksik)
+2. **Hall-only filter**: hall-based search without specifying a wing (already works, test is missing)
 
-3. **Negative filter**: Belirli wing/room'u haric tutma
+3. **Negative filter**: exclude a specific wing/room
    ```python
    search(query, exclude_wing="General")
    ```
@@ -158,23 +159,23 @@ Bu buyuk vault'larda (1000+ dosya) rebuild sirasinda veri kaybi riskini ortadan 
 
 ## 0.5: Conversation Format Normalizer
 
-### Amac
+### Purpose
 
-MemPalace 5 conversation formatini destekliyor. Biz de ayni formatlari markdown'a cevirip mevcut pipeline'a verecegiz.
+MemPalace supports 5 conversation formats. We will likewise convert the same formats into markdown and feed them into the existing pipeline.
 
-### Desteklenecek Formatlar
+### Supported Formats
 
-| Format | Kaynak | Dosya Tipi |
+| Format | Source | File Type |
 |--------|--------|------------|
 | Claude Code JSONL | `~/.claude/projects/*/conversations/` | `.jsonl` |
 | Claude.ai JSON | claude.ai export | `.json` |
 | ChatGPT JSON | chatgpt.com export | `.json` |
 | Slack JSON | Slack workspace export | `.json` |
-| Plain text | Herhangi bir text | `.txt`, `.md` |
+| Plain text | Any text | `.txt`, `.md` |
 
-### Cikti Formati
+### Output Format
 
-Tum formatlar standart transcript'e donusturulur:
+All formats are converted to a standard transcript:
 
 ```markdown
 > user message here
@@ -184,79 +185,79 @@ assistant response here
 assistant response
 ```
 
-### Modul Yapisi
+### Module Structure
 
 ```python
 # mnemos/normalizer.py
 
 def normalize_file(filepath: Path) -> str:
-    """Dosya formatini tespit et ve standart transcript'e cevir."""
+    """Detect the file format and convert to a standard transcript."""
 
 def _try_claude_code_jsonl(text: str) -> str | None:
-    """Claude Code JSONL formatini parse et.
-    - tool_use/tool_result mesajlarini birlestir
-    - ardisik assistant mesajlarini birlestir
+    """Parse the Claude Code JSONL format.
+    - merge tool_use/tool_result messages
+    - merge consecutive assistant messages
     """
 
 def _try_chatgpt_json(text: str) -> str | None:
-    """ChatGPT export formatini parse et.
-    - mapping tree yapisini traverse et
-    - role + content cikar
+    """Parse the ChatGPT export format.
+    - traverse the mapping tree structure
+    - extract role + content
     """
 
 def _try_slack_json(text: str) -> str | None:
-    """Slack export formatini parse et.
-    - Speaker degisimlerinde role ata
+    """Parse the Slack export format.
+    - assign roles on speaker changes
     """
 
 def _try_plain_text(text: str) -> str:
-    """Fallback: markdown/text olarak birak."""
+    """Fallback: leave as markdown/text."""
 ```
 
-### Tool result truncation (MemPalace yaklasimi)
+### Tool result truncation (MemPalace approach)
 
-- Bash output: ilk 20 + son 20 satir
-- Grep/Glob: ilk 20 sonuc
-- Diger: 2048 byte
+- Bash output: first 20 + last 20 lines
+- Grep/Glob: first 20 results
+- Other: 2048 bytes
 
-### Entegrasyon
+### Integration
 
-- `mnemos mine` komutu `.jsonl` ve `.json` dosyalarini da kabul eder
-- Miner once normalizer'dan gecirir, sonra mevcut pipeline'a verir
-- `--format` flag: otomatik tespit yerine format belirtme (opsiyonel)
+- The `mnemos mine` command also accepts `.jsonl` and `.json` files
+- The miner first runs them through the normalizer, then feeds them into the existing pipeline
+- `--format` flag: explicitly specify the format instead of auto-detect (optional)
 
 ---
 
-## 0.6: Mining Engine Guclendirme (API'siz)
+## 0.6: Strengthen Mining Engine (API-free)
 
 ### 0.6.1: Exchange-Pair Chunking
 
-Mevcut: Paragraf bazli bolme (baglam kayboluyor)
-Yeni: Conversation transcript'lerde soru+cevap birlikte chunk'lanir
+Existing: paragraph-based splitting (context is lost)
+New: in conversation transcripts, question+answer are chunked together
 
 ```python
 def chunk_exchanges(transcript: str, max_chunk: int = 3000) -> list[str]:
-    """Transcript'i exchange pair'lerine bol.
+    """Split a transcript into exchange pairs.
 
-    - '>' ile baslayan satirlar user turn
-    - Sonraki satirlar assistant response
-    - Chunk boundary'si her zaman exchange sinirinda kesilir
-    - Tek bir exchange max_chunk'i asarsa, response parcalanir
-      ama user sorusu her zaman ilk chunk'ta kalir
-    - Hicbir sey atilmaz — her karakter korunur
+    - Lines starting with '>' are user turns
+    - Following lines are the assistant response
+    - The chunk boundary is always cut at an exchange boundary
+    - If a single exchange exceeds max_chunk, the response is split
+      but the user question always stays in the first chunk
+    - Nothing is dropped — every character is preserved
 
-    NOT: Chunk size dynamic — exchange boundary'de kesilir.
-    800 char degil, max 3000 char. Cogu exchange 1000-2500 char
-    arasinda oldugundan genelde bolunmeden kalir.
+    NOTE: Chunk size is dynamic — cut at the exchange boundary.
+    Not 800 chars, max 3000 chars. Most exchanges are between 1000-2500
+    chars, so they usually stay unsplit.
     """
 ```
 
-Fallback: Conversation olmayan dosyalarda mevcut paragraf chunking devam eder.
+Fallback: for non-conversation files, the existing paragraph chunking continues.
 
-### 0.6.2: Room Detection (72 Pattern)
+### 0.6.2: Room Detection (72 patterns)
 
-Mevcut: Dosya adi + ilk H2 heading
-Yeni: MemPalace'in 72 folder/filename pattern'ini + icerik keyword scoring'ini ekle
+Existing: filename + first H2 heading
+New: add MemPalace's 72 folder/filename patterns + content keyword scoring
 
 ```yaml
 # mnemos/patterns/rooms.yaml
@@ -279,68 +280,68 @@ rooms:
   meetings:
     folders: [meetings, calls, meeting_notes, standup, minutes]
     keywords: [meeting, call, standup, discussed, attendees, agenda]
-  # ... 13 kategori toplam (MemPalace ile ayni)
+  # ... 13 categories in total (same as MemPalace)
 ```
 
-Algoritma:
-1. Dosya yolundaki klasor isimlerini pattern'larla esle
-2. Eslesme yoksa: ilk 3000 karakterde keyword scoring
-3. En yuksek skorlu room sec
-4. Hala eslesme yoksa: "general"
+Algorithm:
+1. Match folder names in the file path against the patterns
+2. If no match: keyword scoring on the first 3000 characters
+3. Pick the highest-scoring room
+4. If still no match: "general"
 
 ### 0.6.3: Heuristic Entity Detection
 
-Mevcut: Sadece CamelCase regex
-Yeni: MemPalace'in iki-pasli heuristic yaklasimi
+Existing: only CamelCase regex
+New: MemPalace's two-pass heuristic approach
 
 ```python
 # mnemos/entity_detector.py
 
 class EntityDetector:
-    """API'siz entity tespit — heuristic scoring."""
+    """API-free entity detection — heuristic scoring."""
 
-    # 200+ stopword (common words, programming keywords)
+    # 200+ stopwords (common words, programming keywords)
     STOPWORDS = {...}
 
     def detect(self, text: str) -> dict:
         """Return {persons: [...], projects: [...], uncertain: [...]}"""
 
     def _pass1_candidates(self, text: str) -> list[str]:
-        """3+ kez gecen buyuk harfli kelimeleri bul, stopword filtrele."""
+        """Find capitalized words occurring 3+ times, filter stopwords."""
 
     def _pass2_classify(self, candidate: str, text: str) -> tuple[str, float]:
         """
-        Person sinyalleri (agirlikli):
-          - Diyalog: '> Speaker:', 'Speaker said' (x3)
-          - Eylem: said, asked, told, thinks, wants (x2)
-          - Zamir yakinligi: 3 satir icinde he/she/they (x2)
-          - Dogrudan hitap: 'hey Name', 'thanks Name' (x4)
+        Person signals (weighted):
+          - Dialogue: '> Speaker:', 'Speaker said' (x3)
+          - Action: said, asked, told, thinks, wants (x2)
+          - Pronoun proximity: he/she/they within 3 lines (x2)
+          - Direct address: 'hey Name', 'thanks Name' (x4)
 
-        Project sinyalleri (agirlikli):
-          - Fiiller: building, shipped, deployed (x2)
-          - Mimari: 'Name architecture', 'Name pipeline' (x2)
-          - Versiyon: 'Name v2', 'Name-core' (x3)
-          - Kod: 'import Name', 'Name.py' (x3)
+        Project signals (weighted):
+          - Verbs: building, shipped, deployed (x2)
+          - Architecture: 'Name architecture', 'Name pipeline' (x2)
+          - Version: 'Name v2', 'Name-core' (x3)
+          - Code: 'import Name', 'Name.py' (x3)
 
-        Siniflandirma:
-          person_ratio >= 0.7 + 2+ sinyal tipi + skor >= 5 -> Person
+        Classification:
+          person_ratio >= 0.7 + 2+ signal types + score >= 5 -> Person
           person_ratio <= 0.3 -> Project
-          Digeri -> Uncertain
+          Otherwise -> Uncertain
         """
 ```
 
-Turkce eklentiler:
-- Turkce eylem fiilleri: "dedi", "sordu", "istedi", "yapti"
-- Turkce hitap: "Bey", "Hanim", "hocam"
+Turkish extensions:
+- Turkish action verbs: "dedi", "sordu", "istedi", "yapti"
+- Turkish honorifics: "Bey", "Hanim", "hocam"
 
-### 0.6.4: General Extractor (115+ Marker)
+### 0.6.4: General Extractor (115+ markers)
 
-Mevcut: 4 hall, ~25 EN pattern, ~24 TR pattern = 49 toplam
-Yeni: 4 hall (emotional Phase 1'e ertelendi), MemPalace seviyesinde marker'lar + Turkce karsiliklari
+Existing: 4 halls, ~25 EN patterns, ~24 TR patterns = 49 total
+New: 4 halls (emotional deferred to Phase 1), MemPalace-level markers + Turkish equivalents
 
 ```yaml
-# mnemos/patterns/en.yaml (guncellenecek)
-decisions:  # 21 marker
+# mnemos/patterns/en.yaml (to be updated)
+decisions:  # 21 markers
   - "we decided"
   - "we chose"
   - "we picked"
@@ -363,7 +364,7 @@ decisions:  # 21 marker
   - "opted for"
   - "settled on"
 
-preferences:  # 16 marker
+preferences:  # 16 markers
   - "I prefer"
   - "we prefer"
   - "always use"
@@ -381,7 +382,7 @@ preferences:  # 16 marker
   - "convention"
   - "standard"
 
-problems:  # 17 marker
+problems:  # 17 markers
   - "bug"
   - "error"
   - "crash"
@@ -400,7 +401,7 @@ problems:  # 17 marker
   - "timeout"
   - "memory leak"
 
-events:  # 33 marker (milestones)
+events:  # 33 markers (milestones)
   - "shipped"
   - "completed"
   - "launched"
@@ -435,43 +436,43 @@ events:  # 33 marker (milestones)
   - "tagged"
   - "published"
 
-  # NOT: emotional hall Phase 0'da eklenmeyecek.
-  # "love", "thank you", "amazing" gibi generic marker'lar false positive patlatir.
-  # Phase 1'de Claude API ile akilli classification yapilacak.
+  # NOTE: the emotional hall will not be added in Phase 0.
+  # Generic markers like "love", "thank you", "amazing" cause false positives.
+  # In Phase 1, smart classification will be done with the Claude API.
 ```
 
-Turkce marker'lar da ayni oranda genisletilecek (~80 pattern, emotional haric).
+Turkish markers will be expanded by the same proportion (~80 patterns, excluding emotional).
 
 ### 0.6.5: Scoring + Disambiguation
 
-Mevcut: Pattern eslesirse dogrudan hall ata
-Yeni: MemPalace'in scoring yaklasimi
+Existing: assign hall directly when a pattern matches
+New: MemPalace's scoring approach
 
 ```python
 def classify_segment(text: str, patterns: dict) -> tuple[str, float]:
     """
-    1. Her hall icin marker sayisini say (skor)
-    2. Uzunluk bonusu: >500 char +2, 200-500 +1
+    1. Count marker hits per hall (score)
+    2. Length bonus: >500 chars +2, 200-500 +1
     3. Confidence = min(1.0, max_score / 5.0)
     4. Disambiguation:
        - Problem + "fixed/solved/got it working" -> events (milestone)
-       - Problem + pozitif sentiment -> events
-    5. min_confidence = 0.3 altindakileri at
+       - Problem + positive sentiment -> events
+    5. Drop anything below min_confidence = 0.3
     """
 ```
 
 ### 0.6.6: Code Line Filtering
 
-Mevcut: Yok — kod satirlari da mining'e dahil
-Yeni: MemPalace'in prose extraction'i
+Existing: none — code lines are also included in mining
+New: MemPalace's prose extraction
 
 ```python
 def extract_prose(text: str) -> str:
-    """Kod satirlarini cikar, sadece insanin yazdigi text'i birak.
-    - Shell komutlari (cd, git, pip, npm...) atla
-    - Programlama yapilarini (import, def, class, return) atla
-    - Kod bloklarini (```) atla
-    - Alpha orani <%40 olan satirlari atla
+    """Strip code lines, leaving only human-written text.
+    - Skip shell commands (cd, git, pip, npm...)
+    - Skip programming constructs (import, def, class, return)
+    - Skip code blocks (```)
+    - Skip lines with <40% alpha ratio
     """
 ```
 
@@ -479,14 +480,14 @@ def extract_prose(text: str) -> str:
 
 ## 0.7: Benchmark (LongMemEval)
 
-### Yapi
+### Structure
 
 ```
 benchmarks/
 ├── longmemeval/
-│   ├── runner.py          ← ana benchmark calistirici
-│   ├── dataset.py         ← HuggingFace'den dataset indirme + parse
-│   └── metrics.py         ← Recall@K, NDCG@10 hesaplama
+│   ├── runner.py          ← main benchmark runner
+│   ├── dataset.py         ← download + parse dataset from HuggingFace
+│   └── metrics.py         ← Recall@K, NDCG@10 computation
 ├── results/
 │   └── results_longmemeval_YYYY-MM-DD.jsonl
 └── README.md
@@ -494,29 +495,29 @@ benchmarks/
 
 ### Pipeline — Full Pipeline Test
 
-Benchmark sadece ChromaDB degil, **tam Mnemos pipeline'ini** test eder:
+The benchmark tests **the full Mnemos pipeline**, not just ChromaDB:
 
-1. HuggingFace'den 500 soru + ~53 conversation session indir
-2. Conversation'lari normalizer'dan gecir (format detection + normalize)
-3. **Full mine pipeline**: normalize -> exchange-pair chunk -> room detect -> entity detect -> classify -> Obsidian .md yaz -> ChromaDB index (raw + mined)
-4. Her soru icin `mnemos_search` cagir (MnemosApp.handle_search uzerinden)
-5. Ground-truth cevap top-K sonuclarda mi kontrol et
-6. Recall@5, Recall@10, NDCG@10 hesapla
+1. Download 500 questions + ~53 conversation sessions from HuggingFace
+2. Run conversations through the normalizer (format detection + normalize)
+3. **Full mine pipeline**: normalize -> exchange-pair chunk -> room detect -> entity detect -> classify -> write Obsidian .md -> ChromaDB index (raw + mined)
+4. Call `mnemos_search` for each question (via MnemosApp.handle_search)
+5. Check whether the ground-truth answer is in the top-K results
+6. Compute Recall@5, Recall@10, NDCG@10
 
-NOT: Benchmark full pipeline test eder cunku:
-- Sadece ChromaDB testi gercek kullanım recall'ini olcmez
-- Normalizer hatalari, chunking kayiplari, room misclassification
-  gibi sorunlar ancak full pipeline'da ortaya cikar
-- MemPalace da ayni sekilde full pipeline test ediyor
+NOTE: The benchmark tests the full pipeline because:
+- A ChromaDB-only test does not measure real-usage recall
+- Issues like normalizer errors, chunking losses, room misclassification
+  only surface in the full pipeline
+- MemPalace also tests the full pipeline the same way
 
-### Test Modlari
+### Test Modes
 
-| Mod | Aciklama | Hedef |
+| Mode | Description | Goal |
 |-----|----------|-------|
-| raw-only | Sadece raw collection | Baseline |
-| mined-only | Sadece mined collection | Mining kalitesi |
-| combined | raw + mined birlestirme | En yuksek recall |
-| filtered | Wing/room metadata filtering | +%34 iyilestirme |
+| raw-only | raw collection only | Baseline |
+| mined-only | mined collection only | Mining quality |
+| combined | raw + mined merge | Highest recall |
+| filtered | wing/room metadata filtering | +34% improvement |
 
 ### CLI
 
@@ -526,49 +527,49 @@ mnemos benchmark longmemeval --mode raw-only
 mnemos benchmark results
 ```
 
-### Hedef
+### Target
 
-| Metrik | MemPalace | Mnemos Phase 0 Hedef |
+| Metric | MemPalace | Mnemos Phase 0 Target |
 |--------|-----------|---------------------|
-| Recall@5 | %96.6 | %95+ |
-| Recall@10 | %98.2 | %97+ |
+| Recall@5 | 96.6% | 95%+ |
+| Recall@10 | 98.2% | 97%+ |
 
 ---
 
-## Kapsam Disi (Phase 1+)
+## Out of Scope (Phase 1+)
 
-- Claude API ile mining/reranking (Phase 1)
+- Mining/reranking with the Claude API (Phase 1)
 - Contradiction detection (Phase 1)
 - Auto-mining pipeline / hooks (Phase 2)
 - Memory lifecycle / decay (Phase 2)
-- Knowledge graph guclendirme (Phase 2)
+- Knowledge graph improvements (Phase 2)
 
 ---
 
-## Uygulama Sirasi
+## Implementation Order
 
 1. **0.1 + 0.3**: Dual collection + raw storage (SearchEngine, Miner, Server)
-2. **0.2**: Metadata filtering iyilestirmeleri
+2. **0.2**: Metadata filtering improvements
 3. **0.5**: Conversation format normalizer
-4. **0.6**: Mining engine guclendirme (exchange-pair chunking, room detection, entity detection, general extractor, scoring, code filtering)
-5. **0.7**: Benchmark + ilk olcum
-6. Tum testler gecmeli, mevcut 51 test kirilmamali
+4. **0.6**: Strengthen mining engine (exchange-pair chunking, room detection, entity detection, general extractor, scoring, code filtering)
+5. **0.7**: Benchmark + first measurement
+6. All tests must pass; the existing 51 tests must not break
 
 ---
 
-## Basari Kriterleri
+## Success Criteria
 
-- [ ] Raw collection'a tam dosya icerigi yaziliyor
-- [ ] Mined collection mevcut davranisi koruyor
-- [ ] Search hem raw hem mined'da arayip sonuclari birlestirebiliyor
-- [ ] Wing/room list filter ($in) calisiyor
-- [ ] 5 conversation formati normalize ediliyor (Claude Code, Claude.ai, ChatGPT, Slack, plain text)
-- [ ] Exchange-pair chunking calisiyor (soru+cevap birlikte)
-- [ ] Room detection 72+ pattern ile calisiyor
-- [ ] Entity detection heuristic scoring ile calisiyor
-- [ ] General extractor 87+ EN marker + ~80 TR marker ile calisiyor (emotional haric 4 hall)
-- [ ] Code line filtering calisiyor
-- [ ] Scoring + disambiguation calisiyor (min_confidence=0.3)
-- [ ] LongMemEval benchmark calisiyor ve Recall@5 >= %95
-- [ ] Mevcut 51 test hala geciyor
-- [ ] Yeni testler eklenmis (her yeni modul icin)
+- [ ] Full file content is written to the raw collection
+- [ ] The mined collection preserves existing behavior
+- [ ] Search can query both raw and mined and merge the results
+- [ ] Wing/room list filter ($in) works
+- [ ] 5 conversation formats are normalized (Claude Code, Claude.ai, ChatGPT, Slack, plain text)
+- [ ] Exchange-pair chunking works (question+answer together)
+- [ ] Room detection works with 72+ patterns
+- [ ] Entity detection works with heuristic scoring
+- [ ] General extractor works with 87+ EN markers + ~80 TR markers (4 halls excluding emotional)
+- [ ] Code line filtering works
+- [ ] Scoring + disambiguation works (min_confidence=0.3)
+- [ ] LongMemEval benchmark runs and Recall@5 >= 95%
+- [ ] The existing 51 tests still pass
+- [ ] New tests have been added (one per new module)
