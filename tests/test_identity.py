@@ -91,6 +91,35 @@ def test_bootstrap_raises_when_no_sessions():
         bootstrap(vault)
 
 
+def test_invoke_claude_print_strips_anthropic_api_key(monkeypatch):
+    """Hard invariant: every claude --print invocation strips
+    ANTHROPIC_API_KEY from the child env so the call falls through to
+    the Claude Code subscription quota. identity._invoke_claude_print
+    was the lone violator (caught 2026-04-28 during the bootstrap
+    pilot when API balance exhaustion surfaced as exit 1)."""
+    from mnemos.identity import _invoke_claude_print
+    from unittest.mock import MagicMock
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake")
+
+    captured_env = {}
+
+    def fake_run(*args, **kwargs):
+        captured_env.update(kwargs.get("env") or {})
+        result = MagicMock()
+        result.returncode = 0
+        result.stdout = "ok"
+        result.stderr = ""
+        return result
+
+    monkeypatch.setattr("mnemos.identity.subprocess.run", fake_run)
+    out = _invoke_claude_print("hi")
+
+    assert out == "ok"
+    assert "ANTHROPIC_API_KEY" not in captured_env, \
+        "ANTHROPIC_API_KEY must be stripped before invoking claude --print"
+
+
 def test_bootstrap_pilot_limit_restricts_input(tmp_path):
     """--limit N exposes a pilot mode: feed only N most-recent Sessions to
     the LLM. Useful for prompt-quality validation before committing the

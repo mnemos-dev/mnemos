@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -148,7 +149,19 @@ def _select_sessions_with_cap(sessions: list[Path]) -> list[Path]:
 
 
 def _invoke_claude_print(prompt_input: str, model: str = "sonnet") -> str:
-    """Invoke `claude --print` with the given input. Returns stdout text."""
+    """Invoke `claude --print` with the given input. Returns stdout text.
+
+    Strips ``ANTHROPIC_API_KEY`` from the child env so the call falls
+    through to the user's Claude Code subscription quota — matches the
+    project hard invariant ("NO Anthropic API calls anywhere") that
+    every other claude --print site already enforces (auto_refine,
+    recall_briefing, session_end_hook). Without the strip, this site
+    silently routed bootstrap + refresh + identity-related LLM calls
+    through API credits whenever ANTHROPIC_API_KEY was set in the
+    user's env, which could exhaust API balance and surface only as
+    "exit 1" with empty stderr (confirmed empirically 2026-04-28
+    during kasamd identity bootstrap pilot).
+    """
     cmd = [
         "claude",
         "--print",
@@ -156,16 +169,22 @@ def _invoke_claude_print(prompt_input: str, model: str = "sonnet") -> str:
         "--model",
         model,
     ]
+    env = os.environ.copy()
+    env.pop("ANTHROPIC_API_KEY", None)
     proc = subprocess.run(
         cmd,
         input=prompt_input,
         capture_output=True,
         text=True,
         encoding="utf-8",
+        env=env,
         timeout=600,  # 10 min cap
     )
     if proc.returncode != 0:
-        raise IdentityError(f"claude --print failed (exit {proc.returncode}): {proc.stderr[:500]}")
+        raise IdentityError(
+            f"claude --print failed (exit {proc.returncode}): "
+            f"stderr={proc.stderr[:500]!r}"
+        )
     return proc.stdout
 
 
