@@ -1,11 +1,11 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-28 — v1.2.0 (locale-aware output) + v1.2.1 (refine-pipeline race + identity isolation hot-fix) both shipped to main. v1.2.1 took on extra scope after empirical bootstrap pilot surfaced three more bugs (ANTHROPIC_API_KEY env strip missing, parent-cwd + SessionStart hook contamination of `claude --print` subprocess, OUTPUT-section prompt too lax). Identity bootstrap empirically validated end-to-end: pilot on 10 most-recent Sessions then full run on 90 Sessions, both produced clean seven-section locale-aware profiles (TR headers + TR body since kasamd is Turkish-dominant). Total commits ahead of origin/main: 4 (`feat/identity-bootstrap-limit` branch, all merged to local main). Test suite **545 pass** (up from 529 baseline; +16 new tests across refine_lock, refine-ledger CLI, identity --limit, env-strip + cwd-isolation regressions). v1.1.0 GitHub release still live on 2026-04-27 ([tag](https://github.com/mnemos-dev/mnemos/releases/tag/v1.1.0)) — PyPI publish + tag still 🟡 pending user go-ahead. 🟡 **Pending user actions:** push commits to origin, v1.2.0 + v1.2.1 PyPI publish, v1.1.0 PyPI publish (still pending from yesterday), test infra cleanup (`~/.claude/test-session-end/`).
+**Last updated:** 2026-04-28 — v1.2.0 (locale-aware output) + v1.2.1 (refine-pipeline race + identity isolation hot-fix + stale-OK skip supersede) all shipped to origin/main. v1.2.1 took on extra scope after empirical bootstrap pilot surfaced three more bugs (ANTHROPIC_API_KEY env strip missing, parent-cwd + SessionStart hook contamination of `claude --print` subprocess, OUTPUT-section prompt too lax), and a fourth class of refine-pipeline data loss landed late in the day: **stale-OK skip on SessionEnd**. When a JSONL had been refined while still active (sibling SessionStart's `auto_refine` picked it during an idle window), any later `/exit` for that session silently skipped re-refining via `claim_jsonl_for_refine`'s ledger=OK gate — losing every byte typed after the premature refine. Reproduced on the day's planning session (~6h of post-refine work survived only in the raw JSONL). Fix: `supersede_stale_refine_if_needed` in `mnemos/session_end_hook.py` runs before the claim; when `JSONL.mtime > Session/.md.mtime + 60s` it renames the stale Session to `.bak-superseded-<utc>` and drops the OK row so claim grants. Manual recovery refreshed the lost Session as `2026-04-28-mnemos-v1-2-1-shipped-identity-bootstrap-pypi-deferred.md`. Identity bootstrap empirically validated end-to-end: pilot on 10 most-recent Sessions then full run on 90 Sessions, both produced clean seven-section locale-aware profiles (TR headers + TR body since kasamd is Turkish-dominant). Total commits ahead of origin/main: 0 (`feat/identity-bootstrap-limit` branch == origin/main; all 5 commits pushed via `HEAD:main`). Test suite **553 pass** (+8 vs 545: 6 new in `test_session_end_supersede.py`, 2 fixed test mocks for the new `vault` kwarg). v1.1.0 GitHub release still live on 2026-04-27 ([tag](https://github.com/mnemos-dev/mnemos/releases/tag/v1.1.0)) — PyPI publish + tag still 🟡 pending user go-ahead. 🟡 **Pending user actions:** v1.2.1 PyPI publish (rolling, includes the stale-OK fix), v1.1.0 PyPI publish (still pending from yesterday), `/exit` smoke for the new fix.
 **Stable PyPI version:** `v0.3.3` (v0.x atomic-paradigm — still default `pip install mnemos-dev` until v1.1.0 PyPI upload)
 **Alpha:** `v1.0.0a1` — tag pushed to GitHub, never uploaded to PyPI (superseded by v1.1.0)
 **Released:** `v1.1.0` — SessionEnd-driven memory architecture, GitHub release live, PyPI pending
 **Shipped to main:** `v1.2.0` — Locale-aware output (EN code+docs, runtime output matches dominant Session language)
-**Shipped to main:** `v1.2.1` — Refine-pipeline race fix (per-JSONL filelock + ledger normalize CLI) + identity isolation fix (env-strip + neutral cwd + hook re-entry guard) + `bootstrap --limit N` pilot mode
+**Shipped to main:** `v1.2.1` — Refine-pipeline race fix (per-JSONL filelock + ledger normalize CLI) + identity isolation fix (env-strip + neutral cwd + hook re-entry guard) + `bootstrap --limit N` pilot mode + **stale-OK skip supersede** (SessionEnd defense-in-depth)
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 **v1.0 spec:** [`docs/specs/2026-04-25-v1.0-narrative-pivot-design.md`](docs/specs/2026-04-25-v1.0-narrative-pivot-design.md) · **v1.0 plan:** [`docs/plans/2026-04-25-v1.0-narrative-pivot.md`](docs/plans/2026-04-25-v1.0-narrative-pivot.md)
 **v1.1 spec:** [`docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md`](docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md) · **v1.1 plan:** [`docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md`](docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md)
@@ -203,9 +203,11 @@ typed PyPI token.
 - `mnemos refine-ledger --normalize --validate-paths` one-shot cleanup ran on kasamd ledger
 - `/exit` empirical test passed — single Session/.md created, no duplicate
 - `mnemos identity bootstrap --force` ran successfully on kasamd (90 sessions → 85 used → 6 projects, 4 people, locale-aware TR headers + body, six revised-decisions in chronological order)
-- Test suite **545 pass** (+16 vs 529 baseline)
+- **v1.2.1 stale-OK skip supersede** (commit `7959ada`): the day's planning session reproduced a 4th-class refine bug where a JSONL refined while still active leaves a stale OK ledger row that silently swallows post-refine `/exit` content. Fix: `supersede_stale_refine_if_needed` in `session_end_hook.py` renames the prior Session/.md to `.bak-superseded-<utc>` and drops the OK row when `JSONL.mtime > Session.mtime + 60s`. 6 new tests + 2 mock signature fixes; 553 total pass. Manual recovery of the lost planning session produced `2026-04-28-mnemos-v1-2-1-shipped-identity-bootstrap-pypi-deferred.md` (full content, ~6h of work).
+- Test suite **553 pass** (+24 vs 529 baseline; +8 vs 545: 6 new + 2 fixed mocks for the stale-OK fix)
 - Worktree + branch cleanup: 4 stale agent worktrees removed, 2 redundant project worktrees pruned, 9 merged feature/chore branches deleted
 - Test infra cleanup: `~/.claude/test-session-end/` directory removed
+- Documented Bug #2 (PID-getppid marker staleness on Windows) as known-but-not-blocking — the supersede defense covers it; durable PID source can be revisited later. See ROADMAP "Known follow-up" under v1.2.1.
 
 ### ⏳ Pickup point for next session
 
@@ -213,9 +215,11 @@ The PyPI publish — see [`docs/plans/2026-04-28-v1.2.1-pypi-publish.md`](docs/p
 
 1. Read this STATUS.md
 2. Read the publish plan
-3. Verify `git status` clean + `origin/main == HEAD` + pytest 545 pass
-4. Show a <100-word summary leading with "Next: v1.2.1 PyPI publish per the plan; pause for confirmation before step 5 (irreversible twine upload)"
+3. Verify `git status` clean + `origin/main == HEAD` (= `7959ada`, the stale-OK fix) + pytest **553** pass
+4. Show a <100-word summary leading with "Next: v1.2.1 PyPI publish per the plan; the v1.2.1 wheel rolls in the stale-OK skip supersede fix; pause for confirmation before step 5 (irreversible twine upload)"
 5. Wait for user go-ahead
+
+**Smoke verification on resume (worth doing before publish):** after the `/exit` that ended *this* writing session, the new `supersede_stale_refine_if_needed` should have run live. Check `Sessions/` for a fresh `2026-04-28-…stale-ok-…` (or similar) note **with mtime ≥ the /exit moment** and a `.bak-superseded-<utc>` companion next to the prior `…-stale-ok-skip-debug.md` (created at 15:59 from the in-flight refine of the current JSONL). If both are there, the fix is end-to-end-validated and PyPI publish can proceed with confidence.
 
 ---
 

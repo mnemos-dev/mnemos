@@ -4,7 +4,7 @@
 Older `docs/specs/2026-04-*` and `docs/plans/2026-04-*` files are historical
 archive; if they conflict, this file wins.
 
-**Last updated:** 2026-04-28 (v1.1.0 shipped 2026-04-27, v1.2.0 implementation in progress)
+**Last updated:** 2026-04-28 (v1.2.1 + stale-OK skip hot-fix shipped to main; PyPI publish next)
 ---
 
 ## Version status
@@ -21,7 +21,7 @@ archive; if they conflict, this file wins.
 | **v1.0.0a1** | **Narrative-first pivot (atomic-fragmentation dropped, Sessions = unit, Identity Layer)** | ✅ shipped 2026-04-26 | ⏸ deferred |
 | **v1.1.0** | **SessionEnd-driven memory (refine+brief+identity-refresh worker, settings TUI, briefing v3, readiness gates, in-session cross-check)** | ✅ shipped 2026-04-27 | ⏸ deferred 24h |
 | **v1.2.0** | **Locale-aware output (EN code+docs, runtime headers match dominant Session language; defaults English when mixed)** | **✅ shipped 2026-04-28** *(empirical smoke green, merge + PyPI pending)* | — |
-| **v1.2.1** | **Hot-fix: refine-pipeline race (per-JSONL filelock + normalize CLI) + identity isolation (env-strip ANTHROPIC_API_KEY, neutral cwd, recall_briefing re-entry guard, strict OUTPUT prompt) + `bootstrap --limit N` pilot mode** | **✅ code shipped 2026-04-28** *(PyPI publish next session — [`plan`](plans/2026-04-28-v1.2.1-pypi-publish.md))* | — |
+| **v1.2.1** | **Hot-fix: refine-pipeline race (per-JSONL filelock + normalize CLI) + identity isolation (env-strip ANTHROPIC_API_KEY, neutral cwd, recall_briefing re-entry guard, strict OUTPUT prompt) + `bootstrap --limit N` pilot mode + stale-OK skip supersede (SessionEnd defense-in-depth)** | **✅ code shipped 2026-04-28** *(PyPI publish next session — [`plan`](plans/2026-04-28-v1.2.1-pypi-publish.md))* | — |
 | v1.3.0 | Polish + LongMemEval benchmark (R@5 ≥ 93% baseline, JSONL-direct identity bootstrap?) | ⏸ | — |
 | v0.5.0 | Automation / Phase 2 — superseded by v1.1 SessionEnd hook | 🗄️ archived | — |
 | v0.6.0 | Community & Ecosystem (Obsidian plugin, multi-language markers, demo video) | ⏸ | — |
@@ -98,6 +98,17 @@ collapsing the design.
 - [x] Strip `ANTHROPIC_API_KEY` in `identity._invoke_claude_print` (commit `3774d05`) — hard-invariant violation that other three sites already enforced
 - [x] Neutral tempfile cwd + `MNEMOS_RECALL_HOOK_ACTIVE=1` env marker for `claude --print` subprocess; rewrote `identity-bootstrap.md` OUTPUT section as a strict no-tools no-chat contract (commit `89f120b`)
 
+### Tasks (stale-OK skip follow-up, same-day, surfaced by lost planning session)
+
+- [x] `mnemos.session_end_hook.supersede_stale_refine_if_needed` — when JSONL.mtime > prior Session/.md.mtime + 60s, rename to `.bak-superseded-<utc>` and drop OK ledger row so SessionEnd's `claim_jsonl_for_refine` can grant a fresh claim (commit `7959ada`)
+- [x] `worker_main` threads `vault` through `_run_refine` so the helper can resolve Session/.md paths from ledger column 3
+- [x] 6 new tests in `tests/test_session_end_supersede.py` (jsonl-grew, older-jsonl, no-prior-entry, SKIP-row sticky, deleted-Session/.md, threshold-noise); 2 existing test mocks updated for the new `vault` kwarg
+- [x] Manual recovery: refined the lost planning session JSONL (`3078dfac…`) into `Sessions/2026-04-28-mnemos-v1-2-1-shipped-identity-bootstrap-pypi-deferred.md`; pre-recovery state preserved as `…-english-only-output-impl.md.bak-superseded-pre-rerefine`
+
+### Known follow-up (not blocking PyPI)
+
+- 🟡 **Bug #2 — `register_active_session` PID source.** On Windows the SessionStart hook captures `os.getppid()`, which often points to a short-lived shell wrapper rather than the long-living Claude Code process. Markers go "stale" (PID dead) immediately after creation, so subsequent `get_active_transcript_paths` cleanup wipes them. The defense-in-depth supersede above tolerates this, but the underlying tracking should later be replaced with a more durable handle (Claude Code session id is already stored in the marker; could verify liveness via the JSONL's recent mtime instead of PID).
+
 ### Acceptance criteria
 
 - [x] All three refine call sites go through `claim_jsonl_for_refine`
@@ -108,6 +119,7 @@ collapsing the design.
 - [x] **Empirical verification** — user opened new Claude Code session in farcry cwd, `/exit`, confirmed exactly ONE Session file written (run after `89aa708` was in editable install)
 - [x] User ran `mnemos refine-ledger --normalize --validate-paths` once on existing ledger to clean historical corruption
 - [x] **Identity bootstrap empirical verification** — pilot (10 sessions) + full (90 sessions) both produced canonical seven-section profiles (locale-aware TR headers + body) on kasamd vault
+- [x] **Stale-OK skip fix** — supersede helper landed (`7959ada`); test suite **553 pass** (+8 vs 545 baseline: 6 new + 2 fixed mocks)
 
 ---
 
