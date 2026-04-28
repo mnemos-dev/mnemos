@@ -91,6 +91,64 @@ def test_bootstrap_raises_when_no_sessions():
         bootstrap(vault)
 
 
+def test_invoke_claude_print_sets_recall_hook_active_marker(monkeypatch):
+    """Prevent recall_briefing's SessionStart hook from injecting cwd
+    briefing context into the nested claude --print subprocess. Without
+    MNEMOS_RECALL_HOOK_ACTIVE=1, the subprocess inherits our cwd, the
+    briefing additionalContext gets prepended to the LLM input, and the
+    LLM treats the canonical bootstrap prompt as a continuation of
+    whatever dev conversation we were in (caught 2026-04-28: snapshot
+    contained a chat summary instead of the profile)."""
+    from mnemos.identity import _invoke_claude_print
+    from unittest.mock import MagicMock
+
+    captured_env = {}
+
+    def fake_run(*args, **kwargs):
+        captured_env.update(kwargs.get("env") or {})
+        result = MagicMock()
+        result.returncode = 0
+        result.stdout = "ok"
+        result.stderr = ""
+        return result
+
+    monkeypatch.setattr("mnemos.identity.subprocess.run", fake_run)
+    _invoke_claude_print("hi")
+
+    assert captured_env.get("MNEMOS_RECALL_HOOK_ACTIVE") == "1", \
+        "recall_briefing re-entry guard marker missing"
+
+
+def test_invoke_claude_print_runs_in_neutral_cwd(monkeypatch, tmp_path):
+    """The subprocess must run from a temp dir, not the parent's cwd, so
+    project CLAUDE.md / .claude/settings don't prime the LLM with
+    unrelated context."""
+    from mnemos.identity import _invoke_claude_print
+    from unittest.mock import MagicMock
+
+    parent_cwd = tmp_path / "parent-project"
+    parent_cwd.mkdir()
+    monkeypatch.chdir(parent_cwd)
+
+    captured_cwd = {}
+
+    def fake_run(*args, **kwargs):
+        captured_cwd["value"] = kwargs.get("cwd")
+        result = MagicMock()
+        result.returncode = 0
+        result.stdout = "ok"
+        result.stderr = ""
+        return result
+
+    monkeypatch.setattr("mnemos.identity.subprocess.run", fake_run)
+    _invoke_claude_print("hi")
+
+    sub_cwd = captured_cwd["value"]
+    assert sub_cwd is not None, "must pass an explicit cwd"
+    assert Path(sub_cwd).resolve() != parent_cwd.resolve(), \
+        "subprocess must NOT inherit the parent's cwd"
+
+
 def test_invoke_claude_print_strips_anthropic_api_key(monkeypatch):
     """Hard invariant: every claude --print invocation strips
     ANTHROPIC_API_KEY from the child env so the call falls through to

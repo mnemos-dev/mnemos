@@ -95,9 +95,29 @@ After finishing, ask yourself:
 - [ ] Are Active Projects / People in Orbit / Mastered Tools written as wikilinks (`[[Name]]`)?
 - [ ] Is the Revised Decisions section in chronological order?
 
-## OUTPUT
+## OUTPUT — strict
 
-Only the markdown body to stdout. The wrapper writes it to file.
+You are running as `claude --print` in non-interactive mode. The
+calling Python wrapper captures your stdout verbatim and atomically
+writes it to `<vault>/_identity/L0-identity.md`. Therefore:
+
+- **Do NOT use any tools** (Write, Edit, Read, Bash, etc.). The wrapper
+  rewrites the file from your stdout, so any tool-driven file writes
+  will be silently overwritten by your own stdout content. Tools are
+  available but using them is pointless and harmful here.
+- **Do NOT output a chat reply, summary, or "Bootstrap tamamlandı"
+  status line.** Do not ask the user any follow-up questions. Do not
+  describe what you did. Just emit the profile.
+- **Begin output directly with `---`** (the YAML frontmatter opener).
+  The first byte of your stdout must be the leading dash. End with the
+  last `## Revised Decisions (Timeline)` (or its TR equivalent) section
+  body and a trailing newline. Nothing before the frontmatter, nothing
+  after the last section.
+- If you cannot generate a useful profile (e.g., the Sessions you were
+  given are too sparse), still emit valid frontmatter + minimal section
+  stubs — `## Working Style\n- (general) [insufficient data]\n` — so
+  the user sees the file exists and can rerun later. Do not refuse and
+  emit nothing.
 
 
 ## CLASSIFICATION DISCIPLINE — critical (v1.1)

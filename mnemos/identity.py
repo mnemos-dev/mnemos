@@ -171,15 +171,31 @@ def _invoke_claude_print(prompt_input: str, model: str = "sonnet") -> str:
     ]
     env = os.environ.copy()
     env.pop("ANTHROPIC_API_KEY", None)
-    proc = subprocess.run(
-        cmd,
-        input=prompt_input,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        env=env,
-        timeout=600,  # 10 min cap
-    )
+    # Prevent recall_briefing's SessionStart hook from injecting the cwd
+    # briefing into THIS claude --print call. Without this guard the
+    # subprocess inherits our cwd, recall_briefing fires, additionalContext
+    # gets prepended, and the LLM interprets the canonical bootstrap prompt
+    # as "you're in the Mnemos dev conversation, summarize for the user"
+    # rather than "produce an identity profile to stdout". Empirically
+    # observed 2026-04-28: snapshot contained a conversational summary
+    # asking "merge mi?" instead of the seven-section profile.
+    env["MNEMOS_RECALL_HOOK_ACTIVE"] = "1"
+    # Run from a neutral cwd (a temp dir) so the subprocess doesn't pick
+    # up any project CLAUDE.md / .claude/settings that would prime the LLM
+    # with unrelated context. Vault dir would also work but a fresh tmp
+    # dir is the safest choice — empty config, no existing skills, no
+    # project conventions.
+    with tempfile.TemporaryDirectory(prefix="mnemos-identity-") as neutral_cwd:
+        proc = subprocess.run(
+            cmd,
+            input=prompt_input,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=env,
+            cwd=neutral_cwd,
+            timeout=600,  # 10 min cap
+        )
     if proc.returncode != 0:
         raise IdentityError(
             f"claude --print failed (exit {proc.returncode}): "
