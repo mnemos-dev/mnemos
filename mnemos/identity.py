@@ -167,17 +167,24 @@ You are updating an existing Identity Layer with new Sessions.
 
 ## RULES
 
-1. Yeni bilgi mevcut bir (general) preference ile çelişiyorsa, bunun proje-spesifik mi
-   (yeni `(proj/<name>)` satırı) yoksa gerçek genel tercih değişikliği mi (Revize edilen
-   kararlar bölümüne taşı) olduğunu açıkça belirle.
-2. Yeni bilgi mevcut general'i pekiştiriyorsa dokunma.
-3. Yeni bilgi yeni bir entity (kişi, araç, proje) tanıtıyorsa eklemekten çekinme.
-4. Tutarlı olanlara dokunma — gereksiz revizyon yok.
+1. If new information conflicts with an existing `(general)` preference, decide
+   whether it is project-specific (add a new `(proj/<name>)` row) or a genuine
+   general shift (move the old general to the "Revised Decisions" section).
+2. If new information reinforces an existing general, leave it alone.
+3. If new information introduces a new entity (person, tool, project), do not
+   hesitate to add it.
+4. Don't touch what is consistent — no unnecessary revisions.
 
 3-case scenario for conflicts:
-- Project-specific addition: scope farklı, no conflict, add new (proj/...) row
-- Genuine general shift: old general → "Revize edilen kararlar", new general added
+- Project-specific addition: different scope, no conflict, add a new (proj/...) row
+- Genuine general shift: old general → "Revised Decisions", new general added
 - Project override of general: general stays, (proj/...) override row added
+
+Section headers in the output are always English (see identity-refresh.md).
+If the existing profile still has Turkish headers (`## Çalışma stili` etc.),
+flip them to English (`## Working Style`, `## Technical Preferences (Active)`,
+`## Rejected Approaches (Anti-Patterns)`, `## Active Projects`, `## People in
+Orbit`, `## Mastered Tools`, `## Revised Decisions (Timeline)`).
 
 ## OUTPUT
 

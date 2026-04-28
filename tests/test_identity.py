@@ -15,15 +15,17 @@ def test_identity_bootstrap_prompt_exists():
 
 
 def test_identity_bootstrap_prompt_documents_sections():
+    """v1.2.0 — section headers are English. TR back-compat lives in
+    test_identity_refresh_accepts_legacy_tr_profile below."""
     content = PROMPT_PATH.read_text(encoding="utf-8")
     for section in [
-        "Çalışma stili",
-        "Teknik tercihler",
-        "Reddedilen yaklaşımlar",
-        "Aktif projeler",
-        "Yörüngedeki insanlar",
-        "Ustalaşmış araçlar",
-        "Revize edilen kararlar",
+        "Working Style",
+        "Technical Preferences",
+        "Rejected Approaches",
+        "Active Projects",
+        "People in Orbit",
+        "Mastered Tools",
+        "Revised Decisions",
     ]:
         assert section in content, f"Missing section: {section}"
 
@@ -36,7 +38,7 @@ def test_identity_bootstrap_prompt_documents_scope_notation():
 
 def test_identity_bootstrap_prompt_documents_size_limits():
     content = PROMPT_PATH.read_text(encoding="utf-8")
-    assert "max" in content.lower() and "madde" in content.lower()
+    assert "max" in content.lower() and "items" in content.lower()
 
 
 def test_identity_bootstrap_prompt_documents_context_cap():
@@ -63,7 +65,7 @@ def test_bootstrap_creates_identity_file():
         mock_invoke.return_value = (
             "---\ngenerated_from: 3 sessions\nlast_refreshed: 2026-04-25\n"
             "session_count_at_refresh: 3\nschema_version: 1\n---\n\n"
-            "# User Identity\n\n## Çalışma stili\n- (general) Test stili\n"
+            "# User Identity\n\n## Working Style\n- (general) Test style\n"
         )
         # force=True bypasses the v1.1 readiness gate; this test exercises the
         # output-writing path, not the gate.
@@ -165,14 +167,14 @@ def test_refresh_creates_pre_refresh_backup():
 
 def test_has_identity_relevant_new_tags_true_for_new_proj():
     """If a new session has proj/<new-name> not in profile, returns True."""
-    profile_text = "## Aktif projeler\n- [[Mnemos]]\n- [[ProcureTrack]]\n"
+    profile_text = "## Active Projects\n- [[Mnemos]]\n- [[ProcureTrack]]\n"
     new_session_paths = [Path("/tmp/x.md")]
     with patch("pathlib.Path.read_text", return_value="---\ntags: [session-log, proj/newcustomer]\n---\n"):
         assert _has_identity_relevant_new_tags(profile_text, new_session_paths) is True
 
 
 def test_has_identity_relevant_new_tags_false_for_existing_only():
-    profile_text = "## Aktif projeler\n- [[Mnemos]]\n- [[ProcureTrack]]\n"
+    profile_text = "## Active Projects\n- [[Mnemos]]\n- [[ProcureTrack]]\n"
     new_session_paths = [Path("/tmp/x.md")]
     with patch("pathlib.Path.read_text", return_value="---\ntags: [session-log, proj/mnemos]\n---\n"):
         assert _has_identity_relevant_new_tags(profile_text, new_session_paths) is False
@@ -223,6 +225,49 @@ def test_show_returns_identity_content():
     )
     output = show(vault)
     assert "User Identity" in output
+
+
+def test_existing_tr_identity_still_parseable(tmp_path):
+    """v1.2.0 dual-match — an L0-identity.md written with the legacy
+    Turkish schema (## Çalışma stili, ## Aktif projeler, …) must remain
+    fully usable: `show()` returns it verbatim, and the identity-relevant
+    tag check parses its wikilinks correctly. No parser regex is allowed
+    to depend on English-only section names."""
+    vault = tmp_path / "vault"
+    identity_dir = vault / "_identity"
+    identity_dir.mkdir(parents=True)
+    legacy_tr = (
+        "---\nlast_refreshed: 2026-04-25\nsession_count_at_refresh: 5\n"
+        "schema_version: 1\n---\n\n"
+        "# User Identity\n\n"
+        "## Çalışma stili\n- (general) Direkt iletişim, jargon yok\n\n"
+        "## Teknik tercihler (yürürlükte)\n- (general) Pytest > unittest\n\n"
+        "## Aktif projeler\n- [[Mnemos]] — AI hafıza palace\n- [[ProcureTrack]]\n\n"
+        "## Yörüngedeki insanlar\n- [[Tugra]] — proje sahibi\n\n"
+        "## Ustalaşmış araçlar\n- [[Supabase]]\n- [[ChromaDB]]\n\n"
+        "## Revize edilen kararlar (zaman ekseni)\n- ...\n"
+    )
+    (identity_dir / "L0-identity.md").write_text(legacy_tr, encoding="utf-8")
+
+    # show() must surface the file unchanged
+    output = show(vault)
+    assert "Çalışma stili" in output
+    assert "[[Mnemos]]" in output
+
+    # _has_identity_relevant_new_tags() must extract wikilinks correctly
+    # — language-agnostic regex — and return False when no new entity arrives
+    fake_session = tmp_path / "no-new-entities.md"
+    fake_session.write_text(
+        "---\ntags: [session-log, proj/mnemos]\n---\n", encoding="utf-8"
+    )
+    assert _has_identity_relevant_new_tags(legacy_tr, [fake_session]) is False
+
+    # … and True when a brand-new entity arrives
+    fake_new = tmp_path / "new-entity.md"
+    fake_new.write_text(
+        "---\ntags: [session-log, proj/somethingnew]\n---\n", encoding="utf-8"
+    )
+    assert _has_identity_relevant_new_tags(legacy_tr, [fake_new]) is True
 
 
 # ---------------------------------------------------------------------------

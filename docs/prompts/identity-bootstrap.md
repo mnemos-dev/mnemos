@@ -26,36 +26,38 @@ schema_version: 1
 
 # User Identity
 
-## Çalışma stili
+## Working Style
 - (general) <item>
 - (general) <item>
 - (max 8 items)
 
-## Teknik tercihler (yürürlükte)
+## Technical Preferences (Active)
 - (general) <item>
 - (proj/<name>) <item>
 - (max 12 items)
 
-## Reddedilen yaklaşımlar (anti-pattern)
+## Rejected Approaches (Anti-Patterns)
 - <item>
 - (max 10 items, oldest + least-used dropped first)
 
-## Aktif projeler
+## Active Projects
 - [[ProjectName]] (<short description>)
 - (max 8 items)
 
-## Yörüngedeki insanlar
+## People in Orbit
 - [[Name]] — <relationship>
 - (max 12 items)
 
-## Ustalaşmış araçlar
+## Mastered Tools
 - [[Tool]]
 - (max 15 items)
 
-## Revize edilen kararlar (zaman ekseni)
+## Revised Decisions (Timeline)
 - <old-date> "<old decision>" → <new-date> "<new decision>". Rationale: <short>
 - (max 15 items, oldest dropped)
 ```
+
+**Section headers are always English** (since v1.2.0). The body items themselves should match the user's dominant language (Turkish prefs stay in Turkish prose). Existing TR vaults with `## Çalışma stili` etc. remain valid — the refresh skill reads both languages.
 
 ## SCOPE NOTATION (critical)
 
@@ -76,9 +78,10 @@ Total input + this prompt + output must stay ≤180K (safety margin for Sonnet's
 After finishing, ask yourself:
 - [ ] Is the frontmatter valid YAML?
 - [ ] Does each section respect its item limits?
-- [ ] In Technical preferences, does every line start with `(general)` or `(proj/<name>)`?
-- [ ] Are Active projects / People in orbit / Mastered tools written as wikilinks (`[[Name]]`)?
-- [ ] Is the Revised decisions section in chronological order?
+- [ ] All seven section headers in English (`## Working Style`, `## Technical Preferences (Active)`, `## Rejected Approaches (Anti-Patterns)`, `## Active Projects`, `## People in Orbit`, `## Mastered Tools`, `## Revised Decisions (Timeline)`)?
+- [ ] In Technical Preferences, does every line start with `(general)` or `(proj/<name>)`?
+- [ ] Are Active Projects / People in Orbit / Mastered Tools written as wikilinks (`[[Name]]`)?
+- [ ] Is the Revised Decisions section in chronological order?
 
 ## OUTPUT
 
