@@ -44,14 +44,16 @@ schema_version: 1
 - [[Name]] — <relationship>
 ```
 
-**Section headers are English** (since v1.2.0). If the existing profile
-on disk still has Turkish headers (`## Çalışma stili` / `## Teknik
-tercihler (yürürlükte)` / `## Reddedilen yaklaşımlar (anti-pattern)` /
-`## Aktif projeler` / `## Yörüngedeki insanlar` / `## Ustalaşmış araçlar`
-/ `## Revize edilen kararlar (zaman ekseni)`), the refresh output flips
-the headers to the English schema. The body items themselves can stay
-in the user's language; only the headers change. This is a one-way
-write — to revert, use `mnemos identity rollback`.
+**Section headers are locale-aware — preserve continuity.** Keep the
+header language already on disk. If the existing profile uses Turkish
+(`## Çalışma stili` / `## Teknik tercihler (yürürlükte)` / `## Reddedilen
+yaklaşımlar (anti-pattern)` / `## Aktif projeler` / `## Yörüngedeki
+insanlar` / `## Ustalaşmış araçlar` / `## Revize edilen kararlar (zaman
+ekseni)`), the refresh output continues to use those Turkish headers. If
+the existing profile uses the English schema above, the refresh output
+keeps English. Don't translate mid-stream — that's lossy churn for no
+user gain. To switch a vault from one language to another, the user
+runs a clean `mnemos identity bootstrap --force` instead.
 
 ## CLASSIFICATION DISCIPLINE
 
@@ -64,7 +66,7 @@ For each item to be added to Identity:
 ## DELTA RULES
 
 1. **Foundational decisions** (present in existing identity, not revised in new sessions) → PRESERVE
-2. **Revised decisions** (explicit revision in a new session) → remove the old one, add the new one, drop a note in "Rejected Approaches" (English) — or in `Reddedilen yaklaşımlar` if the existing profile is still TR-headered and you've decided to preserve those headers verbatim for this run
+2. **Revised decisions** (explicit revision in a new session) → remove the old one, add the new one, drop a note in "Rejected Approaches" / `Reddedilen yaklaşımlar` (whichever language the existing profile already uses — preserve continuity)
 3. **New patterns** (a preference recurring in 3+ sessions) → add
 4. **One-off statements** → skip (uncertainty or context-specific)
 

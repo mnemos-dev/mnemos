@@ -20,7 +20,7 @@ archive; if they conflict, this file wins.
 | ~~v0.4.0~~ | ~~AI Boost / Phase 1~~ — superseded by v1.0 narrative-first pivot | 🗄️ archived | — |
 | **v1.0.0a1** | **Narrative-first pivot (atomic-fragmentation dropped, Sessions = unit, Identity Layer)** | ✅ shipped 2026-04-26 | ⏸ deferred |
 | **v1.1.0** | **SessionEnd-driven memory (refine+brief+identity-refresh worker, settings TUI, briefing v3, readiness gates, in-session cross-check)** | ✅ shipped 2026-04-27 | ⏸ deferred 24h |
-| **v1.2.0** | **English-only output strings (with TR back-compat) — refined Sessions, identity profile, briefing all default to English; existing TR vaults remain readable via dual-match** | **✅ implementation done 2026-04-28** *(empirical smoke + merge pending)* | — |
+| **v1.2.0** | **Locale-aware output (EN code+docs, runtime headers match dominant Session language; defaults English when mixed)** | **✅ implementation done 2026-04-28** *(empirical smoke + merge pending)* | — |
 | v1.3.0 | Polish + LongMemEval benchmark (R@5 ≥ 93% baseline, JSONL-direct identity bootstrap?) | ⏸ | — |
 | v0.5.0 | Automation / Phase 2 — superseded by v1.1 SessionEnd hook | 🗄️ archived | — |
 | v0.6.0 | Community & Ecosystem (Obsidian plugin, multi-language markers, demo video) | ⏸ | — |
@@ -31,11 +31,14 @@ archive; if they conflict, this file wins.
 
 ---
 
-## v1.2.0 — English-Only Output Strings ✅ *(implementation done 2026-04-28; F6.3 empirical smoke + merge pending)*
+## v1.2.0 — Locale-Aware Output ✅ *(implementation done 2026-04-28; F6.3 empirical smoke + merge pending)*
 
-7 task groups (F1–F7). Strategy: dual-match — skill prompts emit English
-only; consumers (parsers, directive constants, tests) accept both TR
-(legacy) and EN. No user migration required for existing vaults.
+7 task groups (F1–F7). Strategy pivoted mid-implementation from the plan's
+"dual-match" (EN-only output, accept either) to **locale-aware** (output
+matches user's dominant Session language; code, docs, prompts always
+English). The plan §2 had originally deferred locale-aware as
+out-of-scope; in practice it was the right answer. See CHANGELOG v1.2.0
+"Strategy pivot" for details.
 
 ### Tasks
 

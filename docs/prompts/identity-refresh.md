@@ -42,7 +42,9 @@ schema_version: 1
 - [[Name]] — <relationship>
 ```
 
-**Section headers are always English** (since v1.2.0). When refreshing an existing TR profile (`## Çalışma stili`, etc.), accept the legacy headers on read but emit the new EN schema on write. The output replaces the file body — the user can run `mnemos identity rollback` if they prefer the old TR layout.
+**Section headers are locale-aware** (preserve continuity). When refreshing an existing profile, **keep the language of the headers already on disk** — if the existing file has `## Çalışma stili`, the refresh output also writes `## Çalışma stili`. Don't re-translate a profile mid-stream; that's lossy churn. Switch languages only if the body content has demonstrably shifted dominant language across many sessions, and even then prefer letting the user run `mnemos identity bootstrap --force` to do a clean rewrite.
+
+For the canonical Turkish ↔ English header map, see `identity-bootstrap.md`.
 
 ## CLASSIFICATION DISCIPLINE
 
@@ -55,7 +57,7 @@ For every item to be added to Identity:
 ## DELTA RULES
 
 1. **Foundational decisions** (present in existing identity, not revised in new sessions) → KEEP
-2. **Revised decisions** (explicit revision in a new session) → drop the old, add the new, log a note under "Rejected Approaches" (or `Reddedilen yaklaşımlar` if the existing profile still uses TR headers — match what's there until the next full rewrite)
+2. **Revised decisions** (explicit revision in a new session) → drop the old, add the new, log a note under "Rejected Approaches" / `Reddedilen yaklaşımlar` — whichever header language the existing profile uses. Don't translate the section name when refreshing.
 3. **New patterns** (preference recurring in 3+ sessions) → add
 4. **One-off statements** → skip (uncertainty or context-specific)
 

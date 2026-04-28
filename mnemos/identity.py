@@ -177,14 +177,16 @@ You are updating an existing Identity Layer with new Sessions.
 
 3-case scenario for conflicts:
 - Project-specific addition: different scope, no conflict, add a new (proj/...) row
-- Genuine general shift: old general → "Revised Decisions", new general added
+- Genuine general shift: old general → "Revised Decisions" / "Revize edilen kararlar"
+  (whichever language the existing profile uses), new general added
 - Project override of general: general stays, (proj/...) override row added
 
-Section headers in the output are always English (see identity-refresh.md).
-If the existing profile still has Turkish headers (`## Çalışma stili` etc.),
-flip them to English (`## Working Style`, `## Technical Preferences (Active)`,
-`## Rejected Approaches (Anti-Patterns)`, `## Active Projects`, `## People in
-Orbit`, `## Mastered Tools`, `## Revised Decisions (Timeline)`).
+Section headers in the output are locale-aware — preserve the language
+already used by the existing profile. If the existing file uses Turkish
+headers (`## Çalışma stili`, `## Teknik tercihler (yürürlükte)`, …), the
+refresh output also uses Turkish; if it uses English (`## Working Style`,
+`## Technical Preferences (Active)`, …), the refresh output keeps English.
+Don't translate mid-stream.
 
 ## OUTPUT
 

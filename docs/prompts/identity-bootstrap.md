@@ -57,7 +57,19 @@ schema_version: 1
 - (max 15 items, oldest dropped)
 ```
 
-**Section headers are always English** (since v1.2.0). The body items themselves should match the user's dominant language (Turkish prefs stay in Turkish prose). Existing TR vaults with `## Çalışma stili` etc. remain valid — the refresh skill reads both languages.
+**Section headers are locale-aware.** The schema above shows the canonical English form. If the user's Sessions are predominantly in Turkish, translate the seven headers verbatim:
+
+| English (canonical) | Turkish |
+|---|---|
+| `## Working Style` | `## Çalışma stili` |
+| `## Technical Preferences (Active)` | `## Teknik tercihler (yürürlükte)` |
+| `## Rejected Approaches (Anti-Patterns)` | `## Reddedilen yaklaşımlar (anti-pattern)` |
+| `## Active Projects` | `## Aktif projeler` |
+| `## People in Orbit` | `## Yörüngedeki insanlar` |
+| `## Mastered Tools` | `## Ustalaşmış araçlar` |
+| `## Revised Decisions (Timeline)` | `## Revize edilen kararlar (zaman ekseni)` |
+
+Default to English when the dominant language is mixed or unclear. Body items themselves naturally follow the same language. Downstream consumers (`identity refresh`, `mnemos_status`, the briefing skill) read both — write the natural one.
 
 ## SCOPE NOTATION (critical)
 
@@ -78,7 +90,7 @@ Total input + this prompt + output must stay ≤180K (safety margin for Sonnet's
 After finishing, ask yourself:
 - [ ] Is the frontmatter valid YAML?
 - [ ] Does each section respect its item limits?
-- [ ] All seven section headers in English (`## Working Style`, `## Technical Preferences (Active)`, `## Rejected Approaches (Anti-Patterns)`, `## Active Projects`, `## People in Orbit`, `## Mastered Tools`, `## Revised Decisions (Timeline)`)?
+- [ ] All seven section headers present, in a single language consistent with the user's dominant Session language (English schema OR the Turkish translation table above — never mixed)?
 - [ ] In Technical Preferences, does every line start with `(general)` or `(proj/<name>)`?
 - [ ] Are Active Projects / People in Orbit / Mastered Tools written as wikilinks (`[[Name]]`)?
 - [ ] Is the Revised Decisions section in chronological order?
