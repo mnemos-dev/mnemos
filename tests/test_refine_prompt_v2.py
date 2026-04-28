@@ -13,14 +13,16 @@ def test_prompt_documents_tag_prefix_categories():
 
 
 def test_prompt_documents_wikilink_inclusion_rules():
-    """v2 prompt must explicitly say 'wikilink olur' and 'wikilink olmaz' rules."""
+    """v2 prompt must document which prose entities become wikilinks
+    and which do not."""
     content = PROMPT_PATH.read_text(encoding="utf-8")
-    assert "Wikilink olur" in content or "wikilink olur" in content
-    assert "Wikilink olmaz" in content or "wikilink olmaz" in content
+    assert "Becomes a wikilink" in content
+    assert "Does NOT become a wikilink" in content
 
 
 def test_prompt_documents_quality_control_checklist():
-    """v2 prompt must include post-write quality control checklist."""
+    """v2 prompt must include the post-write QUALITY CONTROL checklist."""
     content = PROMPT_PATH.read_text(encoding="utf-8")
-    assert "En az 1 `proj/*` tag'i" in content or "En az 1 proj/" in content
-    assert "En az 1 wikilink prose" in content
+    assert "QUALITY CONTROL" in content
+    assert "at least 1 `proj/*` tag" in content
+    assert "at least 1 wikilink in prose" in content
