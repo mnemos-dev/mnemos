@@ -1135,6 +1135,43 @@ def cmd_identity(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_refine_ledger(args: argparse.Namespace) -> int:
+    """One-shot ledger repair (v1.2.1).
+
+    Reads the refine ledger TSV, drops malformed lines (TAB-stripped by
+    pre-v1.2.1 concurrent-append corruption), dedups same-path entries
+    (OK supersedes SKIP; among same-status, last-seen wins), optionally
+    drops entries whose JSONL no longer exists on disk. Atomic write.
+    """
+    from mnemos.refine_lock import normalize_ledger
+    from mnemos.recall_briefing import DEFAULT_REFINE_LEDGER
+
+    ledger = Path(args.ledger) if args.ledger else DEFAULT_REFINE_LEDGER
+    if not ledger.exists():
+        print(f"Ledger not found: {ledger}", file=sys.stderr)
+        return 1
+
+    if args.dry_run:
+        # Read-only preview: show what normalize would do without touching the file
+        raw = ledger.read_text(encoding="utf-8", errors="replace").splitlines()
+        malformed = sum(1 for ln in raw if ln.strip() and len(ln.split("\t")) != 3)
+        print(f"Ledger: {ledger}")
+        print(f"  Total non-empty lines: {sum(1 for ln in raw if ln.strip())}")
+        print(f"  Malformed (would be dropped): {malformed}")
+        print("  (Dry run — no changes written. Re-run without --dry-run to apply.)")
+        return 0
+
+    report = normalize_ledger(ledger, validate_paths=args.validate_paths)
+    print(f"Ledger normalized: {ledger}")
+    print(f"  Input lines:        {report['input_lines']}")
+    print(f"  Kept (unique paths): {report['kept']}")
+    print(f"  Malformed dropped:  {report['malformed_dropped']}")
+    print(f"  Duplicates dropped: {report['duplicates_dropped']}")
+    if args.validate_paths:
+        print(f"  Dead paths dropped: {report['dead_paths_dropped']}")
+    return 0
+
+
 def cmd_reindex(args: argparse.Namespace) -> int:
     """Rebuild the vector index from ``Sessions/`` (optionally switching backend).
 
@@ -1475,6 +1512,34 @@ def main(argv: list[str] | None = None) -> int:
     # an int so we can't slot it into the generic `args.func(args)` flow.
 
     # ------------------------------------------------------------------
+    # refine-ledger (v1.2.1) — repair the refine ledger TSV
+    # ------------------------------------------------------------------
+    sub_refine_ledger = subparsers.add_parser(
+        "refine-ledger",
+        help="Repair the refine ledger (drops malformed lines, dedups duplicates)",
+    )
+    sub_refine_ledger.add_argument(
+        "--normalize",
+        action="store_true",
+        help="Apply the normalize repair (required; reserved for future subcommands)",
+    )
+    sub_refine_ledger.add_argument(
+        "--ledger",
+        help="Ledger path (default: ~/.claude/skills/mnemos-refine-transcripts/state/processed.tsv)",
+    )
+    sub_refine_ledger.add_argument(
+        "--validate-paths",
+        action="store_true",
+        help="Also drop entries whose JSONL file no longer exists",
+    )
+    sub_refine_ledger.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview counts without writing",
+    )
+    sub_refine_ledger.set_defaults(func=cmd_refine_ledger)
+
+    # ------------------------------------------------------------------
     # migrate / catch-up — REMOVED in v1.0 (pre-dispatched by `main()`).
     # ------------------------------------------------------------------
 
@@ -1533,6 +1598,10 @@ def main(argv: list[str] | None = None) -> int:
     # Special-case: reindex also returns an int directly.
     if getattr(args, "command", None) == "reindex":
         return cmd_reindex(args)
+
+    # Special-case: refine-ledger (v1.2.1 ledger repair).
+    if getattr(args, "command", None) == "refine-ledger":
+        return cmd_refine_ledger(args)
 
     # Special-case: install-hook returns an int (1 when --v1 missing in v1.0).
     if getattr(args, "command", None) == "install-hook":
