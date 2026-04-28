@@ -1,9 +1,10 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-28 — Full documentation translation merged to main (`de33bcb`): Phase 1 (15 active md files: top-level + active design + skill prompts) + Phase 2 (17 historical specs/plans/archive). v1.1 worktree at `C:/Projeler/mnemos-v1.1` fast-forwarded to `de33bcb` so junctions + editable install pick up English skills. v1.2.0 plan ready: [`docs/plans/2026-04-28-english-output-strings.md`](docs/plans/2026-04-28-english-output-strings.md) — English-only output strings with TR back-compat (dual-match), to be picked up in a fresh session **opened in `C:/Projeler/mnemos-v1.1`** (where junctions point). v1.1.0 still shipped to GitHub on 2026-04-27 ([release tag](https://github.com/mnemos-dev/mnemos/releases/tag/v1.1.0)); G12 empirical validation **passed** on kasamd. 🟡 **Pending user actions:** PyPI publish `v1.1.0`, identity bootstrap on kasamd, v1.2.0 implementation.
+**Last updated:** 2026-04-28 — v1.2.0 implementation complete on local branch `feature/v1.2.0` (worktree `C:/Projeler/mnemos-v1.1`). All five F-groups landed: F2 refine-transcripts EN schema, F3 identity layer EN schema + `_REFRESH_PROMPT_TEMPLATE` translated, F4 briefing prompt v3 + language-agnostic `CROSS_CHECK_DIRECTIVE`, F5 docs (this file + CHANGELOG + ROADMAP), F6 verification (529 pytest pass, +2 vs 527 baseline; junction zero-drift green; no-API grep clean). F7 migration helper deferred. Dual-match strategy means existing Turkish vaults need zero migration. v1.1.0 GitHub release still live on 2026-04-27 ([tag](https://github.com/mnemos-dev/mnemos/releases/tag/v1.1.0)) — PyPI publish + tag still 🟡 pending user go-ahead. 🟡 **Pending user actions:** v1.2.0 F6.3 empirical smoke on kasamd, v1.2.0 merge to main, v1.2.0 + v1.1.0 PyPI publish, identity bootstrap on kasamd.
 **Stable PyPI version:** `v0.3.3` (v0.x atomic-paradigm — still default `pip install mnemos-dev` until v1.1.0 PyPI upload)
 **Alpha:** `v1.0.0a1` — tag pushed to GitHub, never uploaded to PyPI (superseded by v1.1.0)
 **Released:** `v1.1.0` — SessionEnd-driven memory architecture, GitHub release live, PyPI pending
+**In progress:** `v1.2.0` — English-default output schema (dual-match), local branch `feature/v1.2.0` ready for merge after empirical smoke
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 **v1.0 spec:** [`docs/specs/2026-04-25-v1.0-narrative-pivot-design.md`](docs/specs/2026-04-25-v1.0-narrative-pivot-design.md) · **v1.0 plan:** [`docs/plans/2026-04-25-v1.0-narrative-pivot.md`](docs/plans/2026-04-25-v1.0-narrative-pivot.md)
 **v1.1 spec:** [`docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md`](docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md) · **v1.1 plan:** [`docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md`](docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md)
@@ -154,7 +155,51 @@ For early adopters: `pip install git+https://github.com/mnemos-dev/mnemos@v1.0.0
 
 ---
 
-## 4. Next session starts here (post-`/clear`, 2026-04-26)
+## 4. v1.2.0 implementation summary (2026-04-28)
+
+| Group | Tasks | Status | Highlights |
+|---|---|---|---|
+| F1 Constants module | 0 | skipped | 2-consumer dual-match small enough to inline |
+| F2 Refined Session schema | 2 | done | refine-transcripts.md output template EN, LANGUAGE rule rewritten |
+| F3 Identity Layer schema | 4 | done | bootstrap.md + refresh.md + skill prompt + `_REFRESH_PROMPT_TEMPLATE` rules translated |
+| F4 Briefing template + directive | 5 | done | prompt v3 EN bold labels, dual-match readers, `CROSS_CHECK_DIRECTIVE` language-agnostic, 26 fixture flips, 1 new TR back-compat test |
+| F5 Documentation | 3 | done | STATUS, CHANGELOG, ROADMAP |
+| F6 Verification | 2 | done | pytest 529 pass (+2), junction zero-drift green, no-API grep clean |
+| F6.3 Empirical smoke | 1 | 🟡 deferred | needs real Claude Code session in kasamd cwd |
+| F7 Migration helper | 0 | deferred | optional `mnemos migrate-headers`, only if demand surfaces |
+
+🟡 **Pending user actions:**
+
+1. **F6.3 empirical smoke** — open a real Claude Code session in any
+   kasamd cwd (`C:\Users\tugrademirors\OneDrive\Masaüstü\kasamd\<proj>`),
+   `/exit`, then check:
+   - The new `Sessions/<date>-<slug>.md` file uses English headers
+     (`## Summary`, `## Decisions`, …).
+   - Open a fresh session in the same cwd → SessionStart briefing
+     renders with English bold labels (`**Current State:**`,
+     `**Active Decisions:**`, …).
+   - `mnemos identity refresh --force` — verifies the existing TR
+     `_identity/L0-identity.md` (if you've bootstrapped on kasamd)
+     parses without error and emits EN headers on next write.
+2. **Merge `feature/v1.2.0` → main** — once F6.3 passes, fast-forward
+   merge, push, optionally tag `v1.2.0`.
+3. **PyPI v1.1.0 + v1.2.0 publish** (still deferred):
+   ```bash
+   python -m twine upload C:/Projeler/mnemos-v1.1/dist/mnemos_dev-1.1.0*
+   # rebuild for v1.2.0:
+   python -m build
+   python -m twine upload dist/mnemos_dev-1.2.0*
+   gh release create v1.2.0 --title "v1.2.0 — English-Default Output Schema" --notes-file CHANGELOG.md
+   ```
+4. **Identity bootstrap** (still pending):
+   `mnemos identity bootstrap --vault "C:/Users/tugrademirors/OneDrive/Masaüstü/kasamd"` — bootstrap eligibility gate (25%) may need `--force`.
+5. **Test infra cleanup** — `~/.claude/test-session-end/` and
+   `mnemos-end-smoke-test` SessionEnd entry in `settings.json`. Run
+   `mnemos install-end-hook --uninstall` to clean.
+
+---
+
+## 5. Next session starts here (post-`/clear`, 2026-04-26)
 
 **v1.1.0 implementation COMPLETE (G1-G11 + G13.1-G13.3). Validation + publish pending.**
 
@@ -293,16 +338,22 @@ Group order: G1 (config foundation) → G2 (refine config) → G3 (identity gate
 
 ---
 
-## 5. Where the roadmap ends up (post-v1.0)
+## 6. Where the roadmap ends up (post-v1.2)
 
-**v1.1 — Wikilink resolution intelligence.** Heuristics to merge `[[GYP]]` and
+> Note (2026-04-28): the v1.1/v1.2 entries below were drafted in v1.0
+> era and have been superseded by what actually shipped. v1.1.0 turned
+> into SessionEnd-driven memory + briefing v3, and v1.2.0 became the
+> EN-default output schema. The next-version themes below are the
+> remaining ideas, kept here as a long-horizon list.
+
+**v1.3 — Wikilink resolution intelligence.** Heuristics to merge `[[GYP]]` and
 `[[GYP Energy]]` into a canonical entity, with manual override. Tag/project
 fallback in briefing skill for cwd-less Sessions.
 
-**v1.2 — Cross-vault recall.** Query memory across multiple Obsidian vaults
+**v1.4 — Cross-vault recall.** Query memory across multiple Obsidian vaults
 (work + personal) with vault-aware filtering.
 
-**v1.3 — Obsidian plugin.** Native sidebar: memory browser, timeline view,
+**v1.5 — Obsidian plugin.** Native sidebar: memory browser, timeline view,
 briefing inbox.
 
 **v2.0 — Self-maintaining memory.** Stale-decision flagging, decay,

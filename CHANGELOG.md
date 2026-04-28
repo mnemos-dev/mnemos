@@ -4,6 +4,97 @@ All notable changes to Mnemos are documented here. For the narrative
 version of how the project evolved across paradigms, see
 [`HISTORY.md`](HISTORY.md).
 
+## v1.2.0 — English-Default Output Schema (2026-04-28)
+
+Plan: [`docs/plans/2026-04-28-english-output-strings.md`](docs/plans/2026-04-28-english-output-strings.md)
+
+### Goal
+
+An English-speaking user installing Mnemos never encounters a Turkish
+word in the artifacts Mnemos writes — neither in their `Sessions/`
+notes, their `_identity/L0-identity.md` profile, nor their `.mnemos-briefings/`
+cache. Existing Turkish-content vaults remain fully readable: dual-match
+strategy lets every consumer accept both EN (current) and TR (legacy)
+section headers.
+
+### What changed
+
+**Refined Session schema** (`docs/prompts/refine-transcripts.md`)
+- Section headers flipped to English: `## Summary`, `## Decisions`,
+  `## Done`, `## Next Steps`, `## Problems`, `## See Also`.
+- Body prose still matches the transcript's dominant language — only
+  the section skeleton is uniform English.
+- LANGUAGE rule rewritten to make this contract explicit.
+
+**Identity Layer schema** (`docs/prompts/identity-bootstrap.md`,
+`docs/prompts/identity-refresh.md`,
+`skills/mnemos-identity-refresh/prompt.md`,
+`mnemos/identity.py:_REFRESH_PROMPT_TEMPLATE`)
+- Seven section headers flipped to English: `## Working Style`,
+  `## Technical Preferences (Active)`, `## Rejected Approaches (Anti-Patterns)`,
+  `## Active Projects`, `## People in Orbit`, `## Mastered Tools`,
+  `## Revised Decisions (Timeline)`.
+- Refresh prompt explicitly accepts legacy TR profiles on read and flips
+  them to EN on write — body items can stay in any language.
+- `_REFRESH_PROMPT_TEMPLATE` rules section translated from Turkish to
+  English while preserving the same conflict-resolution semantics.
+
+**Briefing template** (`skills/mnemos-briefing/prompt.md`)
+- Bold output labels flipped: `**Current State:**`, `**User Profile (key
+  items):**`, `**Active Decisions:**`, `**Revised/Cancelled Decisions:**`,
+  `**Open Threads:**`, `**Up Next:**`, `**Related (cross-context):**`.
+- STEP 2A/2B/3 instructions explicitly accept BOTH English and Turkish
+  Session headers — dual-match.
+- "Bold labels: Always English; narrative prose matches source language"
+  is the new explicit rule.
+
+**Cross-check directive** (`mnemos/recall_briefing.py:CROSS_CHECK_DIRECTIVE`)
+- Rewritten language-agnostic. Was hard-coded with `"Geçerli kararlar"`
+  and `"Revize/iptal edilen kararlar"`; now talks about "any active
+  decision listed in the briefing, or any item explicitly marked as
+  revised or cancelled" so both EN and TR briefing bodies trigger the
+  same pause-and-confirm behavior.
+
+### Tests
+- Three new TR-back-compat tests prove the dual-match contract:
+  - `test_existing_tr_identity_still_parseable` (`tests/test_identity.py`)
+    — `show()` and the wikilink-relevance check both work on a legacy
+    TR profile.
+  - `test_inject_legacy_tr_briefing_cache_still_works`
+    (`tests/test_recall_briefing.py`) — pre-v1.2.0 briefing cache files
+    inject through the directive wrapper unchanged; PAUSE+contradicts
+    present, TR labels pass through.
+  - `tests/conftest.py:sample_session_tr` re-documented as the legacy
+    TR back-compat fixture.
+- Bulk-flipped 26 fixture occurrences `**Aktif durum:**` →
+  `**Current State:**` in `test_recall_briefing.py`.
+- Updated `test_identity_bootstrap_prompt_documents_sections` and
+  `test_prompt_v3_revision_directive_present` /
+  `test_prompt_output_includes_user_profile_section` to assert EN
+  schema.
+- Two tests in `test_refine_prompt_v2.py` had stale TR-literal
+  assertions left over from the Tier 4 prompt translation (pre-existing
+  failures); flipped to EN equivalents.
+
+### Verification
+- `pytest tests/ -q` — **529 passed**, 2 skipped, 3 deselected (was
+  527 before v1.2.0, +2 new TR-back-compat tests).
+- Junction zero-drift — repo == `~/.claude/skills/*/prompt.md` for
+  briefing + identity-refresh skills (3 tests pass).
+- No-API CI grep — all `ANTHROPIC_API_KEY` references are intentional
+  `env.pop()` strip lines or docstrings explaining the strip, no client
+  imports.
+
+### Migration path
+
+Existing Turkish vaults need no migration — every consumer reads both
+languages. New Sessions and the next identity refresh write EN headers
+naturally. Users who want a one-shot vault flip to EN can wait for an
+optional `mnemos migrate-headers` helper (deferred to a future patch
+release if demand surfaces).
+
+---
+
 ## v1.1.0 — SessionEnd-Driven Memory (2026-04-27)
 
 Spec: [`docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md`](docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md)

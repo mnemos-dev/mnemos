@@ -20,7 +20,7 @@ archive; if they conflict, this file wins.
 | ~~v0.4.0~~ | ~~AI Boost / Phase 1~~ — superseded by v1.0 narrative-first pivot | 🗄️ archived | — |
 | **v1.0.0a1** | **Narrative-first pivot (atomic-fragmentation dropped, Sessions = unit, Identity Layer)** | ✅ shipped 2026-04-26 | ⏸ deferred |
 | **v1.1.0** | **SessionEnd-driven memory (refine+brief+identity-refresh worker, settings TUI, briefing v3, readiness gates, in-session cross-check)** | ✅ shipped 2026-04-27 | ⏸ deferred 24h |
-| **v1.2.0** | **English-only output strings (with TR back-compat) — refined Sessions, identity profile, briefing all default to English; existing TR vaults remain readable via dual-match** | **🔄 in progress 2026-04-28** | — |
+| **v1.2.0** | **English-only output strings (with TR back-compat) — refined Sessions, identity profile, briefing all default to English; existing TR vaults remain readable via dual-match** | **✅ implementation done 2026-04-28** *(empirical smoke + merge pending)* | — |
 | v1.3.0 | Polish + LongMemEval benchmark (R@5 ≥ 93% baseline, JSONL-direct identity bootstrap?) | ⏸ | — |
 | v0.5.0 | Automation / Phase 2 — superseded by v1.1 SessionEnd hook | 🗄️ archived | — |
 | v0.6.0 | Community & Ecosystem (Obsidian plugin, multi-language markers, demo video) | ⏸ | — |
@@ -31,31 +31,32 @@ archive; if they conflict, this file wins.
 
 ---
 
-## v1.2.0 — English-Only Output Strings 🔄 *(in progress 2026-04-28)*
+## v1.2.0 — English-Only Output Strings ✅ *(implementation done 2026-04-28; F6.3 empirical smoke + merge pending)*
 
-7 task groups (F1–F7), 13–19 tasks total. Strategy: dual-match — skill prompts emit
-English only; consumers (parsers, directive constants, tests) accept both
-TR (legacy) and EN. No user migration required for existing vaults.
+7 task groups (F1–F7). Strategy: dual-match — skill prompts emit English
+only; consumers (parsers, directive constants, tests) accept both TR
+(legacy) and EN. No user migration required for existing vaults.
 
-### Tasks (group-level checkpoints; full task list lives in the plan)
+### Tasks
 
-- [~] **F1** — Set the contract (0–1 task) — optional constants module; **decision: skip, inline dual-match in 2 consumer files**
-- [ ] **F2** — Refined Session schema (3 tasks) — `docs/prompts/refine-transcripts.md` output template + skill SKILL.md sample + manual smoke
-- [ ] **F3** — Identity Layer schema (4 tasks) — `identity-bootstrap.md`, `identity-refresh.md`, refresh skill prompt, `identity.py` docstring + tests with TR back-compat
-- [ ] **F4** — Briefing template + cross-check directive (5 tasks) — briefing prompt v3 EN, `CROSS_CHECK_DIRECTIVE` language-agnostic, test fixtures flip + back-compat
-- [ ] **F5** — Documentation (3 tasks) — STATUS, CHANGELOG v1.2.0 entry, ROADMAP completion
-- [ ] **F6** — Verification (3 tasks) — pytest pass (≥527), junction zero-drift, empirical smoke on kasamd
-- [ ] **F7** — Optional migration helper (3 tasks, **deferred**) — `mnemos migrate-headers` CLI for users who want to flip existing TR Sessions/identity to EN
+- [x] **F1** — Skipped (decision documented in plan §6; inline dual-match in 2 consumer files)
+- [x] **F2** — Refined Session schema (commit `c014b04`)
+- [x] **F3** — Identity Layer schema (commit `9682eb4`)
+- [x] **F4** — Briefing template + cross-check directive (commit `1a5464d`)
+- [x] **F5** — Documentation (this commit)
+- [x] **F6.1+F6.2** — Pytest pass (529, +2 vs 527 baseline; `bbaa32b` flipped two stale TR-literal assertions in `test_refine_prompt_v2.py`) + junction zero-drift green
+- [ ] **F6.3** — Empirical smoke on kasamd (user-triggered, requires real Claude Code session)
+- [~] **F7** — Optional `mnemos migrate-headers` helper (deferred — only if demand surfaces)
 
 ### Acceptance criteria (plan §9)
 
-- [ ] All canonical prompts emit English-only schema
-- [ ] `CROSS_CHECK_DIRECTIVE` uses language-agnostic phrasing
-- [ ] Test suite ≥527 with at least 3 explicit TR back-compat tests (one per schema)
-- [ ] Empirical smoke on kasamd: new EN Sessions, briefing renders EN, identity refresh accepts existing TR L0-identity.md
-- [ ] STATUS.md, CHANGELOG.md, ROADMAP.md updated
-- [ ] No Anthropic API calls (CI grep passes)
-- [ ] Zero-drift skill junction tests pass
+- [x] All canonical prompts emit English-only schema
+- [x] `CROSS_CHECK_DIRECTIVE` uses language-agnostic phrasing
+- [x] Test suite 529 with 3 explicit TR back-compat tests (one per schema)
+- [ ] **F6.3** — Empirical smoke on kasamd (user-triggered)
+- [x] STATUS.md, CHANGELOG.md, ROADMAP.md updated
+- [x] No Anthropic API calls (CI grep passes — all `ANTHROPIC_API_KEY` references are intentional `env.pop()` strips)
+- [x] Zero-drift skill junction tests pass (3 tests green)
 
 ---
 
