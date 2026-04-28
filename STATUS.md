@@ -1,6 +1,6 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-27 — v1.1.0 **shipped to GitHub** ([release tag](https://github.com/mnemos-dev/mnemos/releases/tag/v1.1.0)). G12 empirical validation **passed** (Test A graceful /exit, Test B briefing inject, Test C X-close sync fallback — all green on kasamd). Merge `ebee2f4` to main; 527 pass / 2 skip / 3 deselect. 🟡 **Pending user action:** G13.4 PyPI publish (`python -m twine upload dist/mnemos_dev-1.1.0*`) — deferred 24h for extra observation per staged-rollout preference.
+**Last updated:** 2026-04-28 — Documentation translated to English (commit `d416f78`, 15 .md files). v1.2.0 plan ready: [`docs/plans/2026-04-28-english-output-strings.md`](docs/plans/2026-04-28-english-output-strings.md) — English-only output strings with TR back-compat (dual-match), to be picked up in a fresh session. v1.1.0 still shipped to GitHub on 2026-04-27 ([release tag](https://github.com/mnemos-dev/mnemos/releases/tag/v1.1.0)); G12 empirical validation **passed** on kasamd. 🟡 **Pending user actions:** PyPI publish `v1.1.0`, identity bootstrap on kasamd, Tier 4 docs translation (in-flight on `chore/translate-md-tier4` branch), v1.2.0 implementation.
 **Stable PyPI version:** `v0.3.3` (v0.x atomic-paradigm — still default `pip install mnemos-dev` until v1.1.0 PyPI upload)
 **Alpha:** `v1.0.0a1` — tag pushed to GitHub, never uploaded to PyPI (superseded by v1.1.0)
 **Released:** `v1.1.0` — SessionEnd-driven memory architecture, GitHub release live, PyPI pending

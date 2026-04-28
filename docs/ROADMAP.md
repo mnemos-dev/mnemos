@@ -19,13 +19,15 @@ archive; if they conflict, this file wins.
 | v0.3.3 | Post-v0.3.2 cleanup (migrate rollback+lock, score parity, slow-tests) | ✅ | ✅ |
 | ~~v0.4.0~~ | ~~AI Boost / Phase 1~~ — superseded by v1.0 narrative-first pivot | 🗄️ archived | — |
 | **v1.0.0a1** | **Narrative-first pivot (atomic-fragmentation dropped, Sessions = unit, Identity Layer)** | ✅ shipped 2026-04-26 | ⏸ deferred |
-| **v1.1.0** | **SessionEnd-driven memory (refine+brief+identity-refresh worker, settings TUI, briefing v3, readiness gates, in-session cross-check)** | **🔄 plan ready** | — |
-| v1.2.0 | Polish + LongMemEval benchmark (R@5 ≥ 93% baseline, JSONL-direct identity bootstrap?) | ⏸ | — |
+| **v1.1.0** | **SessionEnd-driven memory (refine+brief+identity-refresh worker, settings TUI, briefing v3, readiness gates, in-session cross-check)** | ✅ shipped 2026-04-27 | ⏸ deferred 24h |
+| **v1.2.0** | **English-only output strings (with TR back-compat) — refined Sessions, identity profile, briefing all default to English; existing TR vaults remain readable via dual-match** | **🔄 plan ready 2026-04-28** | — |
+| v1.3.0 | Polish + LongMemEval benchmark (R@5 ≥ 93% baseline, JSONL-direct identity bootstrap?) | ⏸ | — |
 | v0.5.0 | Automation / Phase 2 — superseded by v1.1 SessionEnd hook | 🗄️ archived | — |
 | v0.6.0 | Community & Ecosystem (Obsidian plugin, multi-language markers, demo video) | ⏸ | — |
 
 **v1.1.0 spec:** [`docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md`](specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md)
-**v1.1.0 plan:** [`docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md`](plans/2026-04-26-v1.1.0-sessionend-driven-memory.md) (55 TDD tasks, 13 groups)
+**v1.1.0 plan:** [`docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md`](plans/2026-04-26-v1.1.0-sessionend-driven-memory.md) (55 TDD tasks, 13 groups, ✅ all done)
+**v1.2.0 plan:** [`docs/plans/2026-04-28-english-output-strings.md`](plans/2026-04-28-english-output-strings.md) (15-19 tasks across 7 groups, dual-match strategy)
 
 ---
 
