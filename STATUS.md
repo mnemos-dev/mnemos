@@ -169,48 +169,53 @@ For early adopters: `pip install git+https://github.com/mnemos-dev/mnemos@v1.0.0
 | F6.3 Empirical smoke | 1 | done | kasamd farcry: TR transcript → TR headers + TR body. Locale-aware contract holds. **Surfaced pre-existing v1.1.0 duplicate-refine race — see v1.2.1 spec.** |
 | F7 Migration helper | 0 | not needed | locale-aware behavior obviates the need for a one-shot vault flip |
 
-🟡 **Pending user actions:**
+🟡 **Pending user actions (next session pickup):**
 
-1. **Push commits to origin** — local main is 4 commits ahead of
-   `origin/main` (`b7ee92f` --limit, `3774d05` env strip,
-   `89f120b` neutral cwd + hook isolation, plus this docs update):
-   ```bash
-   git push origin main
-   ```
-2. **PyPI v1.2.0 + v1.2.1 publish** (single-shot, both shipped same
-   day; v1.2.1 supersedes the v1.2.0 wheel that was never built):
-   ```bash
-   cd C:/Projeler/mnemos-v1.1
-   python -m build
-   python -m twine upload dist/mnemos_dev-1.2.1*
-   git tag v1.2.0 -a -m "v1.2.0 — Locale-Aware Output"
-   git tag v1.2.1 -a -m "v1.2.1 — Refine race + identity isolation fix"
-   git push origin v1.2.0 v1.2.1
-   gh release create v1.2.1 --title "v1.2.1 — Refine race + identity isolation fix" --notes-file CHANGELOG.md
-   ```
-3. **v1.1.0 PyPI publish** (still pending from yesterday):
-   `python -m twine upload C:/Projeler/mnemos-v1.1/dist/mnemos_dev-1.1.0*`
-4. **Test infra cleanup** — `~/.claude/test-session-end/` directory
-   leftover from v1.1 design phase. Settings.json's SessionEnd
-   already only has the canonical `mnemos-session-end` entry, so
-   no settings.json edit needed; just remove the leftover directory:
-   ```bash
-   rm -rf ~/.claude/test-session-end
-   ```
+**The next-up work is v1.2.1 PyPI release.** A step-by-step plan is
+ready at [`docs/plans/2026-04-28-v1.2.1-pypi-publish.md`](docs/plans/2026-04-28-v1.2.1-pypi-publish.md).
+The resume protocol should land there. The plan covers:
 
-### ✅ Completed today (2026-04-28)
+1. Version bumps (`pyproject.toml` 1.1.0 → 1.2.1; `mnemos/__init__.py`
+   "1.0.0a1" → "1.2.1" — both still stale)
+2. Pytest sanity (must still hit 545 pass)
+3. `python -m build`
+4. Smoke install in throwaway venv (`mnemos --version` → 1.2.1)
+5. `python -m twine upload dist/mnemos_dev-1.2.1*` ← **irreversible
+   boundary**, confirm with user first
+6. Annotated git tags `v1.2.0` (4fddca4) + `v1.2.1` (e7cfdba)
+7. `gh release create v1.2.1`
+8. Commit version bumps + STATUS/ROADMAP update
 
-- v1.2.0 locale-aware output: shipped + merged + pushed
-- v1.2.1 refine-pipeline race fix: shipped + merged + pushed
-- v1.2.1 identity isolation follow-up: 3 commits on local main
-  (push pending — see #1 above)
-- `mnemos refine-ledger --normalize --validate-paths` one-shot
-  cleanup ran on kasamd
-- `/exit` empirical test passed — single Session/.md created, no
-  duplicate
-- `mnemos identity bootstrap --force` ran successfully on kasamd
-  (90 sessions → 85 used → 6 projects, 4 people, locale-aware TR
-  headers + body, six revised-decisions in chronological order)
+**Strategy decision (locked in plan):** PyPI for the v1.x line starts
+at v1.2.1. v1.1.0 + v1.2.0 are git-tag milestones only; the
+2026-04-26-built v1.1.0 wheel in `dist/` predates the duplicate-refine
+fix and would publish a known-buggy snapshot if uploaded.
+
+Estimated wall time: 15-25 min, dominated by build + upload + the
+typed PyPI token.
+
+### ✅ Completed 2026-04-28 (full day)
+
+- v1.2.0 locale-aware output: shipped + merged + pushed to `origin/main`
+- v1.2.1 refine-pipeline race fix (per-JSONL filelock + ledger normalize CLI): shipped + merged + pushed
+- v1.2.1 identity isolation follow-up (3 same-day bugs surfaced by bootstrap pilot — env-strip, neutral cwd, hook re-entry guard, strict OUTPUT prompt): shipped + merged + pushed
+- `bootstrap --limit N` pilot mode added
+- `mnemos refine-ledger --normalize --validate-paths` one-shot cleanup ran on kasamd ledger
+- `/exit` empirical test passed — single Session/.md created, no duplicate
+- `mnemos identity bootstrap --force` ran successfully on kasamd (90 sessions → 85 used → 6 projects, 4 people, locale-aware TR headers + body, six revised-decisions in chronological order)
+- Test suite **545 pass** (+16 vs 529 baseline)
+- Worktree + branch cleanup: 4 stale agent worktrees removed, 2 redundant project worktrees pruned, 9 merged feature/chore branches deleted
+- Test infra cleanup: `~/.claude/test-session-end/` directory removed
+
+### ⏳ Pickup point for next session
+
+The PyPI publish — see [`docs/plans/2026-04-28-v1.2.1-pypi-publish.md`](docs/plans/2026-04-28-v1.2.1-pypi-publish.md). When the user types `mnemos`, the resume protocol should:
+
+1. Read this STATUS.md
+2. Read the publish plan
+3. Verify `git status` clean + `origin/main == HEAD` + pytest 545 pass
+4. Show a <100-word summary leading with "Next: v1.2.1 PyPI publish per the plan; pause for confirmation before step 5 (irreversible twine upload)"
+5. Wait for user go-ahead
 
 ---
 

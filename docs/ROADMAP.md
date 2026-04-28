@@ -21,7 +21,7 @@ archive; if they conflict, this file wins.
 | **v1.0.0a1** | **Narrative-first pivot (atomic-fragmentation dropped, Sessions = unit, Identity Layer)** | ✅ shipped 2026-04-26 | ⏸ deferred |
 | **v1.1.0** | **SessionEnd-driven memory (refine+brief+identity-refresh worker, settings TUI, briefing v3, readiness gates, in-session cross-check)** | ✅ shipped 2026-04-27 | ⏸ deferred 24h |
 | **v1.2.0** | **Locale-aware output (EN code+docs, runtime headers match dominant Session language; defaults English when mixed)** | **✅ shipped 2026-04-28** *(empirical smoke green, merge + PyPI pending)* | — |
-| **v1.2.1** | **Hot-fix: refine-pipeline race (per-JSONL filelock + normalize CLI) + identity isolation (env-strip ANTHROPIC_API_KEY, neutral cwd, recall_briefing re-entry guard, strict OUTPUT prompt) + `bootstrap --limit N` pilot mode** | **✅ shipped 2026-04-28** *(push + PyPI pending)* | — |
+| **v1.2.1** | **Hot-fix: refine-pipeline race (per-JSONL filelock + normalize CLI) + identity isolation (env-strip ANTHROPIC_API_KEY, neutral cwd, recall_briefing re-entry guard, strict OUTPUT prompt) + `bootstrap --limit N` pilot mode** | **✅ code shipped 2026-04-28** *(PyPI publish next session — [`plan`](plans/2026-04-28-v1.2.1-pypi-publish.md))* | — |
 | v1.3.0 | Polish + LongMemEval benchmark (R@5 ≥ 93% baseline, JSONL-direct identity bootstrap?) | ⏸ | — |
 | v0.5.0 | Automation / Phase 2 — superseded by v1.1 SessionEnd hook | 🗄️ archived | — |
 | v0.6.0 | Community & Ecosystem (Obsidian plugin, multi-language markers, demo video) | ⏸ | — |
