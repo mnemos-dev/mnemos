@@ -1,127 +1,130 @@
 # v0.4.0 — AI Boost / Phase 1 (design spec)
 
-**Tarih:** 2026-04-19
-**Durum:** Tasarım onaylandı, implementasyon başlıyor
-**Önceki sürüm:** v0.3.3 post-v0.3.2 cleanup (2026-04-19 PyPI'ya çıktı)
-**Sonraki sürüm:** v0.5.0 Automation / Phase 2
+**Date:** 2026-04-19
+**Status:** Design approved, implementation starting
+**Previous version:** v0.3.3 post-v0.3.2 cleanup (released to PyPI 2026-04-19)
+**Next version:** v0.5.0 Automation / Phase 2
 
 ---
 
-## 1. Problem özeti
+## 1. Problem summary
 
-Phase 0 teslim etti: API'siz regex + vector search ile LongMemEval 10q
-subset'inde **%90 Recall@5** (2026-04-17, iki backend'de parity). Hedef
-%95'e taşımak; ama bunu **API bağımlılığı eklemeden** yapmak hem ürün
-vaadimizle (Obsidian-native, opak-sistem-yok) hem de Phase 0 doktriniyle
-(*mnemos LLM çağırmaz*) uyumlu.
+Phase 0 delivered: with API-less regex + vector search, **90% Recall@5**
+on the LongMemEval 10q subset (2026-04-17, parity across both backends).
+The goal is to push to 95%; but doing it **without adding API dependency**
+is consistent with both our product promise (Obsidian-native, no opaque
+system) and the Phase 0 doctrine (*mnemos does not call LLMs*).
 
-**Orijinal ROADMAP 4.1-4.6 (2026-04-13 Phase 0 spec'inde tasarlanmıştı):**
+**Original ROADMAP 4.1-4.6 (designed in the 2026-04-13 Phase 0 spec):**
 - 4.2 API-based LLM mining (`mnemos-dev[llm]` extra + `ANTHROPIC_API_KEY`)
 - 4.3 API-based LLM reranking (search top-50 → top-10)
 - 4.4 API-based contradiction detection
-- 4.5 Benchmark (hedef R@5 ≥%95)
+- 4.5 Benchmark (target R@5 ≥95%)
 
-**Yeniden çerçeveleme (2026-04-19 tartışması, bu spec'in özü):**
-v0.3.0'da teslim ettiğimiz `mnemos-refine-transcripts` skill'i kanıtladı ki
-Claude Code oturumu içinde çalışan skill'ler, mnemos paketinin dışında
-LLM işi yaptırmak için temiz bir yol. API paketlemeye gerek yok; kullanıcı
-abonelik quota'sını kullanıyor; maliyet kullanıcıya şeffaf.
+**Reframing (2026-04-19 discussion, the essence of this spec):**
+The `mnemos-refine-transcripts` skill we shipped in v0.3.0 proved that
+skills running inside a Claude Code session are a clean way to get LLM
+work done outside the mnemos package. No need to package an API; the user
+uses their subscription quota; cost is transparent to the user.
 
-Bu paterni mining'in kendisine ve recall'a genişletiyoruz. Artık her
-kullanıcının **iki ortogonal ekseni var:**
+We are extending this pattern to mining itself and to recall. Now every
+user has **two orthogonal axes:**
 
 | | Script-recall | Skill-recall |
 |---|---|---|
-| **Script-mine** | (1) Bugün — hızlı, API'siz, deterministic | (2) Vector + LLM judgment |
-| **Skill-mine** | (3) LLM'le zenginleşmiş drawer'lar, hızlı recall | (4) LLM her yerde — maks kalite, maks latency |
+| **Script-mine** | (1) Today — fast, API-less, deterministic | (2) Vector + LLM judgment |
+| **Skill-mine** | (3) LLM-enriched drawers, fast recall | (4) LLM everywhere — max quality, max latency |
 
-Kullanıcı başlangıçta bir **pilot** yapar (10 session hem script-mine hem
-skill-mine'la paralel işlenir), ürettiği iki palace'ı kendi verisinde
-karşılaştırır, karar verir, kaybeden `_recycled/`'a gider. Recall modu
-runtime'da `mnemos settings`'ten değiştirilebilir — post-pilot tek palace
-üzerinde dört kombonun hepsi yaşayabilir.
+The user starts with a **pilot** (10 sessions are processed in parallel by
+both script-mine and skill-mine), compares the two palaces produced on
+their own data, decides, and the loser goes to `_recycled/`. Recall mode
+can be changed at runtime via `mnemos settings` — post-pilot, all four
+combos can live on a single palace.
 
-**4.3 rerank** bu modelde ayrı görev değil; skill-recall zaten LLM
-judgment yapıyor, rerank onun içinde erimiş.
+**4.3 rerank** is not a separate task in this model; skill-recall already
+does LLM judgment, and rerank is dissolved into it.
 
-**4.4 contradiction** ortogonal endişe (hijyen); v0.5 Automation'a ertelendi.
+**4.4 contradiction** is an orthogonal concern (hygiene); deferred to v0.5
+Automation.
 
 ---
 
-## 2. Kapsam
+## 2. Scope
 
-### Kapsam içinde
+### In scope
 
-- **4.2 Skill-mine + pilot orchestrator + comparison skill** — yeni
-  `mnemos-mine-llm` skill'i, `mnemos mine --pilot-llm [N=10]` komutu, iki
-  palace yan yana üretme, `mnemos-compare-palaces` skill'i LLM-judged
-  karar raporu üretir.
+- **4.2 Skill-mine + pilot orchestrator + comparison skill** — new
+  `mnemos-mine-llm` skill, `mnemos mine --pilot-llm [N=10]` command,
+  produce two palaces side by side, the `mnemos-compare-palaces` skill
+  produces an LLM-judged decision report.
 - **4.3 Skill-recall** — `/mnemos-recall <query>` user-invoked skill;
-  opt-in SessionStart briefing hook (refine-hook paraleli); MCP server
-  `instructions` alanı `recall_mode` yaml ayarından dinamik üretilir.
-- **4.5 `mnemos settings` TUI** — fragmanlı komutları (install-hook,
-  install-statusline, migrate, yaml elle) tek numbered menu altında
-  toplar. Mine-mode, recall-mode, backend, hook'lar, languages.
-- **4.6 LongMemEval benchmark** — sadece S+S (script-mine + script-recall)
-  combo'su için kantitatif ölçüm (500 soru full run, 4 mod). Skill modları
-  kalitatif, pilot raporuna entegre.
+  opt-in SessionStart briefing hook (parallel to refine-hook); MCP server
+  `instructions` field is generated dynamically from the `recall_mode`
+  yaml setting.
+- **4.5 `mnemos settings` TUI** — gathers fragmented commands (install-hook,
+  install-statusline, migrate, hand-edit yaml) under a single numbered
+  menu. Mine-mode, recall-mode, backend, hooks, languages.
+- **4.6 LongMemEval benchmark** — quantitative measurement only for the
+  S+S (script-mine + script-recall) combo (500-question full run, 4
+  modes). Skill modes are qualitative, integrated into the pilot report.
 - **4.7 PyPI release v0.4.0**
 
-### Kapsam dışı (v0.5 veya sonrası)
+### Out of scope (v0.5 or later)
 
-- **API-based LLM mining** (`mnemos-dev[llm]` extra) — skill-mine paterniyle
-  gereksiz.
-- **Rerank ayrı görev olarak** — skill-recall içinde.
-- **Contradiction detection / stale memory flagging** — v0.5 hijyen görevi.
+- **API-based LLM mining** (`mnemos-dev[llm]` extra) — unnecessary with
+  the skill-mine pattern.
+- **Rerank as a separate task** — inside skill-recall.
+- **Contradiction detection / stale memory flagging** — v0.5 hygiene task.
 - **Per-turn auto-recall** (UserPromptSubmit hook) — 5-15s blocking
-  latency kullanıcı deneyimini bozar. SessionStart briefing yeter; explicit
-  `/mnemos-recall` kalan kullanıcı ihtiyacını karşılar.
-- **Multi-language skill prompts** (Phase 0 EN+TR marker desteği var ama
-  skill prompt'ları öncelikle EN yazılır; TR+EN çıktı destekli) — marker
-  genişletme v0.6 işi.
-- **Palace merge** (script-mine + skill-mine drawer union'ı) — pilot
-  sonrası kullanıcı birini seçer, diğeri recycle.
+  latency hurts user experience. SessionStart briefing is enough;
+  explicit `/mnemos-recall` covers the remaining user need.
+- **Multi-language skill prompts** (Phase 0 has EN+TR marker support but
+  skill prompts are written primarily in EN; TR+EN output supported) —
+  marker expansion is a v0.6 task.
+- **Palace merge** (union of script-mine + skill-mine drawers) — the
+  user picks one after the pilot, the other is recycled.
 
 ---
 
-## 3. Mimari eksen — 4-kombo
+## 3. Architectural axis — 4-combo
 
-Spec boyunca şu tabloya refer ediyoruz:
+We refer to this table throughout the spec:
 
 ```
                         Script-recall            Skill-recall
                     ┌────────────────────┬────────────────────┐
-     Script-mine    │ (1) BUGÜN          │ (2)                │
+     Script-mine    │ (1) TODAY          │ (2)                │
                     │ MCP vector search  │ Vector → LLM judge │
                     │ 200-500ms          │ 5-15s              │
                     │ Auto AI query      │ Explicit /recall   │
                     ├────────────────────┼────────────────────┤
-     Skill-mine     │ (3)                │ (4) MAKS KALİTE    │
+     Skill-mine     │ (3)                │ (4) MAX QUALITY    │
                     │ Curated drawers +  │ LLM both ends      │
                     │ fast MCP search    │ Slow but richest   │
                     └────────────────────┴────────────────────┘
 ```
 
-**Mine-mode** vault başına tek seçimdir (steady-state). **Recall-mode**
-per-vault yaml setting, flip edilebilir; MCP server açılışta okur.
+**Mine-mode** is a single choice per vault (steady-state). **Recall-mode**
+is a per-vault yaml setting, can be flipped; the MCP server reads it at
+startup.
 
 ---
 
-## 4. Görev 4.2 — Skill-mine + pilot orchestrator
+## 4. Task 4.2 — Skill-mine + pilot orchestrator
 
-### 4.2.1 `mnemos-mine-llm` skill'i
+### 4.2.1 `mnemos-mine-llm` skill
 
-`skills/mnemos-mine-llm/SKILL.md` (repo canonical, `~/.claude/skills/`'e
-junction'lı, refine-transcripts paterniyle).
+`skills/mnemos-mine-llm/SKILL.md` (repo canonical, junction'd to
+`~/.claude/skills/`, following the refine-transcripts pattern).
 
-**Girdi:** Bir refined session `.md` dosyasının path'i + hedef palace root
-(`Mnemos-pilot/` gibi).
+**Input:** Path of a refined session `.md` file + target palace root
+(such as `Mnemos-pilot/`).
 
-**Çıktı:** Hedef palace altında bir veya birkaç drawer `.md` dosyası.
-Skill dosyaları **doğrudan** yazar — intermediate JSON/validator yok
-(kullanıcı kararı, 2026-04-19).
+**Output:** One or more drawer `.md` files under the target palace. The
+skill writes files **directly** — no intermediate JSON/validator (user
+decision, 2026-04-19).
 
-**Drawer formatı** (mevcut palace schema'sıyla uyumlu):
+**Drawer format** (compatible with the existing palace schema):
 
 ```markdown
 ---
@@ -133,88 +136,92 @@ source_path: Sessions/2026-04-19-phase1-design.md
 mined_at: 2026-04-19T10:30:00
 ---
 
-# Skill-mine pilot orchestrator kararı
+# Skill-mine pilot orchestrator decision
 
 > Source: [[Sessions/2026-04-19-phase1-design]]
 
-Kullanıcı 10 session'lık pilot önerisini onayladı. Script-mine ve
-skill-mine paralel çalışacak, iki palace üretilecek...
+The user approved the proposal of a 10-session pilot. Script-mine and
+skill-mine will run in parallel and two palaces will be produced...
 ```
 
-**Prompt tasarımı** (skill içinde):
-- Refined session .md'yi oku
-- Existing palace'ı incele — mevcut wing/room isimlerini topla (tutarlılık
-  için)
-- Exchange'leri segment'lere böl, her birinin hall'unu (decisions /
-  preferences / problems / events / emotional) tespit et
-- Her önemli segment için drawer .md üret (frontmatter + H1 + source
-  wikilink + prose)
-- Entity extract (kişi / proje ayırt et, tags değil — v0.3.2 hygiene
-  kurallarına uy)
-- Wing canonicalization (v0.3.2 TR diacritic normalize sürüyor)
+**Prompt design** (within the skill):
+- Read the refined session .md
+- Inspect the existing palace — collect existing wing/room names (for
+  consistency)
+- Split exchanges into segments, identify each one's hall (decisions /
+  preferences / problems / events / emotional)
+- For each significant segment, produce a drawer .md (frontmatter + H1 +
+  source wikilink + prose)
+- Entity extract (distinguish people / projects, not tags — comply with
+  v0.3.2 hygiene rules)
+- Wing canonicalization (v0.3.2 TR diacritic normalize is in effect)
 
-**Ledger:** `skills/mnemos-mine-llm/state/mined.tsv` — işlenen refined
-session path'leri + timestamp + drawer count + palace root. Resume için
-(orchestrator yarıda kesilirse).
+**Ledger:** `skills/mnemos-mine-llm/state/mined.tsv` — processed refined
+session paths + timestamp + drawer count + palace root. For resume (if
+the orchestrator is interrupted).
 
-**Junction:** Refine-skill'deki paternin aynısı. Repo canonical, `~/.claude/
-skills/mnemos-mine-llm`'e junction (Windows) veya symlink (Unix).
-CONTRIBUTING'deki architectural-line'a eklenir.
+**Junction:** Same pattern as the refine-skill. Repo canonical, junction
+to `~/.claude/skills/mnemos-mine-llm` (Windows) or symlink (Unix). Added
+to the architectural-line in CONTRIBUTING.
 
 ### 4.2.2 Orchestrator: `mnemos mine --pilot-llm [N]`
 
-**Yeni modül:** `mnemos/pilot.py`
+**New module:** `mnemos/pilot.py`
 
-**Akış:**
+**Flow:**
 
 1. **Pre-flight:**
-   - Vault'taki `Sessions/` dizinini tara, refined session .md'leri listele
-   - N (default 10) en yeni'yi al (configurable `--limit`)
-   - Pre-flight plan: N session × ~30s skill call + script mine ~30s total
-     = tahmini süre
+   - Scan the `Sessions/` directory in the vault, list refined session .mds
+   - Take the N (default 10) newest (configurable `--limit`)
+   - Pre-flight plan: N sessions × ~30s skill call + script mine ~30s
+     total = estimated duration
    - Confirm (unless `--yes`)
 
-2. **İki palace ayarla:**
-   - `<vault>/Mnemos/` — mevcut (script-mined, palace_root default)
-   - `<vault>/Mnemos-pilot/` — yeni, skill-mined hedefi
-   - `Mnemos-pilot/` rebuild lock'u `<vault>/.mnemos-pilot.lock.flock`
-     — pilot çalışırken ikinci pilot instance başlatılamasın
+2. **Set up two palaces:**
+   - `<vault>/Mnemos/` — existing (script-mined, palace_root default)
+   - `<vault>/Mnemos-pilot/` — new, skill-mined target
+   - `Mnemos-pilot/` rebuild lock `<vault>/.mnemos-pilot.lock.flock`
+     — prevents a second pilot instance from starting while the pilot is
+     running
 
-3. **Script-mine bacağı:**
-   - `mnemos mine Sessions/` mevcut davranışla çalışır (paralel değil —
-     skill-mine'dan bağımsız, zaten hızlı)
+3. **Script-mine leg:**
+   - `mnemos mine Sessions/` runs with existing behavior (not parallel
+     — independent of skill-mine, already fast)
 
-4. **Skill-mine bacağı:**
-   - Her session için `claude --print --dangerously-skip-permissions
+4. **Skill-mine leg:**
+   - For each session: `claude --print --dangerously-skip-permissions
      --output-format json "/mnemos-mine-llm <session.md> <Mnemos-pilot>"`
-   - **v0.4.0-alpha: sequential** (MVP). Paralel-3 v0.4.1'de gelecek.
-   - Subprocess env'inde `ANTHROPIC_API_KEY` stripped → subscription auth
-   - Her çağrının `usage` alanı JSON'dan parse edilir:
+   - **v0.4.0-alpha: sequential** (MVP). Parallel-3 will come in v0.4.1.
+   - `ANTHROPIC_API_KEY` stripped from subprocess env → subscription auth
+   - The `usage` field is parsed from the JSON of each call:
      `{input_tokens, output_tokens, cache_read_input_tokens,
        cache_creation_input_tokens}`
-   - Token sayaçları aggregated
-   - **Latency realism:** Per-session wall-clock ~3-5 dk (2026-04-19
-     kasamd pilot). 100 session sequential ~7h, paralel-3 ile ~2.5h.
-     Spec'in eski "25s/session" tahmini 10x off çıktı (pilot Finding 1).
+   - Token counters are aggregated
+   - **Latency realism:** Per-session wall-clock ~3-5 min (2026-04-19
+     kasamd pilot). 100 sessions sequential ~7h, with parallel-3 ~2.5h.
+     The spec's old "25s/session" estimate turned out 10x off (pilot
+     Finding 1).
 
-5. **Skill-mined drawer'ları index'le:**
-   - `mnemos mine Mnemos-pilot/ --palace-root Mnemos-pilot` — mevcut
-     miner drawer .md'leri okuyup ChromaDB/sqlite-vec index'e yazar
-   - Skill zaten semantik iş yaptı; miner sadece embedding + metadata
-     parse yapar, pattern classification tekrar koşmaz (yeni flag
-     `--skip-classification` eklenecek; drawer frontmatter authoritative)
+5. **Index skill-mined drawers:**
+   - `mnemos mine Mnemos-pilot/ --palace-root Mnemos-pilot` — the
+     existing miner reads drawer .mds and writes them to the
+     ChromaDB/sqlite-vec index
+   - The skill already did the semantic work; the miner only does
+     embedding + metadata parse, doesn't re-run pattern classification (a
+     new flag `--skip-classification` will be added; drawer frontmatter
+     is authoritative)
 
-6. **Pilot rapor üret:**
-   - `<vault>/docs/pilots/2026-MM-DD-llm-mine-pilot.md` iskelet
-   - Script-mine: N drawers, H halls, E entities, süre X sn, 0 token
-   - Skill-mine: N' drawers, H' halls, E' entities, süre Y sn, T total
-     tokens (input I, output O, cache R)
-   - 3 random session için drawer'ların yan yana diff'i (script tarafı
-     vs skill tarafı aynı session'dan ne çıkardı)
-   - Rapor sonunda placeholder: *"Run `/mnemos-compare-palaces` to fill
-     in the qualitative judgment."*
+6. **Generate pilot report:**
+   - Skeleton at `<vault>/docs/pilots/2026-MM-DD-llm-mine-pilot.md`
+   - Script-mine: N drawers, H halls, E entities, duration X sec, 0 tokens
+   - Skill-mine: N' drawers, H' halls, E' entities, duration Y sec, T
+     total tokens (input I, output O, cache R)
+   - For 3 random sessions, side-by-side diff of drawers (what the
+     script side vs the skill side extracted from the same session)
+   - Placeholder at the end of the report: *"Run `/mnemos-compare-palaces`
+     to fill in the qualitative judgment."*
 
-7. **Orchestrator bitti:** kullanıcıya next step'leri söyle:
+7. **Orchestrator done:** tell the user the next steps:
    ```
    Pilot complete. Review:
      docs/pilots/2026-04-19-llm-mine-pilot.md
@@ -226,35 +233,35 @@ CONTRIBUTING'deki architectural-line'a eklenir.
      4. mnemos pilot --keep-both          → (not recommended — see spec §3)
    ```
 
-### 4.2.3 `mnemos-compare-palaces` skill'i
+### 4.2.3 `mnemos-compare-palaces` skill
 
 `skills/mnemos-compare-palaces/SKILL.md`
 
-**Girdi:** iki palace root path'i + pilot rapor iskeleti
+**Input:** the two palace root paths + the pilot report skeleton
 
-**Akış:**
-- Her iki palace'tan aynı 10 source session için drawer'ları oku
-- Boyut/sayı metrikleri topla (drawer count, hall distribution, entity
-  overlap, drawer body length avg)
-- 3 örnek session için yan yana analiz:
-  - Hangisi daha zengin? (drawer count, semantic coverage)
-  - Hangisi daha temiz? (noise, junk drawers, entity garbage)
-  - Hall siniflandirması daha tutarlı mı?
-  - Drawer body kendi başına okunabiliyor mu?
-  - Wikilink'ler doğru mu?
-- LLM kendi judgment'ını yazar ama karar kullanıcıya bırakır:
+**Flow:**
+- Read drawers from both palaces for the same 10 source sessions
+- Collect size/count metrics (drawer count, hall distribution, entity
+  overlap, average drawer body length)
+- Side-by-side analysis for 3 sample sessions:
+  - Which is richer? (drawer count, semantic coverage)
+  - Which is cleaner? (noise, junk drawers, entity garbage)
+  - Is the hall classification more consistent?
+  - Is the drawer body readable on its own?
+  - Are the wikilinks correct?
+- The LLM writes its own judgment but leaves the decision to the user:
   *"Skill-mine appears to surface 40% more emotional-hall segments but
   also produces 15% more low-confidence drawers. If emotional context
   matters to your recall usage, skill-mine wins; if you want tighter
   deterministic drawer sets, script-mine. You decide."*
-- Pilot rapor iskeletini fill-in yapar
+- Fills in the pilot report skeleton
 
-**Ledger:** yok — user-invoked one-shot.
+**Ledger:** none — user-invoked one-shot.
 
 ### 4.2.4 Token accounting
 
-Claude Code'un `claude --print --output-format json` çıktısı her call
-sonrası:
+Output of Claude Code's `claude --print --output-format json` after each
+call:
 ```json
 {
   "type": "result",
@@ -268,14 +275,13 @@ sonrası:
 }
 ```
 
-Orchestrator her pilot call'u için bu alanı parse eder, aggregated
-toplamı rapor'a yazar. Subscription kullanıcıları için "$0" değil
-"**abonelik quota** kullanımı" olarak rapor edilir — biz metered
-fiyat tahmin etmiyoruz (kullanıcının planını bilmiyoruz). Kullanıcı
-isterse şeffaflık için Sonnet 4.6 fiyat şablonu (`$3/M input + $15/M
-output`) ile tahmini gösteren `--estimate-cost` flag'i eklenebilir (nice-
-to-have, scope içinde değil; implementation kolaysa pilot orchestrator
-koyabilir).
+For each pilot call, the orchestrator parses this field and writes the
+aggregated total into the report. For subscription users it is reported
+as "**subscription quota** usage" rather than "$0" — we don't estimate
+metered prices (we don't know the user's plan). For transparency, an
+`--estimate-cost` flag using a Sonnet 4.6 price template (`$3/M input +
+$15/M output`) could be added (nice-to-have, not in scope; if
+implementation is easy, the pilot orchestrator may include it).
 
 ### 4.2.5 `mnemos pilot --accept <mode>`
 
@@ -283,129 +289,132 @@ koyabilir).
 - `--accept skill`:
   1. `Mnemos/` → `_recycled/Mnemos-script-YYYY-MM-DD/`
   2. `Mnemos-pilot/` → `Mnemos/`
-  3. `mnemos.yaml`'da `mine_mode: skill` yaz
-  4. ChromaDB/sqlite-vec index rebuild (yeni drawer'lar güncel palace
-     root'u yansıtsın)
-- Her ikisi `.mnemos-pending.json`'u günceller, `pilot_completed_at`
-  timestamp ile.
+  3. Write `mine_mode: skill` in `mnemos.yaml`
+  4. ChromaDB/sqlite-vec index rebuild (so new drawers reflect the
+     current palace root)
+- Both update `.mnemos-pending.json` with a `pilot_completed_at`
+  timestamp.
 
 ---
 
-## 5. Görev 4.3 — Skill-recall
+## 5. Task 4.3 — Skill-recall
 
-### 5.1 `mnemos-recall` skill'i
+### 5.1 `mnemos-recall` skill
 
 `skills/mnemos-recall/SKILL.md`
 
-**Girdi:** Query string (kullanıcı yazar, veya session context'inden
-çıkarılır)
+**Input:** Query string (typed by the user, or extracted from session
+context)
 
-**Akış:**
+**Flow:**
 
-1. **Fast vector filter:** Skill `python -m mnemos.cli search "<query>"
-   --limit 50 --format json --vault <v>` subprocess çağırır. Script-recall
-   MCP tool'u değil, CLI — skill'in internal call'ı.
-2. **LLM judgment:** Top-50 drawer'ın title + first 200 char + metadata'sı
-   prompt'a koyulur. LLM sorar: "Hangi 10 drawer gerçekten bu query'ye
-   alakalı?"
-3. **Full body read:** Seçilen 10 drawer'ın full body'sini oku.
-4. **Curate:** 300-500 kelimelik context briefing yaz — wikilink'ler
-   kaynak drawer'lara işaret eder, kullanıcı takip edebilir.
-5. stdout'a yazdır. Skill user-invoked olduğu için Claude Code session'a
-   direkt enjekte olur.
+1. **Fast vector filter:** Skill calls subprocess `python -m mnemos.cli
+   search "<query>" --limit 50 --format json --vault <v>`. Not the
+   script-recall MCP tool, the CLI — the skill's internal call.
+2. **LLM judgment:** The top-50 drawers' title + first 200 chars +
+   metadata are placed in the prompt. The LLM is asked: "Which 10
+   drawers are actually relevant to this query?"
+3. **Full body read:** Read the full body of the chosen 10 drawers.
+4. **Curate:** Write a 300-500 word context briefing — wikilinks point
+   to source drawers so the user can follow up.
+5. Print to stdout. Since the skill is user-invoked, it injects directly
+   into the Claude Code session.
 
 **Latency:** 5-15s (vector search <1s, LLM judgment 3-10s, full read 1s,
-curate 1-3s). Kullanıcı explicit bekler.
+curate 1-3s). User waits explicitly.
 
-**Kullanım:**
+**Usage:**
 ```
-/mnemos-recall "gyp satın alma otomasyonu son durum"
-/mnemos-recall "phase1 rerank kararı neydi"
+/mnemos-recall "gyp purchasing automation latest status"
+/mnemos-recall "what was the phase1 rerank decision"
 ```
 
 ### 5.2 SessionStart briefing hook (opt-in)
 
-**Amaç:** Skill-recall modunda çalışan kullanıcı her session açtığında
-"son bir haftada ne üzerinde çalıştığın" özetini görsün, explicit
-`/mnemos-recall` çağırmak zorunda kalmasın.
+**Goal:** A user running in skill-recall mode should see a "what you
+worked on in the last week" summary on every session open, without
+having to invoke explicit `/mnemos-recall`.
 
-**Yeni modül:** `mnemos/recall_briefing.py`
+**New module:** `mnemos/recall_briefing.py`
 
-**Akış** (refine-hook paternine paralel):
+**Flow** (parallel to the refine-hook pattern):
 
-1. SessionStart hook tetiklenir
+1. SessionStart hook fires
 2. Wrapper non-blocking background spawn:
    `claude --print --dangerously-skip-permissions --output-format json
    "/mnemos-briefing"`
-3. Skill `<vault>/mnemos.yaml`'ın `briefing_projects: [...]` hint'ini
-   okur (boşsa son 7 günde aktivite olan wing'leri otomatik seçer)
-4. Seçilen wing'ler için son 10-20 drawer'ın title + hall + entities
-   listesini oku
-5. Son 3 `Sessions/*.md` dosyasının ilk paragraflarını oku (ne üzerinde
-   çalışıyordu)
-6. LLM 200-300 kelimelik briefing yazar:
-   - Aktif projeler: `[[Mnemos]]`, `[[GYP]]`
-   - Son 48 saat kararlar: ...
-   - Açık meseleler: ...
-   - Sırada bekleyen: ...
-7. `<vault>/.mnemos-briefing.md` dosyasına yazar (prev → prev-prev rotate)
+3. The skill reads the `briefing_projects: [...]` hint in
+   `<vault>/mnemos.yaml` (if empty, automatically picks wings with
+   activity in the last 7 days)
+4. For the chosen wings, reads the title + hall + entities list of the
+   last 10-20 drawers
+5. Reads the first paragraphs of the last 3 `Sessions/*.md` files (what
+   was being worked on)
+6. LLM writes a 200-300 word briefing:
+   - Active projects: `[[Mnemos]]`, `[[GYP]]`
+   - Last 48-hour decisions: ...
+   - Open issues: ...
+   - Up next: ...
+7. Writes to `<vault>/.mnemos-briefing.md` (prev → prev-prev rotate)
 
-**Context enjeksiyonu** (tek tasarım seçimi, iki alternatif):
+**Context injection** (single design choice, two alternatives):
 
-**Alt-A: Stale-ama-fresh model** (önerilen v0.4 için)
-- Mevcut SessionStart hook briefing DOSYASI VARSA + fresh (<4h) ise
-  `additionalContext` ile enjekte
-- Değilse enjekte yok, background regenerate et (sonraki session'da
-  hazır olsun)
-- 2. session'dan itibaren briefing görünür
+**Alt-A: Stale-but-fresh model** (recommended for v0.4)
+- If a SessionStart hook briefing FILE EXISTS + is fresh (<4h), inject
+  via `additionalContext`
+- Otherwise no injection, background regenerate (so it's ready for the
+  next session)
+- Briefing visible from the 2nd session onwards
 
-**Alt-B: Blocking fresh model** (v0.5'e ertelenebilir)
-- SessionStart 10-15s block, güncel briefing her seferinde üret
-- Temiz ama latency maliyetli
+**Alt-B: Blocking fresh model** (can be deferred to v0.5)
+- SessionStart blocks 10-15s, generates a current briefing every time
+- Clean but with a latency cost
 
-**v0.4 Alt-A'yı seçiyor.** Refine-hook'un `last_outcome` idle-render
-paternine uyar.
+**v0.4 picks Alt-A.** Fits the refine-hook's `last_outcome` idle-render
+pattern.
 
-**CLI:** `mnemos install-recall-hook` (idempotent, install-hook ile aynı
-shape), `mnemos install-recall-hook --uninstall`.
+**CLI:** `mnemos install-recall-hook` (idempotent, same shape as
+install-hook), `mnemos install-recall-hook --uninstall`.
 
-**Skill:** `skills/mnemos-briefing/SKILL.md` (recall skill'inden ayrı —
-bu cron-like auto, recall user-invoked).
+**Skill:** `skills/mnemos-briefing/SKILL.md` (separate from the recall
+skill — this is cron-like auto, recall is user-invoked).
 
 ### 5.3 MCP server `instructions` — recall_mode-aware
 
-Mevcut MCP server (`mnemos/__main__.py` veya `mnemos/server.py`)
-`instructions` alanı statik:
+The current MCP server (`mnemos/__main__.py` or `mnemos/server.py`) has a
+static `instructions` field:
 > "At the START of every session, call mnemos_wake_up..."
 
-`mnemos.yaml`'dan `recall_mode` okunup dinamik üretilecek:
+`recall_mode` will be read from `mnemos.yaml` and the field generated
+dynamically:
 
-- `recall_mode: script` (default): mevcut instruction — AI auto-calls
-  `mnemos_search` when relevant. Her turn potansiyel.
-- `recall_mode: skill`: instruction değişir:
+- `recall_mode: script` (default): existing instruction — AI auto-calls
+  `mnemos_search` when relevant. Potentially every turn.
+- `recall_mode: skill`: instruction changes:
   > "The user prefers skill-based recall. Do NOT call `mnemos_search`
   > unless the user explicitly asks. Session-start briefing is already
   > injected as context; user will invoke `/mnemos-recall` for on-demand
   > queries."
 
-Tool'lar tamamı expose kalır — skill internal olarak search'ü kullanıyor.
+All tools remain exposed — the skill uses search internally.
 
 ---
 
-## 6. Görev 4.5 — `mnemos settings` TUI
+## 6. Task 4.5 — `mnemos settings` TUI
 
-**Yeni modül:** `mnemos/settings_tui.py`
+**New module:** `mnemos/settings_tui.py`
 
-**Davranış:**
+**Behavior:**
 
-- Numbered menu (init paterninin devamı, curses değil — platform-agnostic)
-- i18n TR+EN (mevcut `mnemos/i18n.py`'a key ekle)
+- Numbered menu (continuation of the init pattern, not curses —
+  platform-agnostic)
+- i18n TR+EN (add keys to existing `mnemos/i18n.py`)
 - `mnemos.yaml` canonical store
-- Her satır mevcut state + action affordance gösterir
-- Reset hook, install hook gibi işler alt-prompt açar
-- Windows cp1252 uyumlu (conftest fix'i sürüyor)
+- Each row shows the current state + action affordance
+- Tasks like reset hook, install hook open a sub-prompt
+- Windows cp1252 compatible (conftest fix is in effect)
 
-**İskelet:**
+**Skeleton:**
 
 ```
 ╭────────────────────────────────────────────────────────╮
@@ -427,109 +436,110 @@ Tool'lar tamamı expose kalır — skill internal olarak search'ü kullanıyor.
 > _
 ```
 
-**Her satırın alt-davranışı:**
+**Sub-behavior of each row:**
 
 | # | Action |
 |---|---|
-| 1 | Submenu: "migrate to sqlite-vec" / "migrate to chromadb" / "cancel" — `mnemos migrate`'e delegate |
+| 1 | Submenu: "migrate to sqlite-vec" / "migrate to chromadb" / "cancel" — delegates to `mnemos migrate` |
 | 2 | "run pilot (10 sessions)" / "switch to skill (no pilot)" / "cancel" |
 | 3 | Toggle script ↔ skill + warn "restart Claude Code for MCP to pick up new mode" |
-| 4-6 | Install / uninstall / refresh — mevcut install-* komutlarına delegate |
+| 4-6 | Install / uninstall / refresh — delegates to existing install-* commands |
 | 7 | Comma-separated edit, yaml valid langs subset |
 | 8 | Edit briefing_projects list; default empty = auto-detect |
 | 9 | Read-only display |
 
-**Ayrı komutlar** (`mnemos install-hook`, `mnemos migrate`, vb.)
-**kaybolmuyor** — settings TUI onların üstünde thin wrapper. CLI
-automation script'leri çalışmaya devam eder.
+**Separate commands** (`mnemos install-hook`, `mnemos migrate`, etc.) **do
+not go away** — the settings TUI is a thin wrapper on top of them. CLI
+automation scripts continue to work.
 
 ---
 
-## 7. Görev 4.6 — Benchmark
+## 7. Task 4.6 — Benchmark
 
-LongMemEval full 500 soru, 4 mod — ama artık **sadece S+S combo'su
-için**. Skill-recall kalitatif, benchmark'landırılamaz (her run farklı
-LLM judgment; deterministic değil).
+LongMemEval full 500 questions, 4 modes — but now **only for the S+S
+combo**. Skill-recall is qualitative and cannot be benchmarked (each run
+has different LLM judgment; not deterministic).
 
-**Çalıştırma:**
+**Run:**
 ```bash
 mnemos benchmark longmemeval --limit 500 --mode combined
 ```
 
-**Hedef:** R@5 ≥ **%93** (Phase 0 %90'dan marjinal iyileşme; skill-mine
-pilot drawer kalitesini artırabilir ama S+S combo script-mine kullandığı
-için esas etki 4.2 drawer hygiene fix'lerinden gelecek).
+**Target:** R@5 ≥ **93%** (marginal improvement over Phase 0's 90%; the
+skill-mine pilot can boost drawer quality, but since the S+S combo uses
+script-mine, the main effect will come from 4.2 drawer hygiene fixes).
 
-**Not:** Orijinal Phase 0 spec'inde %95+ hedefti; API-based rerank'in
-sağlayacağı +5% boost beklenmişti. Skill-first yaklaşımda rerank S+S
-combo'suna dokunmuyor — kullanıcı rerank benefit'ini skill-recall
-seçerek alır (benchmark'sız, kalitatif). Hedef bu nedenle %93'e
-indirildi. %95 iddiamız kalkar; Phase 1'de yeni iddia: *"%90'ın üstüne
-deterministic-ama-iyileşen skor + opsiyonel LLM-driven kalitatif upgrade."*
+**Note:** The original Phase 0 spec targeted 95%+; the +5% boost from
+API-based rerank was expected. In the skill-first approach, rerank
+doesn't touch the S+S combo — the user gets the rerank benefit by
+choosing skill-recall (no benchmark, qualitative). The target was
+therefore lowered to 93%. Our 95% claim is dropped; the new claim in
+Phase 1 is: *"deterministic-but-improving score above 90% + optional
+LLM-driven qualitative upgrade."*
 
 ---
 
-## 8. Görev 4.7 — PyPI release v0.4.0
+## 8. Task 4.7 — PyPI release v0.4.0
 
-Standard release rutini (v0.3.x paternleri):
+Standard release routine (v0.3.x patterns):
 
 - Version bump `0.3.3 → 0.4.0` (`pyproject.toml` + `mnemos/__init__.py`)
-- `CHANGELOG.md` — Phase 1 summary, 4 yeni skill, pilot akışı, settings
-  TUI, breaking changes yok
-- `STATUS.md` §2 güncel — skill-mine capability, skill-recall capability,
+- `CHANGELOG.md` — Phase 1 summary, 4 new skills, pilot flow, settings
+  TUI, no breaking changes
+- `STATUS.md` §2 current — skill-mine capability, skill-recall capability,
   mnemos settings, briefing hook, pilot orchestrator
-- `ROADMAP.md` — 4.2-4.7 checkbox'ları `[x]`
+- `ROADMAP.md` — 4.2-4.7 checkboxes `[x]`
 - Wheel + sdist build
-- Pre-release inspection (3.10a paterni): wheel'de skill path'leri package-
-  data olarak mı ship'leniyor? Skill dosyaları `mnemos/_resources/skills/`
-  altında mı? Junction/symlink install script'i CLI `install-skills`
-  komutuyla mı?
-- Tag `v0.4.0` (annotated), GitHub release (asset'li)
-- PyPI upload (kullanıcıya devredilir, standart)
+- Pre-release inspection (3.10a pattern): are skill paths shipped as
+  package-data in the wheel? Are skill files under
+  `mnemos/_resources/skills/`? Is the junction/symlink install script
+  exposed as the CLI `install-skills` command?
+- Tag `v0.4.0` (annotated), GitHub release (with assets)
+- PyPI upload (delegated to user, standard)
 
 ---
 
-## 9. Dosya listesi
+## 9. File list
 
-**Yeni modüller:**
+**New modules:**
 - `mnemos/pilot.py` — orchestrator
 - `mnemos/recall_briefing.py` — SessionStart briefing hook wrapper
 - `mnemos/settings_tui.py` — interactive settings panel
 
-**Yeni skill'ler:** (hepsi junction'lı, repo canonical)
-- `skills/mnemos-mine-llm/` — SKILL.md + prompt + state ledger dizini
+**New skills:** (all junction'd, repo canonical)
+- `skills/mnemos-mine-llm/` — SKILL.md + prompt + state ledger directory
 - `skills/mnemos-recall/` — SKILL.md + prompt
 - `skills/mnemos-briefing/` — SKILL.md + prompt (auto-invoked by hook)
 - `skills/mnemos-compare-palaces/` — SKILL.md + prompt
 
-**Değişen modüller:**
-- `mnemos/cli.py` — yeni subcommand'ler: `mine --pilot-llm`, `pilot
+**Changed modules:**
+- `mnemos/cli.py` — new subcommands: `mine --pilot-llm`, `pilot
   --accept`, `settings`, `install-recall-hook`
-- `mnemos/miner.py` — `--skip-classification` flag (skill-mined drawer
-  frontmatter'ına güven)
-- `mnemos/server.py` (veya `mnemos/__main__.py`) — `instructions`
-  dinamik, `recall_mode`'dan okur
-- `mnemos/i18n.py` — yeni key'ler (settings TUI, pilot flow, briefing)
-- `mnemos/config.py` — yeni yaml alanları: `mine_mode`, `recall_mode`,
+- `mnemos/miner.py` — `--skip-classification` flag (trust the
+  skill-mined drawer frontmatter)
+- `mnemos/server.py` (or `mnemos/__main__.py`) — `instructions` dynamic,
+  read from `recall_mode`
+- `mnemos/i18n.py` — new keys (settings TUI, pilot flow, briefing)
+- `mnemos/config.py` — new yaml fields: `mine_mode`, `recall_mode`,
   `briefing_projects`
 
-**Yeni test dosyaları:**
-- `tests/test_pilot.py` — orchestrator happy path, iki palace
+**New test files:**
+- `tests/test_pilot.py` — orchestrator happy path, two palace
   concurrency, accept logic, rollback on failure
 - `tests/test_recall_briefing.py` — hook wrapper, stale file logic,
   blocking-model negative test
 - `tests/test_settings_tui.py` — numbered menu navigation, yaml
   roundtrip, submenu delegation
-- `tests/test_skill_mine_integration.py` — fake-claude subprocess
-  mock (skill çıktısını deterministic simüle et)
-- `tests/test_mcp_instructions_mode.py` — recall_mode değişince
-  instruction string değişir
+- `tests/test_skill_mine_integration.py` — fake-claude subprocess mock
+  (deterministically simulate skill output)
+- `tests/test_mcp_instructions_mode.py` — instruction string changes
+  when recall_mode changes
 
 ---
 
-## 10. Uygulama sırası
+## 10. Implementation order
 
-| Sıra | Görev | Tahmini süre |
+| Order | Task | Estimated time |
 |------|-------|--------------|
 | 1 | 4.2.1 mnemos-mine-llm skill — SKILL.md + prompt | 2h |
 | 2 | 4.2.2 Orchestrator `pilot.py` + CLI subcommand | 3h |
@@ -543,64 +553,66 @@ Standard release rutini (v0.3.x paternleri):
 | 10 | 4.6 Benchmark S+S full 500q | 1h (automated, +2h verify) |
 | 11 | 4.7 Release prep + pilot-in-pilot (clean-vault) | 2h |
 
-Toplam **~19h** aktif iş, +2-3 gün pilot/validation sürünme. Phase 0
-(v0.2) ~40h, Phase 1 yarısı — skill-first yaklaşım paket mühendisliğini
-kısaltıyor (API client, retry logic, rate limiter, cost estimator,
-optional extra paketleme yok).
+Total **~19h** of active work, +2-3 days of pilot/validation drag. Phase 0
+(v0.2) was ~40h; Phase 1 is half that — the skill-first approach
+shortens package engineering (no API client, retry logic, rate limiter,
+cost estimator, optional extra packaging).
 
 ---
 
-## 11. Başarı kriterleri
+## 11. Success criteria
 
-- [ ] `mnemos-mine-llm` skill 10 sessionluk pilot'u başarıyla tamamlıyor
-  (ledger resume, paralel-3 spawn, token accounting rapor'a geçiyor)
-- [ ] `mnemos mine --pilot-llm` iki palace yan yana üretiyor, pilot rapor
-  iskeleti `docs/pilots/`'a yazılıyor
-- [ ] `/mnemos-compare-palaces` LLM judgment raporu + 3 yan yana sample
-  ile iskeleti tamamlıyor
-- [ ] `mnemos pilot --accept skill` kaybeden palace'ı `_recycled/`'a
-  taşıyor, yaml update, index rebuild atomic
-- [ ] `/mnemos-recall "<query>"` 5-15s içinde curated 300-500 kelimelik
-  context döndürüyor, wikilink'ler valid
-- [ ] SessionStart briefing hook fresh `.mnemos-briefing.md` <4h ise
-  `additionalContext` enjekte ediyor, değilse sessiz + background
+- [ ] `mnemos-mine-llm` skill successfully completes a 10-session pilot
+  (ledger resume, parallel-3 spawn, token accounting makes it into the
+  report)
+- [ ] `mnemos mine --pilot-llm` produces two palaces side by side, the
+  pilot report skeleton is written to `docs/pilots/`
+- [ ] `/mnemos-compare-palaces` completes the skeleton with an LLM
+  judgment report + 3 side-by-side samples
+- [ ] `mnemos pilot --accept skill` moves the losing palace to
+  `_recycled/`, yaml update, index rebuild atomic
+- [ ] `/mnemos-recall "<query>"` returns a curated 300-500 word context
+  within 5-15s, wikilinks valid
+- [ ] SessionStart briefing hook injects `additionalContext` if the
+  fresh `.mnemos-briefing.md` is <4h, otherwise silent + background
   regenerate
-- [ ] `mnemos settings` TUI 8 satırlık menüyü açıyor, her satır altında
-  doğru alt-aksiyonu delegate ediyor, yaml roundtrip temiz
-- [ ] Recall mode yaml'dan değişince MCP server instructions dinamik
-  güncelleniyor (Claude Code restart'tan sonra AI auto-query davranışı
-  değişiyor)
-- [ ] LongMemEval 500q S+S combo'suda Recall@5 ≥ **%93**
-- [ ] Mevcut 463 test kırılmadı, yeni ~50 test eklendi hepsi yeşil
-- [ ] Clean-vault pilot (throwaway) tam flow yeşil: init → mine →
+- [ ] `mnemos settings` TUI opens an 8-row menu, delegates to the right
+  sub-action under each row, yaml roundtrip clean
+- [ ] When recall mode changes in the yaml, the MCP server instructions
+  update dynamically (after a Claude Code restart, the AI auto-query
+  behavior changes)
+- [ ] On the LongMemEval 500q S+S combo, Recall@5 ≥ **93%**
+- [ ] Existing 463 tests not broken, ~50 new tests added all green
+- [ ] Clean-vault pilot (throwaway) full flow green: init → mine →
   pilot-llm → compare → accept → recall → briefing-hook
-- [ ] PyPI v0.4.0 wheel'de tüm skill path'leri + yeni modüller mevcut
-  (3.10a paket-data regressonu tekrar etmedi)
+- [ ] PyPI v0.4.0 wheel contains all skill paths + new modules (the
+  3.10a package-data regression has not recurred)
 
 ---
 
-## 12. Açık sorular / ileride bakılacak
+## 12. Open questions / things to revisit
 
-1. **Briefing hook freshness window** — 4 saat uygun mu? Pilot'ta
-   ölçülecek. Çok kısa ise her session regenerate, çok uzun ise
-   stale context.
-2. **Skill prompt versiyonlama** — prompt değişirse mevcut skill-mined
-   drawer'lar eski prompt sürümünden. Yeni drawer'lar yeni prompt'tan
-   gelir; versioning gerek mi? İlk sürüm için pas geç, v0.4.1'de bak.
-3. **Palace merge opsiyonu** — pilot'ta beğenildiği halde "keep both"
-   isteği gelirse? Spec dışı ama implementation kolaysa
-   `mnemos pilot --keep-both` flag'i konabilir; UI level'da not
-   önerilen.
-4. **Token cost estimator flag** — Sonnet 4.6 fiyat şablonu + estimated
-   cost. Nice-to-have. Hızlıca eklenebilir; release öncesi karar.
-5. **Briefing skill input size** — son 10-20 drawer + 3 session paragrafı
-   ~5K token. Briefing output 300-500 kelime ~700 token. Skill call başına
-   ~6K token. Session başına bir kez. Kabul edilebilir; ama briefing sık
-   regenerate oluyorsa cumulative cost visible olmalı — statusline'a
-   briefing meta gösterilsin mi?
+1. **Briefing hook freshness window** — is 4 hours appropriate? To be
+   measured during pilot. If too short, regenerate every session; if
+   too long, stale context.
+2. **Skill prompt versioning** — if the prompt changes, existing
+   skill-mined drawers are from the old prompt version. New drawers come
+   from the new prompt; do we need versioning? Skip for the first
+   release, revisit in v0.4.1.
+3. **Palace merge option** — what if a "keep both" request comes up
+   despite the pilot being well received? Out of spec, but if
+   implementation is easy a `mnemos pilot --keep-both` flag could be
+   added; UI-level note recommended.
+4. **Token cost estimator flag** — Sonnet 4.6 price template + estimated
+   cost. Nice-to-have. Can be added quickly; decide before release.
+5. **Briefing skill input size** — last 10-20 drawers + 3 session
+   paragraphs ~5K tokens. Briefing output 300-500 words ~700 tokens.
+   ~6K tokens per skill call. Once per session. Acceptable; but if the
+   briefing regenerates often, cumulative cost should be visible —
+   should briefing meta be displayed in the statusline?
 
 ---
 
 **Doc owner:** Tugra Demirors
 **Review:** self (single-maintainer project)
-**Next:** bu spec onaylandı; implementasyon 4.2'den başlıyor.
+**Next:** this spec is approved; implementation starts at 4.2.
