@@ -4,6 +4,39 @@ All notable changes to Mnemos are documented here. For the narrative
 version of how the project evolved across paradigms, see
 [`HISTORY.md`](HISTORY.md).
 
+## v1.2.1 (rolling) — Stale-OK Skip Hot-Fix (2026-04-28)
+
+### Bug
+
+A second class of refine-pipeline data loss surfaced after the
+duplicate-refine race fix shipped: when a JSONL had been refined
+**while still active** (e.g. a sibling SessionStart `auto_refine`
+picked it during an idle window, marking the ledger OK), any later
+`/exit` for that same session silently skipped re-refining via
+`claim_jsonl_for_refine`'s ledger=OK gate — losing every byte the
+user had typed after the premature refine. The author's planning
+session for the v1.2.1 PyPI publish reproduced this: ~6 hours of
+post-refine work survived only in the raw JSONL.
+
+### Fix
+
+`mnemos.session_end_hook.supersede_stale_refine_if_needed` runs
+inside the SessionEnd worker before `claim_jsonl_for_refine`. When
+the JSONL's mtime exceeds the prior `Sessions/<date>-<slug>.md`'s
+mtime by more than 60 s (typical /resume gap), the helper:
+
+- Renames the stale Session/.md to
+  `<name>.bak-superseded-<utc-iso>` (preserves the partial summary
+  for archaeology).
+- Drops the OK row from the ledger so the per-JSONL filelock can
+  re-grant a fresh claim.
+
+The follow-up refine then writes a Session/.md describing the full
+final transcript. SKIP rows are left untouched (sticky decisions).
+Six new tests in `tests/test_session_end_supersede.py` cover the
+threshold, missing-prior-entry, deleted-Session/.md, and SKIP-row
+cases.
+
 ## v1.2.1 — Refine-Pipeline Race + Identity Isolation Hot-Fix (2026-04-28)
 
 Spec: [`docs/specs/2026-04-28-v1.2.1-duplicate-refine-race.md`](docs/specs/2026-04-28-v1.2.1-duplicate-refine-race.md)

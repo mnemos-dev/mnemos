@@ -22,10 +22,18 @@ import os
 import subprocess
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 HOOK_ACTIVE_ENV = "MNEMOS_RECALL_HOOK_ACTIVE"
 WORKER_LOCK = ".mnemos-end-worker.flock"
+
+# Stale-OK supersession threshold (seconds). The Session/.md is written
+# shortly after the JSONL's last write completes; 60 s is generous enough
+# to absorb same-refine timing noise and tight enough to catch real
+# /resume gaps where a session was reopened and grew for hours after a
+# premature OK.
+_STALE_OK_THRESHOLD_SECONDS = 60
 
 
 @dataclass
@@ -245,7 +253,91 @@ def _parse_worker_args(argv: list[str]):
     return ns
 
 
-def _run_refine(transcript: str) -> None:
+def supersede_stale_refine_if_needed(
+    jsonl: Path,
+    ledger: Path,
+    vault: Path,
+    threshold_seconds: int = _STALE_OK_THRESHOLD_SECONDS,
+) -> bool:
+    """Detect a stale OK ledger row and clear it so the SessionEnd refine
+    can claim afresh.
+
+    Background: when a JSONL is refined while its session is still
+    actively writing (typical /resume scenario, or a sibling-window
+    SessionStart auto_refine catching the JSONL during an idle gap),
+    the resulting OK ledger row describes only a subset of the
+    now-final transcript. SessionEnd is the authoritative moment to
+    detect this — the JSONL is closed and any post-refine content
+    represents a real content gap.
+
+    Detection: if the JSONL's mtime exceeds the prior Session/.md's
+    mtime by more than ``threshold_seconds``, supersede:
+      1. Rename the prior Session/.md to ``<name>.bak-superseded-<utc>``
+      2. Drop the OK row from the ledger
+
+    SKIP rows are sticky: a SKIP records an explicit "no Session/.md
+    needed" decision (1-turn noise, etc.) and isn't recomputed from
+    mtime. Likewise we don't touch the ledger when the prior
+    Session/.md has been deleted manually — the existing OK gate keeps
+    the same behavior as today.
+
+    Returns True iff a supersession occurred.
+    """
+    from mnemos.auto_refine import _latest_session_for_jsonl
+
+    prior = _latest_session_for_jsonl(ledger, jsonl, vault)
+    if prior is None:
+        return False
+    outcome, session_md = prior
+    if outcome != "OK":
+        return False
+    if session_md is None or not session_md.exists():
+        return False
+
+    try:
+        jsonl_mtime = jsonl.stat().st_mtime
+        session_md_mtime = session_md.stat().st_mtime
+    except OSError:
+        return False
+
+    if jsonl_mtime <= session_md_mtime + threshold_seconds:
+        return False
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup = session_md.with_name(f"{session_md.name}.bak-superseded-{timestamp}")
+    try:
+        session_md.rename(backup)
+    except OSError:
+        return False
+
+    target = str(jsonl)
+    try:
+        lines = ledger.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return True  # rename succeeded — ledger update is best-effort
+    filtered = [
+        line for line in lines
+        if not (line.split("\t")[:1] and line.split("\t")[0] == target)
+    ]
+    out = "\n".join(filtered)
+    if filtered:
+        out += "\n"
+
+    tmp = ledger.with_suffix(ledger.suffix + ".tmp")
+    try:
+        tmp.write_text(out, encoding="utf-8")
+        os.replace(str(tmp), str(ledger))
+    except OSError:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return True
+
+    return True
+
+
+def _run_refine(transcript: str, vault: Path | None = None) -> None:
     """Sync refine via /mnemos-refine-transcripts skill subprocess.
 
     Gated by `mnemos.refine_lock.claim_jsonl_for_refine` so concurrent
@@ -253,11 +345,19 @@ def _run_refine(transcript: str) -> None:
     this SessionEnd worker) cannot produce duplicate Sessions/.md
     files. If another worker holds the lock or the ledger already
     records OK/SKIP for this transcript, this call is a no-op.
+
+    When ``vault`` is provided, ``supersede_stale_refine_if_needed``
+    runs first to clear any stale OK row (the /resume gap case).
     """
     from mnemos.refine_lock import claim_jsonl_for_refine
     from mnemos.recall_briefing import DEFAULT_REFINE_LEDGER
 
     jsonl = Path(transcript)
+    if vault is not None:
+        try:
+            supersede_stale_refine_if_needed(jsonl, DEFAULT_REFINE_LEDGER, vault)
+        except Exception:
+            pass
     claim = claim_jsonl_for_refine(jsonl, DEFAULT_REFINE_LEDGER)
     if claim is None:
         return  # busy or already done — silent skip
@@ -373,7 +473,7 @@ def worker_main(argv: list[str]) -> int:
 
     try:
         try:
-            _run_refine(ns.transcript)
+            _run_refine(ns.transcript, vault=vault)
         except Exception:
             pass
         try:

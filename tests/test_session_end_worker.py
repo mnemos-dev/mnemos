@@ -23,7 +23,7 @@ def test_worker_runs_three_stages_in_order(tmp_path, monkeypatch):
     call_order: list = []
     monkeypatch.setattr(
         "mnemos.session_end_hook._run_refine",
-        lambda t: call_order.append(("refine", t)),
+        lambda t, vault=None: call_order.append(("refine", t)),
     )
     monkeypatch.setattr(
         "mnemos.session_end_hook._run_brief_regen",
@@ -53,7 +53,7 @@ def test_worker_continues_after_refine_failure(tmp_path, monkeypatch):
     transcript = tmp_path / "fake.jsonl"
     transcript.write_text("x", encoding="utf-8")
 
-    def boom_refine(t):
+    def boom_refine(t, vault=None):
         raise RuntimeError("refine failed")
 
     brief_called: list = []
