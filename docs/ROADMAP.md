@@ -21,7 +21,7 @@ archive; if they conflict, this file wins.
 | **v1.0.0a1** | **Narrative-first pivot (atomic-fragmentation dropped, Sessions = unit, Identity Layer)** | ✅ shipped 2026-04-26 | ⏸ deferred |
 | **v1.1.0** | **SessionEnd-driven memory (refine+brief+identity-refresh worker, settings TUI, briefing v3, readiness gates, in-session cross-check)** | ✅ shipped 2026-04-27 | ⏸ deferred 24h |
 | **v1.2.0** | **Locale-aware output (EN code+docs, runtime headers match dominant Session language; defaults English when mixed)** | **✅ shipped 2026-04-28** *(empirical smoke green, merge + PyPI pending)* | — |
-| **v1.2.1** | **Hot-fix: refine-pipeline race condition (per-JSONL filelock + ledger recheck + ledger normalize CLI). Three coexisting hooks (graceful /exit + X-close fallbacks) stay in place — lock makes them safe.** | **✅ implementation done 2026-04-28** *(merge + PyPI pending)* | — |
+| **v1.2.1** | **Hot-fix: refine-pipeline race (per-JSONL filelock + normalize CLI) + identity isolation (env-strip ANTHROPIC_API_KEY, neutral cwd, recall_briefing re-entry guard, strict OUTPUT prompt) + `bootstrap --limit N` pilot mode** | **✅ shipped 2026-04-28** *(push + PyPI pending)* | — |
 | v1.3.0 | Polish + LongMemEval benchmark (R@5 ≥ 93% baseline, JSONL-direct identity bootstrap?) | ⏸ | — |
 | v0.5.0 | Automation / Phase 2 — superseded by v1.1 SessionEnd hook | 🗄️ archived | — |
 | v0.6.0 | Community & Ecosystem (Obsidian plugin, multi-language markers, demo video) | ⏸ | — |
@@ -86,21 +86,28 @@ safety nets catch up. Removing any of them would re-open the
 X-close coverage gap. The fix makes coexistence safe rather than
 collapsing the design.
 
-### Tasks
+### Tasks (race fix)
 
 - [x] `mnemos/refine_lock.py:claim_jsonl_for_refine` — pre-check ledger, acquire `filelock.FileLock` per-stem with `timeout=0`, recheck inside lock; returns context manager or None (commit `ff08d03`)
 - [x] Wire all three callers through the gate (commit `89aa708`)
 - [x] `mnemos refine-ledger --normalize` CLI — drop malformed lines, dedup same-path entries, atomic write, `--dry-run` + `--validate-paths` flags (commit `e5f205f`)
+
+### Tasks (identity follow-up, same-day, surfaced by bootstrap pilot)
+
+- [x] `--limit N` pilot mode for `mnemos identity bootstrap` (commit `b7ee92f`)
+- [x] Strip `ANTHROPIC_API_KEY` in `identity._invoke_claude_print` (commit `3774d05`) — hard-invariant violation that other three sites already enforced
+- [x] Neutral tempfile cwd + `MNEMOS_RECALL_HOOK_ACTIVE=1` env marker for `claude --print` subprocess; rewrote `identity-bootstrap.md` OUTPUT section as a strict no-tools no-chat contract (commit `89f120b`)
 
 ### Acceptance criteria
 
 - [x] All three refine call sites go through `claim_jsonl_for_refine`
 - [x] Concurrent-stress test: 10 threads race for same JSONL → exactly 1 winner
 - [x] Ledger normalize repairs TAB-corrupted lines + dedups OK/SKIP appropriately
-- [x] Test suite **543 pass** (was 529 baseline; +14 new tests)
+- [x] Test suite **545 pass** (was 529 baseline; +16 new tests across refine_lock, refine-ledger CLI, identity --limit, env-strip + cwd-isolation regressions)
 - [x] No regressions in any existing test file
-- [ ] **Empirical verification** — user opens new Claude Code session in any cwd, `/exit`, confirms exactly ONE Session file written
-- [ ] User runs `mnemos refine-ledger --normalize --validate-paths` once on existing ledger to clean historical corruption
+- [x] **Empirical verification** — user opened new Claude Code session in farcry cwd, `/exit`, confirmed exactly ONE Session file written (run after `89aa708` was in editable install)
+- [x] User ran `mnemos refine-ledger --normalize --validate-paths` once on existing ledger to clean historical corruption
+- [x] **Identity bootstrap empirical verification** — pilot (10 sessions) + full (90 sessions) both produced canonical seven-section profiles (locale-aware TR headers + body) on kasamd vault
 
 ---
 

@@ -4,7 +4,7 @@ All notable changes to Mnemos are documented here. For the narrative
 version of how the project evolved across paradigms, see
 [`HISTORY.md`](HISTORY.md).
 
-## v1.2.1 — Refine-Pipeline Race-Condition Hot-Fix (2026-04-28)
+## v1.2.1 — Refine-Pipeline Race + Identity Isolation Hot-Fix (2026-04-28)
 
 Spec: [`docs/specs/2026-04-28-v1.2.1-duplicate-refine-race.md`](docs/specs/2026-04-28-v1.2.1-duplicate-refine-race.md)
 
@@ -68,6 +68,42 @@ X-close coverage gap. The fix makes that coexistence safe:
 - Total suite: **543 passed**, 2 skipped, 3 deselected (was 529 at
   start of v1.2.1 work; +14 new).
 
+### Identity bootstrap follow-up fixes (same-day)
+
+Empirical bootstrap pilot on kasamd surfaced three more bugs in the
+identity pipeline that v1.2.1 also fixes:
+
+- **`identity._invoke_claude_print` did not strip `ANTHROPIC_API_KEY`.**
+  Hard-invariant violation — every other claude --print site (auto_refine,
+  recall_briefing, session_end_hook) strips the key so the call falls
+  through to subscription quota. This one site was missed in v1.0/v1.1
+  and silently routed bootstrap + refresh through API credits when the
+  user had `ANTHROPIC_API_KEY` set as an env var. Surface symptom:
+  `claude --print failed (exit 1):` with empty stderr (after the fix the
+  error also includes stderr in the message). Fix: copy env, pop the
+  key, pass to subprocess.run.
+- **Bootstrap was contaminated by parent cwd + SessionStart hooks.**
+  The nested claude --print inherited the parent's cwd, which loaded
+  the project CLAUDE.md and let `recall_briefing`'s SessionStart hook
+  inject its briefing context. The LLM treated the bootstrap prompt as
+  a continuation of the parent dev conversation and emitted a chat
+  summary instead of the seven-section profile. Fix:
+  `_invoke_claude_print` now sets `MNEMOS_RECALL_HOOK_ACTIVE=1` to
+  short-circuit recall_briefing's re-entry, and runs from a fresh
+  `tempfile.TemporaryDirectory` so no project context leaks in.
+- **`docs/prompts/identity-bootstrap.md` OUTPUT section strengthened.**
+  The original "Only the markdown body to stdout" was too subtle;
+  rewritten as a four-bullet "strict" contract (no tools, no chat,
+  start with `---` frontmatter, fall back to minimal stubs rather
+  than refusing).
+
+Plus a small new feature shipped in the same fix wave:
+
+- **`mnemos identity bootstrap --limit N`** — pilot mode that restricts
+  input to the most-recent N Sessions. Useful for validating prompt
+  quality on a small subset before committing the full vault to a
+  10-15 minute LLM call. Default unchanged: read all eligible Sessions.
+
 ### Migration path
 
 Users upgrading to v1.2.1 should run once:
@@ -80,7 +116,9 @@ point on, the lock prevents new corruption.
 No settings.json changes required — both SessionStart hooks
 (`mnemos-auto-refine`, `mnemos-recall-briefing`) and the SessionEnd
 hook (`mnemos-session-end`) all stay in place. The lock makes their
-coexistence safe.
+coexistence safe. Users with `ANTHROPIC_API_KEY` in their env who
+hit the silent bootstrap failure under v1.1 should retry on v1.2.1
+— the call now correctly routes through subscription quota.
 
 ---
 
