@@ -39,7 +39,12 @@ def _count_eligible_jsonls_for_bootstrap(vault: Path) -> int:
     return count_eligible_jsonls(projects, min_user_turns=cfg.refine.min_user_turns)
 
 
-def bootstrap(vault: Path, model: str = "sonnet", force: bool = False) -> Path:
+def bootstrap(
+    vault: Path,
+    model: str = "sonnet",
+    force: bool = False,
+    limit: int | None = None,
+) -> Path:
     """Generate <vault>/_identity/L0-identity.md from all Sessions.
 
     Args:
@@ -48,6 +53,10 @@ def bootstrap(vault: Path, model: str = "sonnet", force: bool = False) -> Path:
         force: Bypass the readiness eligibility gate. Use only when the user
             explicitly opts in (e.g. ``--force``); CI / automation should
             never set this implicitly.
+        limit: If set, restrict input to the most-recent N Sessions (after the
+            150K context-cap sampling). Useful for pilot runs to validate
+            prompt quality on a subset before committing the full vault to a
+            5-10 minute LLM call.
 
     Returns:
         Path to the written L0-identity.md.
@@ -85,6 +94,12 @@ def bootstrap(vault: Path, model: str = "sonnet", force: bool = False) -> Path:
 
     # Apply context cap
     selected = _select_sessions_with_cap(sessions)
+
+    # Optional pilot limit: take the most-recent N. Sessions are already
+    # sorted by name desc (which corresponds to date desc for the
+    # YYYY-MM-DD-<slug>.md convention).
+    if limit is not None and limit > 0:
+        selected = selected[:limit]
 
     # Build LLM input
     canonical_prompt = _CANONICAL_PROMPT_PATH.read_text(encoding="utf-8")

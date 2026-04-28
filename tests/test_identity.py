@@ -91,6 +91,33 @@ def test_bootstrap_raises_when_no_sessions():
         bootstrap(vault)
 
 
+def test_bootstrap_pilot_limit_restricts_input(tmp_path):
+    """--limit N exposes a pilot mode: feed only N most-recent Sessions to
+    the LLM. Useful for prompt-quality validation before committing the
+    full vault to a 5-10 minute LLM call."""
+    vault = tmp_path / "vault"
+    sessions = vault / "Sessions"
+    sessions.mkdir(parents=True)
+    # 25 Sessions; --limit 5 should send only 5 (the most-recent by name)
+    for i in range(25):
+        (sessions / f"2026-04-{i+1:02d}-test-{i}.md").write_text(
+            f"---\ndate: 2026-04-{i+1:02d}\n---\n\n# T{i}\n\nbody",
+            encoding="utf-8",
+        )
+
+    with patch("mnemos.identity._invoke_claude_print") as mock_invoke:
+        mock_invoke.return_value = "---\n---\n\n# User Identity"
+        bootstrap(vault, force=True, limit=5)
+        passed_input = mock_invoke.call_args[0][0]
+
+    # The most-recent 5 (by name desc) are 2026-04-25 .. 2026-04-21
+    for keep in range(21, 26):
+        assert f"2026-04-{keep:02d}" in passed_input, f"missing recent {keep}"
+    # Older ones must be excluded
+    for drop in range(1, 21):
+        assert f"2026-04-{drop:02d}" not in passed_input, f"old session {drop} leaked"
+
+
 def test_bootstrap_applies_context_cap_on_large_vault():
     """When total input > 150K tokens, hybrid sampling is applied."""
     vault = _make_test_vault(0)

@@ -1107,7 +1107,12 @@ def cmd_identity(args: argparse.Namespace) -> int:
     vault = Path(args.vault) if args.vault else _resolve_vault_from_yaml()
     try:
         if args.identity_action == "bootstrap":
-            path = bootstrap(vault, model=args.model, force=args.force)
+            path = bootstrap(
+                vault,
+                model=args.model,
+                force=args.force,
+                limit=args.limit,
+            )
             print(f"Identity layer created: {path}")
         elif args.identity_action == "refresh":
             if args.check:
@@ -1470,6 +1475,13 @@ def main(argv: list[str] | None = None) -> int:
         "--force",
         action="store_true",
         help="Bypass eligibility threshold (use cautiously)",
+    )
+    p_bootstrap.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Pilot mode: restrict input to the most-recent N Sessions (default: all)",
     )
 
     p_refresh = identity_actions.add_parser("refresh", help="Incremental update")
