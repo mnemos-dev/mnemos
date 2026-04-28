@@ -4,7 +4,7 @@
 Older `docs/specs/2026-04-*` and `docs/plans/2026-04-*` files are historical
 archive; if they conflict, this file wins.
 
-**Last updated:** 2026-04-26 (v1.0.0a1 alpha shipped + bg-catchup hotfix; v1.1 design + 55-task plan ready)
+**Last updated:** 2026-04-28 (v1.1.0 shipped 2026-04-27, v1.2.0 implementation in progress)
 ---
 
 ## Version status
@@ -20,7 +20,7 @@ archive; if they conflict, this file wins.
 | ~~v0.4.0~~ | ~~AI Boost / Phase 1~~ — superseded by v1.0 narrative-first pivot | 🗄️ archived | — |
 | **v1.0.0a1** | **Narrative-first pivot (atomic-fragmentation dropped, Sessions = unit, Identity Layer)** | ✅ shipped 2026-04-26 | ⏸ deferred |
 | **v1.1.0** | **SessionEnd-driven memory (refine+brief+identity-refresh worker, settings TUI, briefing v3, readiness gates, in-session cross-check)** | ✅ shipped 2026-04-27 | ⏸ deferred 24h |
-| **v1.2.0** | **English-only output strings (with TR back-compat) — refined Sessions, identity profile, briefing all default to English; existing TR vaults remain readable via dual-match** | **🔄 plan ready 2026-04-28** | — |
+| **v1.2.0** | **English-only output strings (with TR back-compat) — refined Sessions, identity profile, briefing all default to English; existing TR vaults remain readable via dual-match** | **🔄 in progress 2026-04-28** | — |
 | v1.3.0 | Polish + LongMemEval benchmark (R@5 ≥ 93% baseline, JSONL-direct identity bootstrap?) | ⏸ | — |
 | v0.5.0 | Automation / Phase 2 — superseded by v1.1 SessionEnd hook | 🗄️ archived | — |
 | v0.6.0 | Community & Ecosystem (Obsidian plugin, multi-language markers, demo video) | ⏸ | — |
@@ -31,25 +31,54 @@ archive; if they conflict, this file wins.
 
 ---
 
-## v1.1.0 — SessionEnd-Driven Memory 🔄 *(plan ready 2026-04-26)*
+## v1.2.0 — English-Only Output Strings 🔄 *(in progress 2026-04-28)*
+
+7 task groups (F1–F7), 13–19 tasks total. Strategy: dual-match — skill prompts emit
+English only; consumers (parsers, directive constants, tests) accept both
+TR (legacy) and EN. No user migration required for existing vaults.
+
+### Tasks (group-level checkpoints; full task list lives in the plan)
+
+- [~] **F1** — Set the contract (0–1 task) — optional constants module; **decision: skip, inline dual-match in 2 consumer files**
+- [ ] **F2** — Refined Session schema (3 tasks) — `docs/prompts/refine-transcripts.md` output template + skill SKILL.md sample + manual smoke
+- [ ] **F3** — Identity Layer schema (4 tasks) — `identity-bootstrap.md`, `identity-refresh.md`, refresh skill prompt, `identity.py` docstring + tests with TR back-compat
+- [ ] **F4** — Briefing template + cross-check directive (5 tasks) — briefing prompt v3 EN, `CROSS_CHECK_DIRECTIVE` language-agnostic, test fixtures flip + back-compat
+- [ ] **F5** — Documentation (3 tasks) — STATUS, CHANGELOG v1.2.0 entry, ROADMAP completion
+- [ ] **F6** — Verification (3 tasks) — pytest pass (≥527), junction zero-drift, empirical smoke on kasamd
+- [ ] **F7** — Optional migration helper (3 tasks, **deferred**) — `mnemos migrate-headers` CLI for users who want to flip existing TR Sessions/identity to EN
+
+### Acceptance criteria (plan §9)
+
+- [ ] All canonical prompts emit English-only schema
+- [ ] `CROSS_CHECK_DIRECTIVE` uses language-agnostic phrasing
+- [ ] Test suite ≥527 with at least 3 explicit TR back-compat tests (one per schema)
+- [ ] Empirical smoke on kasamd: new EN Sessions, briefing renders EN, identity refresh accepts existing TR L0-identity.md
+- [ ] STATUS.md, CHANGELOG.md, ROADMAP.md updated
+- [ ] No Anthropic API calls (CI grep passes)
+- [ ] Zero-drift skill junction tests pass
+
+---
+
+## v1.1.0 — SessionEnd-Driven Memory ✅ *(2026-04-27)*
 
 13 task groups, 55 tasks. Subagent-driven implementation recommended.
 
 ### Tasks (group-level checkpoints; full TDD step list lives in the plan)
 
-- [ ] **G1** — Config schema foundation (5 tasks) — schema_version + nested RefineConfig/BriefingConfig/IdentityConfig + atomic save w/ backup
-- [ ] **G2** — Refine pipeline configurability (6 tasks) — pick_jsonls(cfg), direction newest/oldest, min_user_turns from config, caller updates
-- [ ] **G3** — Identity eligibility helpers + bootstrap gate (5 tasks) — readiness pct, threshold gate, --force flag, refresh trigger from config
-- [ ] **G4** — Identity refresh skill (3 tasks) — `mnemos-identity-refresh` scaffold + junction + zero-drift test
-- [ ] **G5** — Briefing prompt v3 (3 tasks) — smart-layered (anchor + all-decisions + recent 5) + revision-aware rewrite + tests
-- [ ] **G6** — SessionStart updates (5 tasks) — readiness gate, systemMessage, cross-check directive, sync fallback, vault-aware first-visit
-- [ ] **G7** — SessionEnd hook + worker (6 tasks) — module skeleton, detached spawn w/ CREATE_BREAKAWAY_FROM_JOB+fallback, 3-stage worker, re-entry guard regression, hook entry schema, stale-hook detection
-- [ ] **G8** — install-end-hook CLI (4 tasks) — atomic install, --uninstall, argparse wiring, roundtrip test
-- [ ] **G9** — Settings TUI (7 tasks) — render_menu + validators + apply_field_change + cmd_settings + per-cwd readiness + progress display + i18n
-- [ ] **G10** — Init flow integration (3 tasks) — refine quota dialog, install-end-hook prompt, i18n
-- [ ] **G11** — Documentation (5 tasks) — README hero+quota, CHANGELOG, identity-bootstrap v2 prompt, CONTRIBUTING no-API rule, CI grep
-- [ ] **G12** — Empirical validation (3 tasks) — farcry/procuretrack/mid-stream X-close smoke on real kasamd vault. **BLOCKING for G13.**
-- [ ] **G13** — Release prep (4 tasks) — version bump, build, pre-release inspection, PyPI+GitHub publish (DEFERRED — user-triggered)
+- [x] **G1** — Config schema foundation (5 tasks)
+- [x] **G2** — Refine pipeline configurability (6 tasks)
+- [x] **G3** — Identity eligibility helpers + bootstrap gate (5 tasks)
+- [x] **G4** — Identity refresh skill (3 tasks)
+- [x] **G5** — Briefing prompt v3 (3 tasks)
+- [x] **G6** — SessionStart updates (5 tasks)
+- [x] **G7** — SessionEnd hook + worker (6 tasks)
+- [x] **G8** — install-end-hook CLI (4 tasks)
+- [x] **G9** — Settings TUI (7 tasks)
+- [x] **G10** — Init flow integration (3 tasks)
+- [x] **G11** — Documentation (5 tasks)
+- [x] **G12** — Empirical validation (3 tasks) — kasamd farcry/procuretrack/mid-stream X-close smoke green
+- [x] **G13.1–G13.3** — Version bump 1.0.0a1 → 1.1.0, wheel + sdist built, clean-venv smoke OK
+- [ ] **G13.4** — PyPI + GitHub release publish (deferred — user-triggered, pending v1.1.0 PyPI upload)
 
 ### Hard invariants (spec §2)
 
@@ -61,10 +90,10 @@ archive; if they conflict, this file wins.
 
 ### Success criteria
 
-- [ ] All G1-G11 task-level tests pass (target ≥520 total, was 455)
-- [ ] No-API CI grep passes (zero violations)
-- [ ] G12 empirical smoke 3 cwd × full lifecycle on kasamd green
-- [ ] User reviews + approves implementation before G13 release
+- [x] All G1-G11 task-level tests pass (527 pass, +72 vs 455 baseline)
+- [x] No-API CI grep passes (zero violations)
+- [x] G12 empirical smoke 3 cwd × full lifecycle on kasamd green
+- [x] User reviews + approves implementation before G13 release
 
 ---
 
