@@ -1,10 +1,11 @@
 # Mnemos — Project Status
 
-**Last updated:** 2026-04-28 — v1.2.0 implementation complete on local branch `feature/v1.2.0`. Strategy pivoted mid-implementation from the plan's "dual-match" to "locale-aware" (output matches user's dominant language; code+docs always English). F6.3 empirical smoke ran on kasamd farcry cwd: locale-aware behavior **PASSED** (Turkish transcript → Turkish headers + Turkish body, exactly the goal). However the smoke **surfaced a pre-existing v1.1.0 bug**: duplicate-refine race condition (a single `/exit` produces two `Sessions/.md` files for the same JSONL). Root cause: three concurrent refine entry points with no ledger lock + legacy v1.0 `mnemos-auto-refine` SessionStart entry not removed by `install-hook --v1`. Diagnosis + fix in [`docs/specs/2026-04-28-v1.2.1-duplicate-refine-race.md`](docs/specs/2026-04-28-v1.2.1-duplicate-refine-race.md); deferred to v1.2.1 hot-fix per agreement that v1.2.0 (locale-aware) and v1.2.1 (race fix) are orthogonal scopes. v1.2.0 ships as-is with the known issue documented in CHANGELOG. v1.1.0 GitHub release still live on 2026-04-27 ([tag](https://github.com/mnemos-dev/mnemos/releases/tag/v1.1.0)) — PyPI publish + tag still 🟡 pending user go-ahead. 🟡 **Pending user actions:** v1.2.0 merge to main, v1.2.1 hot-fix branch, manual workaround on kasamd settings.json, v1.2.0 + v1.1.0 PyPI publish, identity bootstrap on kasamd.
+**Last updated:** 2026-04-28 — v1.2.0 (locale-aware output) shipped to main. v1.2.1 (refine-pipeline race-condition hot-fix) implementation complete on local branch `feature/v1.2.1-refine-lock` (3 commits, +14 tests, 543 total pass). Both ship same day: v1.2.0 surfaced a pre-existing v1.1.0 race during F6.3 smoke; v1.2.1 fixes it without touching the architecture (all three coexisting refine hooks stay in place, made safe via per-JSONL filelock + ledger recheck-after-claim). Spec: [`docs/specs/2026-04-28-v1.2.1-duplicate-refine-race.md`](docs/specs/2026-04-28-v1.2.1-duplicate-refine-race.md) — revised mid-implementation when initial misdiagnosis ("remove legacy hook") was caught and corrected. v1.1.0 GitHub release still live on 2026-04-27 ([tag](https://github.com/mnemos-dev/mnemos/releases/tag/v1.1.0)) — PyPI publish + tag still 🟡 pending user go-ahead. 🟡 **Pending user actions:** v1.2.1 merge to main, `mnemos refine-ledger --normalize --validate-paths` one-shot cleanup on kasamd, v1.2.0 + v1.2.1 PyPI publish (single-shot), identity bootstrap on kasamd.
 **Stable PyPI version:** `v0.3.3` (v0.x atomic-paradigm — still default `pip install mnemos-dev` until v1.1.0 PyPI upload)
 **Alpha:** `v1.0.0a1` — tag pushed to GitHub, never uploaded to PyPI (superseded by v1.1.0)
 **Released:** `v1.1.0` — SessionEnd-driven memory architecture, GitHub release live, PyPI pending
-**In progress:** `v1.2.0` — Locale-aware output (EN code+docs, runtime output matches dominant Session language), local branch `feature/v1.2.0` ready for merge after empirical smoke
+**Shipped to main:** `v1.2.0` — Locale-aware output (EN code+docs, runtime output matches dominant Session language)
+**In progress:** `v1.2.1` — Refine-pipeline race-condition hot-fix (per-JSONL filelock + ledger normalize CLI), local branch `feature/v1.2.1-refine-lock` ready for merge
 **Canonical plan:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 **v1.0 spec:** [`docs/specs/2026-04-25-v1.0-narrative-pivot-design.md`](docs/specs/2026-04-25-v1.0-narrative-pivot-design.md) · **v1.0 plan:** [`docs/plans/2026-04-25-v1.0-narrative-pivot.md`](docs/plans/2026-04-25-v1.0-narrative-pivot.md)
 **v1.1 spec:** [`docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md`](docs/specs/2026-04-26-v1.1.0-sessionend-driven-memory-design.md) · **v1.1 plan:** [`docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md`](docs/plans/2026-04-26-v1.1.0-sessionend-driven-memory.md)
@@ -170,35 +171,38 @@ For early adopters: `pip install git+https://github.com/mnemos-dev/mnemos@v1.0.0
 
 🟡 **Pending user actions:**
 
-1. **Manual workaround for the duplicate-refine race** (until v1.2.1
-   ships) — edit `~/.claude/settings.json`, remove the
-   `mnemos-auto-refine` SessionStart entry. Keep only
-   `mnemos-recall-briefing` (SessionStart) and `mnemos-session-end`
-   (SessionEnd). Without this manual step, every `/exit` on kasamd
-   will keep producing duplicate `Sessions/.md` files.
-2. **Pick which duplicate(s) to keep** — `kasamd/Sessions/` currently
-   has at least two same-conversation duplicates from today
-   (`2026-04-28-desktop-tavuk-sprite-teknoloji-kararlari.md` +
-   `2026-04-28-desktop-tavuk-tech-stack-sprite-strateji.md`, plus
-   the v1.2 implementation session was double-refined too). Compare,
-   pick the better one, move the loser to `_recycled/`.
-3. **Merge `feature/v1.2.0` → main** — fast-forward merge, push,
-   optionally tag `v1.2.0`.
-4. **v1.2.1 hot-fix branch** — implement
-   [`docs/specs/2026-04-28-v1.2.1-duplicate-refine-race.md`](docs/specs/2026-04-28-v1.2.1-duplicate-refine-race.md).
-   Required scope: install-hook removes legacy v1.0 auto-refine entry,
-   ledger atomic claim via file lock, ledger normalize CLI.
-5. **PyPI v1.1.0 + v1.2.0 publish** (still deferred):
+1. **Merge `feature/v1.2.1-refine-lock` → main** — 3 commits ahead
+   of main, fast-forward merge, push.
+2. **One-shot ledger cleanup** — once v1.2.1 is in your editable
+   install:
    ```bash
-   python -m twine upload C:/Projeler/mnemos-v1.1/dist/mnemos_dev-1.1.0*
-   # rebuild for v1.2.0:
-   python -m build
-   python -m twine upload dist/mnemos_dev-1.2.0*
-   gh release create v1.2.0 --title "v1.2.0 — Locale-Aware Output" --notes-file CHANGELOG.md
+   mnemos refine-ledger --normalize --validate-paths
    ```
-6. **Identity bootstrap** (still pending):
+   Reads `~/.claude/skills/mnemos-refine-transcripts/state/processed.tsv`,
+   drops malformed lines (TAB-stripped by pre-fix concurrent appends),
+   dedups same-path entries (OK supersedes SKIP), drops entries
+   whose JSONL no longer exists. Idempotent. The lock prevents new
+   corruption from this point on, but historical corruption needs
+   this one-time pass.
+3. **PyPI v1.2.0 + v1.2.1 publish** (single-shot, both shipped same
+   day):
+   ```bash
+   python -m build
+   python -m twine upload dist/mnemos_dev-1.2.1*
+   git tag v1.2.0 -a -m "v1.2.0 — Locale-Aware Output"
+   git tag v1.2.1 -a -m "v1.2.1 — Refine-pipeline race fix"
+   git push origin v1.2.0 v1.2.1
+   gh release create v1.2.1 --title "v1.2.1 — Refine-pipeline race fix" --notes-file CHANGELOG.md
+   ```
+   v1.2.0 wheel/sdist were never built (we went straight from
+   v1.2.0 implementation to v1.2.1 in one session); v1.2.1 ships
+   both fixes in one PyPI artifact, with v1.2.0's tag preserved
+   for archaeology.
+4. **v1.1.0 PyPI publish** (still pending):
+   `python -m twine upload C:/Projeler/mnemos-v1.1/dist/mnemos_dev-1.1.0*`
+5. **Identity bootstrap** (still pending):
    `mnemos identity bootstrap --vault "C:/Users/tugrademirors/OneDrive/Masaüstü/kasamd"` — bootstrap eligibility gate (25%) may need `--force`.
-7. **Test infra cleanup** — `~/.claude/test-session-end/` and
+6. **Test infra cleanup** — `~/.claude/test-session-end/` and
    `mnemos-end-smoke-test` SessionEnd entry in `settings.json`. Run
    `mnemos install-end-hook --uninstall` to clean.
 

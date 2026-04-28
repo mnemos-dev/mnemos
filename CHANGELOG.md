@@ -4,6 +4,86 @@ All notable changes to Mnemos are documented here. For the narrative
 version of how the project evolved across paradigms, see
 [`HISTORY.md`](HISTORY.md).
 
+## v1.2.1 — Refine-Pipeline Race-Condition Hot-Fix (2026-04-28)
+
+Spec: [`docs/specs/2026-04-28-v1.2.1-duplicate-refine-race.md`](docs/specs/2026-04-28-v1.2.1-duplicate-refine-race.md)
+
+### Bug
+
+Three independent code paths could call
+`claude --print /mnemos-refine-transcripts <jsonl>` concurrently for
+the same JSONL: the SessionEnd worker (graceful `/exit` path), the
+SessionStart `recall_briefing --catchup` (CASE B X-close fallback),
+and the SessionStart `auto_refine_hook` (cross-project backlog
+scan). With no per-JSONL coordination, the LLM produced
+non-deterministic slugs and two parallel writes either:
+- **converged** on the same slug → second write overwrote the first
+  → silent data loss (one summary disappeared, the user observed
+  "a file briefly appeared then vanished"); or
+- **diverged** on different slugs → two `Sessions/<date>-<slug>.md`
+  siblings persisted (visible duplicate).
+
+The race also corrupted the ledger TSV (concurrent `open(…, "a")`
+appends spliced TAB columns together, producing unparseable lines).
+
+This was a pre-existing v1.1.0 bug; v1.2.0's locale-aware F6.3
+empirical smoke surfaced it.
+
+### Fix
+
+**Three hooks coexist by design** — graceful `/exit` fires
+SessionEnd; X-close skips SessionEnd and the next SessionStart's
+safety nets catch up. Removing any of them would re-open the
+X-close coverage gap. The fix makes that coexistence safe:
+
+- **`mnemos/refine_lock.py:claim_jsonl_for_refine(jsonl, ledger)`**
+  — pre-check the ledger (fast skip on existing OK/SKIP), acquire
+  `filelock.FileLock` at `<ledger-dir>/locks/<stem>.lock` with
+  `timeout=0` (fail-fast), recheck the ledger inside the lock so
+  workers that waited briefly behind a finisher observe the OK
+  entry and bail. Returns a context manager on success, `None` on
+  any skip path.
+- **All three callers funnel through the gate**:
+  `session_end_hook._run_refine`,
+  `recall_briefing.run_refine_sync` (catchup path),
+  `auto_refine.run` (per-picked-JSONL loop).
+- **`mnemos refine-ledger --normalize`** — one-shot CLI to repair
+  ledgers corrupted before v1.2.1. Drops malformed lines (not
+  exactly 3 TAB columns), dedups same-path entries (OK supersedes
+  SKIP, last-seen wins among same-status), optionally drops
+  entries whose JSONL no longer exists (`--validate-paths`).
+  Atomic via tmp+rename. `--dry-run` previews counts without
+  writing.
+
+### Tests
+
+- 11 new tests in `tests/test_refine_lock.py` covering: happy-path
+  claim, pre-acquire skip on existing ledger entry, post-acquire
+  recheck on race-finished ledger entry, per-stem isolation, 10-
+  thread concurrency stress (exactly one winner), and four
+  normalize cases (dedup, OK-over-SKIP, TAB-corrupted-line drop,
+  missing-path drop) + atomic-write contract.
+- 3 new tests in `tests/test_cli_refine_ledger.py` covering the
+  CLI happy path, `--dry-run`, and missing-ledger error.
+- Total suite: **543 passed**, 2 skipped, 3 deselected (was 529 at
+  start of v1.2.1 work; +14 new).
+
+### Migration path
+
+Users upgrading to v1.2.1 should run once:
+```bash
+mnemos refine-ledger --normalize --validate-paths
+```
+This cleans up any corruption already in their ledger. From that
+point on, the lock prevents new corruption.
+
+No settings.json changes required — both SessionStart hooks
+(`mnemos-auto-refine`, `mnemos-recall-briefing`) and the SessionEnd
+hook (`mnemos-session-end`) all stay in place. The lock makes their
+coexistence safe.
+
+---
+
 ## v1.2.0 — Locale-Aware Output + English-Default Codebase (2026-04-28)
 
 Plan: [`docs/plans/2026-04-28-english-output-strings.md`](docs/plans/2026-04-28-english-output-strings.md)
@@ -111,24 +191,13 @@ LANGUAGE rules and a few callouts), and all tests still pass without
 revision because the prompt files still document the canonical English
 schema; only the runtime behavior rule changed.
 
-### Known issue → deferred to v1.2.1
+### Known issue → fixed in v1.2.1
 
-**Duplicate-refine race condition.** During v1.2.0 F6.3 empirical
-smoke a single Claude Code transcript was observed being refined
-twice and producing TWO `Sessions/<date>-<slug>.md` files. Root cause
-is a race between three independent refine entry points
-(`auto_refine_hook` SessionStart, `recall_briefing --catchup`
-SessionStart, `session_end_hook` SessionEnd) with no ledger lock —
-this bug pre-dates v1.2.0 and surfaces consistently on every `/exit`
-under v1.1.0 + the legacy v1.0 `mnemos-auto-refine` SessionStart
-entry that `install-hook --v1` failed to remove on upgrade.
-
-Full diagnosis + fix plan: [`docs/specs/2026-04-28-v1.2.1-duplicate-refine-race.md`](docs/specs/2026-04-28-v1.2.1-duplicate-refine-race.md).
-
-User-facing workaround until v1.2.1 ships: manually remove the
-`mnemos-auto-refine` SessionStart entry from `~/.claude/settings.json`,
-leaving only `mnemos-recall-briefing` (SessionStart) and
-`mnemos-session-end` (SessionEnd).
+**Duplicate-refine race condition** was discovered during the
+F6.3 empirical smoke (single `/exit` produced two
+`Sessions/<date>-<slug>.md` files for the same JSONL). The race
+predates v1.2.0; v1.2.1 ships the fix on the same day. See the
+v1.2.1 entry above for the full bug + remedy.
 
 ---
 

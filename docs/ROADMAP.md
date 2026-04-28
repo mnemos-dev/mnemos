@@ -21,7 +21,7 @@ archive; if they conflict, this file wins.
 | **v1.0.0a1** | **Narrative-first pivot (atomic-fragmentation dropped, Sessions = unit, Identity Layer)** | ✅ shipped 2026-04-26 | ⏸ deferred |
 | **v1.1.0** | **SessionEnd-driven memory (refine+brief+identity-refresh worker, settings TUI, briefing v3, readiness gates, in-session cross-check)** | ✅ shipped 2026-04-27 | ⏸ deferred 24h |
 | **v1.2.0** | **Locale-aware output (EN code+docs, runtime headers match dominant Session language; defaults English when mixed)** | **✅ shipped 2026-04-28** *(empirical smoke green, merge + PyPI pending)* | — |
-| **v1.2.1** | **Hot-fix: duplicate-refine race condition (3 hooks refine same JSONL → ledger lock + install-hook legacy cleanup + ledger normalize CLI)** | **🔄 spec ready 2026-04-28** | — |
+| **v1.2.1** | **Hot-fix: refine-pipeline race condition (per-JSONL filelock + ledger recheck + ledger normalize CLI). Three coexisting hooks (graceful /exit + X-close fallbacks) stay in place — lock makes them safe.** | **✅ implementation done 2026-04-28** *(merge + PyPI pending)* | — |
 | v1.3.0 | Polish + LongMemEval benchmark (R@5 ≥ 93% baseline, JSONL-direct identity bootstrap?) | ⏸ | — |
 | v0.5.0 | Automation / Phase 2 — superseded by v1.1 SessionEnd hook | 🗄️ archived | — |
 | v0.6.0 | Community & Ecosystem (Obsidian plugin, multi-language markers, demo video) | ⏸ | — |
@@ -64,30 +64,43 @@ out-of-scope; in practice it was the right answer. See CHANGELOG v1.2.0
 
 ---
 
-## v1.2.1 — Duplicate-Refine Race Hot-Fix 🔄 *(spec ready 2026-04-28)*
+## v1.2.1 — Refine-Pipeline Race Hot-Fix ✅ *(implementation done 2026-04-28)*
 
 Pre-existing v1.1.0 race condition surfaced during v1.2.0 F6.3 smoke.
-Three independent code paths (`auto_refine_hook` SessionStart,
-`recall_briefing --catchup` SessionStart, `session_end_hook` SessionEnd)
-refine the same JSONL concurrently — produces duplicate `Sessions/.md`
-files with different LLM-chosen slugs. No ledger lock + the v1.0
-`mnemos-auto-refine` SessionStart entry that `install-hook --v1` failed
-to remove on upgrade.
+Three independent refine entry points (`session_end_hook._run_refine`
+on `/exit`, `recall_briefing.run_refine_sync` for X-close catchup,
+`auto_refine.run` for cross-project backlog) could concurrently call
+`claude --print /mnemos-refine-transcripts <jsonl>` for the same
+JSONL with no coordination — LLM produced non-deterministic slugs,
+two parallel writes either silently overwrote each other (data loss)
+or persisted as duplicate `Sessions/.md` siblings. Ledger TSV also
+got corrupted by concurrent `open(…, "a")` appends.
 
-Diagnosis + fix plan: [`docs/specs/2026-04-28-v1.2.1-duplicate-refine-race.md`](specs/2026-04-28-v1.2.1-duplicate-refine-race.md)
+Spec: [`docs/specs/2026-04-28-v1.2.1-duplicate-refine-race.md`](specs/2026-04-28-v1.2.1-duplicate-refine-race.md)
 
-### Required scope
+### Approach
 
-- [ ] `install-end-hook` removes legacy v1.0 `mnemos-auto-refine` SessionStart entry; new test asserts post-install state
-- [ ] Ledger atomic claim — `msvcrt.locking` (Windows) / `fcntl.flock` (POSIX) around the read-modify-write of the pending check
-- [ ] `mnemos refine-ledger --normalize` CLI for one-shot TSV repair (heuristic fix corrupted lines, dedup, drop dead paths)
-- [ ] Pre-refine duplicate guard (defense in depth): check `Sessions/<date>-<slug-prefix>*.md` before invoking `claude --print`
+**Three hooks coexist by architectural design** — graceful `/exit`
+fires SessionEnd; X-close skips SessionEnd and the SessionStart
+safety nets catch up. Removing any of them would re-open the
+X-close coverage gap. The fix makes coexistence safe rather than
+collapsing the design.
 
-### Tests
+### Tasks
 
-- [ ] `test_install_end_hook_removes_legacy_auto_refine_entry`
-- [ ] `test_concurrent_refine_workers_dedup_via_lock`
-- [ ] `test_refine_ledger_normalize_repairs_corrupted_lines`
+- [x] `mnemos/refine_lock.py:claim_jsonl_for_refine` — pre-check ledger, acquire `filelock.FileLock` per-stem with `timeout=0`, recheck inside lock; returns context manager or None (commit `ff08d03`)
+- [x] Wire all three callers through the gate (commit `89aa708`)
+- [x] `mnemos refine-ledger --normalize` CLI — drop malformed lines, dedup same-path entries, atomic write, `--dry-run` + `--validate-paths` flags (commit `e5f205f`)
+
+### Acceptance criteria
+
+- [x] All three refine call sites go through `claim_jsonl_for_refine`
+- [x] Concurrent-stress test: 10 threads race for same JSONL → exactly 1 winner
+- [x] Ledger normalize repairs TAB-corrupted lines + dedups OK/SKIP appropriately
+- [x] Test suite **543 pass** (was 529 baseline; +14 new tests)
+- [x] No regressions in any existing test file
+- [ ] **Empirical verification** — user opens new Claude Code session in any cwd, `/exit`, confirms exactly ONE Session file written
+- [ ] User runs `mnemos refine-ledger --normalize --validate-paths` once on existing ledger to clean historical corruption
 
 ---
 
