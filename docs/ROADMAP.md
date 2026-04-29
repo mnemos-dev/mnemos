@@ -4,7 +4,7 @@
 Older `docs/specs/2026-04-*` and `docs/plans/2026-04-*` files are historical
 archive; if they conflict, this file wins.
 
-**Last updated:** 2026-04-28 (v1.2.1 + stale-OK skip hot-fix shipped to main; PyPI publish next)
+**Last updated:** 2026-04-29 (v1.2.1 SessionEnd persistence + X-close coverage hot-fix shipped; PyPI publish next)
 ---
 
 ## Version status
@@ -21,7 +21,7 @@ archive; if they conflict, this file wins.
 | **v1.0.0a1** | **Narrative-first pivot (atomic-fragmentation dropped, Sessions = unit, Identity Layer)** | ✅ shipped 2026-04-26 | ⏸ deferred |
 | **v1.1.0** | **SessionEnd-driven memory (refine+brief+identity-refresh worker, settings TUI, briefing v3, readiness gates, in-session cross-check)** | ✅ shipped 2026-04-27 | ⏸ deferred 24h |
 | **v1.2.0** | **Locale-aware output (EN code+docs, runtime headers match dominant Session language; defaults English when mixed)** | **✅ shipped 2026-04-28** *(empirical smoke green, merge + PyPI pending)* | — |
-| **v1.2.1** | **Hot-fix: refine-pipeline race (per-JSONL filelock + normalize CLI) + identity isolation (env-strip ANTHROPIC_API_KEY, neutral cwd, recall_briefing re-entry guard, strict OUTPUT prompt) + `bootstrap --limit N` pilot mode + stale-OK skip supersede (SessionEnd defense-in-depth)** | **✅ code shipped 2026-04-28** *(PyPI publish next session — [`plan`](plans/2026-04-28-v1.2.1-pypi-publish.md))* | — |
+| **v1.2.1** | **Hot-fix: refine-pipeline race (per-JSONL filelock + normalize CLI) + identity isolation (env-strip ANTHROPIC_API_KEY, neutral cwd, recall_briefing re-entry guard, strict OUTPUT prompt) + `bootstrap --limit N` pilot mode + stale-OK skip supersede (SessionEnd defense-in-depth) + SessionEnd persistence (brief_regen + identity_refresh wrote to DEVNULL) + X-close coverage hardening (sync fallback now fires on any pending) + LLM preamble strip** | **✅ code shipped 2026-04-29** *(PyPI publish next — [`plan`](plans/2026-04-28-v1.2.1-pypi-publish.md))* | — |
 | v1.3.0 | Polish + LongMemEval benchmark (R@5 ≥ 93% baseline, JSONL-direct identity bootstrap?) | ⏸ | — |
 | v0.5.0 | Automation / Phase 2 — superseded by v1.1 SessionEnd hook | 🗄️ archived | — |
 | v0.6.0 | Community & Ecosystem (Obsidian plugin, multi-language markers, demo video) | ⏸ | — |
@@ -105,6 +105,19 @@ collapsing the design.
 - [x] 6 new tests in `tests/test_session_end_supersede.py` (jsonl-grew, older-jsonl, no-prior-entry, SKIP-row sticky, deleted-Session/.md, threshold-noise); 2 existing test mocks updated for the new `vault` kwarg
 - [x] Manual recovery: refined the lost planning session JSONL (`3078dfac…`) into `Sessions/2026-04-28-mnemos-v1-2-1-shipped-identity-bootstrap-pypi-deferred.md`; pre-recovery state preserved as `…-english-only-output-impl.md.bak-superseded-pre-rerefine`
 
+### Tasks (SessionEnd persistence + X-close coverage hardening, 2026-04-29, surfaced by stale-briefing report)
+
+User reported the briefing inject on a fresh session always lagged one /exit cycle behind. Root cause: `_run_brief_regen` and `_run_identity_refresh_if_due` in the SessionEnd worker piped the skill subprocess stdout to `subprocess.DEVNULL` — the briefing body and refreshed identity body were both **discarded**, never written to disk. The cwd-cache and `_identity/L0-identity.md` only ever refreshed via the next SessionStart's bg catchup, which is by-design async — so SessionStart inject was always one session stale on /exit cycles. Same-class bug as v1.2.1's stale-OK skip (LLM output never reached the vault).
+
+The X-close coverage path also leaked: `handle_session_start`'s sync fallback only fired when `pending and not cache_exists`. With a stale cache present, the SessionStart injected the stale body and deferred refresh to bg catchup — leaving the user one session behind on every X-close cycle.
+
+- [x] `_run_brief_regen(cwd, vault)` calls `recall_briefing.brief_and_cache` so skill stdout is captured into `<vault>/.mnemos-briefings/<slug>.md` (was `subprocess.call(..., stdout=DEVNULL)`)
+- [x] `_run_identity_refresh_if_due` calls `mnemos.identity.refresh(vault, force=False)` directly so the refreshed body lands atomically in `_identity/L0-identity.md` + history snapshot (was the same DEVNULL skill subprocess)
+- [x] `handle_session_start` sync-fallback gate relaxed from `pending and not cache_exists` to `pending` — pending JSONLs always trigger sync refine + brief regardless of cache state. `MIN_USER_TURNS` (default 3) already filters trivial sessions out of `pending`, so this never fires for noise.
+- [x] `recall_briefing._strip_briefing_preamble` defensive scan: trim any LLM preamble emitted before the first `**Label:**` bold line (skill prompt says "Start directly with `**Current State:**`" but LLMs occasionally violate; reproduced in kasamd `C--Projeler-mnemos-v1-1.md` cache)
+- [x] `worker_main` passes `vault` into `_run_brief_regen`; existing test monkeypatches updated for the new `(cwd, vault)` signature
+- [x] 4 new tests: `test_worker_brief_regen_writes_cache_to_disk`, `test_worker_identity_refresh_persists_to_disk`, `test_brief_and_cache_strips_llm_preamble`, `test_return_visit_pending_runs_sync_fallback_even_with_stale_cache` (rename + retarget of the prior `..._injects_and_bg_catches_up` test that asserted the now-deprecated stale-cache-inject behavior)
+
 ### Known follow-up (not blocking PyPI)
 
 - 🟡 **Bug #2 — `register_active_session` PID source.** On Windows the SessionStart hook captures `os.getppid()`, which often points to a short-lived shell wrapper rather than the long-living Claude Code process. Markers go "stale" (PID dead) immediately after creation, so subsequent `get_active_transcript_paths` cleanup wipes them. The defense-in-depth supersede above tolerates this, but the underlying tracking should later be replaced with a more durable handle (Claude Code session id is already stored in the marker; could verify liveness via the JSONL's recent mtime instead of PID).
@@ -120,6 +133,7 @@ collapsing the design.
 - [x] User ran `mnemos refine-ledger --normalize --validate-paths` once on existing ledger to clean historical corruption
 - [x] **Identity bootstrap empirical verification** — pilot (10 sessions) + full (90 sessions) both produced canonical seven-section profiles (locale-aware TR headers + body) on kasamd vault
 - [x] **Stale-OK skip fix** — supersede helper landed (`7959ada`); test suite **553 pass** (+8 vs 545 baseline: 6 new + 2 fixed mocks)
+- [x] **SessionEnd persistence + X-close hardening** — brief_regen + identity_refresh both now persist to disk, sync fallback fires on any pending regardless of cache, LLM preamble defensive strip; test suite **556 pass** (+3 vs 553: 4 new tests, 1 prior test renamed-and-retargeted; net +3 because the renamed test replaces an obsolete assertion)
 
 ---
 

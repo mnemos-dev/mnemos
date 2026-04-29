@@ -4,6 +4,71 @@ All notable changes to Mnemos are documented here. For the narrative
 version of how the project evolved across paradigms, see
 [`HISTORY.md`](HISTORY.md).
 
+## v1.2.1 (rolling) — SessionEnd Persistence + X-Close Coverage Hot-Fix (2026-04-29)
+
+### Bug
+
+The user reported that on every fresh session the injected briefing was
+**one /exit cycle stale**, despite the previous session having refined
+its transcript correctly. Two related root causes:
+
+1. `mnemos.session_end_hook._run_brief_regen` and
+   `_run_identity_refresh_if_due` both invoked `claude --print
+   /mnemos-briefing <cwd>` (and `/mnemos-identity-refresh`) with
+   `subprocess.call(..., stdout=subprocess.DEVNULL)`. The skill contract
+   is "emit body to stdout, the wrapper persists" — but the wrapper was
+   piping stdout to `/dev/null`, so the briefing body and refreshed
+   identity body were both **discarded**. Cwd cache and
+   `_identity/L0-identity.md` only ever updated via the next
+   SessionStart's bg catchup, which is by-design async and therefore
+   one-session-late on every /exit.
+2. `mnemos.recall_briefing.handle_session_start`'s sync fallback fired
+   only on `pending and not cache_exists`. With a stale cache present,
+   X-close (or any partial-fail SessionEnd) left the next SessionStart
+   to inject the stale body and defer regen to bg catchup — same
+   one-session-late symptom on every X-close cycle.
+
+Same-class bug as the v1.2.1 stale-OK skip (LLM output never reached the
+vault). Surfaced empirically because v1.2.0 + v1.2.1 had eliminated the
+other LLM-output-loss paths, leaving SessionEnd persistence as the
+remaining gap.
+
+### Fix
+
+- `_run_brief_regen(cwd, vault)` calls
+  `recall_briefing.brief_and_cache`, which wraps the skill subprocess
+  via `run_brief_sync` (stdout → tempfile → `write_cache`) so the body
+  lands in `<vault>/.mnemos-briefings/<cwd-slug>.md`.
+- `_run_identity_refresh_if_due` calls `mnemos.identity.refresh(vault,
+  force=False)` directly. `refresh()` uses `_invoke_claude_print` with
+  `capture_output=True`, writes the refreshed body atomically to
+  `_identity/L0-identity.md`, and snapshots a history copy under
+  `_identity/_history/`. The `auto_refresh` and `refresh_min_days`
+  gates remain in the worker; `delta` and tag-relevance gates live
+  inside `refresh()`.
+- `handle_session_start` sync fallback gate relaxed from `pending and
+  not cache_exists` to `pending`. Pending JSONLs always trigger sync
+  refine + brief at SessionStart regardless of cache state.
+  `MIN_USER_TURNS` (default 3) inside
+  `find_unrefined_jsonls_for_cwd` already filters trivial sessions out
+  of `pending`, so this never fires for noise.
+- `recall_briefing._strip_briefing_preamble` defensive scan: trim any
+  LLM preamble emitted before the first `**Label:**` bold line.
+  Reproduced empirically in kasamd's `C--Projeler-mnemos-v1-1.md`
+  cache, where `"I have all the layers I need. Let me synthesize the
+  briefing."` had bled in despite the skill prompt's "Start directly
+  with `**Current State:**`" instruction.
+
+Four new tests:
+`test_worker_brief_regen_writes_cache_to_disk`,
+`test_worker_identity_refresh_persists_to_disk`,
+`test_brief_and_cache_strips_llm_preamble`,
+`test_return_visit_pending_runs_sync_fallback_even_with_stale_cache`
+(rename + retarget of the prior `..._injects_and_bg_catches_up` test
+that asserted the now-deprecated stale-cache-inject behavior). Two
+existing test monkeypatches updated for the new `(cwd, vault)`
+signature on `_run_brief_regen`. Suite: **556 pass** (+3 net vs 553).
+
 ## v1.2.1 (rolling) — Stale-OK Skip Hot-Fix (2026-04-28)
 
 ### Bug

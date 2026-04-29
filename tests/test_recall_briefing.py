@@ -439,6 +439,44 @@ def test_run_refine_sync_nonzero_exit_fails(tmp_path: Path) -> None:
     assert result.ok is False
 
 
+def test_brief_and_cache_strips_llm_preamble(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """LLM preamble defense: brief_and_cache must trim any preamble emitted
+    before the first bold label. Skill prompt instructs "Start directly with
+    `**Current State:**`", but LLMs occasionally emit preamble like "I have
+    all the layers I need. Let me synthesize the briefing." which then
+    bleeds into the cached body. Reproduced empirically 2026-04-29 in
+    kasamd's `C--Projeler-mnemos-v1-1.md` cache."""
+    from mnemos.recall_briefing import (
+        BriefResult,
+        brief_and_cache,
+        cache_path_for,
+        cwd_to_slug,
+        read_cache_body,
+    )
+
+    (tmp_path / "Sessions").mkdir()
+    cwd = "C:/test/proj"
+    raw_body = (
+        "I have all the layers I need. Let me synthesize the briefing.\n"
+        "\n---\n\n"
+        "**Current State:** clean briefing body\n"
+    )
+    monkeypatch.setattr(
+        "mnemos.recall_briefing.run_brief_sync",
+        lambda c, runner=None: BriefResult(ok=True, body=raw_body),
+    )
+
+    assert brief_and_cache(cwd, tmp_path) is True
+
+    body = read_cache_body(cache_path_for(tmp_path, cwd_to_slug(cwd)))
+    assert body.lstrip().startswith("**Current State:**"), (
+        f"Preamble must be stripped, got: {body[:120]!r}"
+    )
+    assert "I have all the layers" not in body, (
+        "LLM preamble leaked into the cache"
+    )
+
+
 def test_run_brief_sync_captures_stdout(tmp_path: Path) -> None:
     def fake_runner_with_output(cmd, stdout_path=None):
         if stdout_path is not None:
@@ -640,31 +678,64 @@ def _setup_cwd_with_pending(tmp_path: Path, cwd: str, with_cache: bool) -> tuple
     return slug, pending
 
 
-def test_return_visit_pending_with_cache_injects_and_bg_catches_up(tmp_path: Path) -> None:
-    """Pending>0 + cache present → inject the (possibly-stale) cache
-    immediately, fire bg catchup to refresh. Hook returns in <1s; the user
-    gets briefing on the very first prompt instead of waiting 5 minutes for
-    sync refine+mine+brief."""
+def test_return_visit_pending_runs_sync_fallback_even_with_stale_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """X-close coverage: when ``pending`` JSONLs exist, SessionStart MUST
+    sync-refine + brief-regen, even if a stale cache is already present.
+
+    Pre-fix: only the (pending, no-cache) branch fired sync fallback.
+    Pending+cache injected the stale cache and deferred to bg catchup —
+    that left the user with one-session-old briefing on every SessionStart
+    after an X-close (or any partial-fail SessionEnd worker). MIN_USER_TURNS
+    already filters trivial sessions out of ``pending``, so this fallback
+    never fires for noise — only for real abandoned sessions worth
+    refining."""
+    from mnemos.recall_briefing import BriefResult, RefineResult
+
     cwd = "C:\\Projects\\farcry"
-    slug, _ = _setup_cwd_with_pending(tmp_path, cwd, with_cache=True)
+    slug, pending_jsonl = _setup_cwd_with_pending(tmp_path, cwd, with_cache=True)
+    sessions_dir = tmp_path / "Sessions"
+
+    def fake_run_refine_sync(jsonl, runner=None, ledger=None):
+        # Simulate a successful refine: drop a Session/.md so the briefing
+        # step has fresh content to summarize.
+        (sessions_dir / "2026-04-29-pending.md").write_text(
+            f"---\ncwd: {cwd}\n---\nbody\n", encoding="utf-8"
+        )
+        return RefineResult(ok=True, jsonl=jsonl)
+
+    monkeypatch.setattr(
+        "mnemos.recall_briefing.run_refine_sync", fake_run_refine_sync
+    )
+    fresh_body = "**Current State:** fresh sync-fallback content\n"
+    monkeypatch.setattr(
+        "mnemos.recall_briefing.run_brief_sync",
+        lambda c, runner=None: BriefResult(ok=True, body=fresh_body),
+    )
 
     bg_calls: list[tuple[str, Path]] = []
-    def fake_bg_spawn(cwd_arg, vault_arg):
-        bg_calls.append((cwd_arg, vault_arg))
-
-    ledger = tmp_path / "_nl.tsv"
     inp = SessionStartInput(cwd=cwd, source="startup", transcript_path="live.jsonl")
     result = handle_session_start(
         inp,
         vault=tmp_path,
         projects_root=tmp_path / ".claude" / "projects",
-        ledger=ledger,
-        bg_spawn=fake_bg_spawn,
+        ledger=tmp_path / "_nl.tsv",
+        bg_spawn=lambda c, v: bg_calls.append((c, v)),
     )
-    assert result.outcome == "fast_path_injected_with_catchup"
-    assert "**Current State:** cached body" in result.injected_context
-    assert len(bg_calls) == 1
-    assert bg_calls[0] == (cwd, tmp_path)
+
+    assert result.outcome == "sync_fallback_inject", (
+        f"X-close coverage requires sync fallback, got {result.outcome}"
+    )
+    assert "fresh sync-fallback content" in result.injected_context, (
+        "Injected briefing must be the freshly-regenerated content"
+    )
+    assert "cached body" not in result.injected_context, (
+        "Stale cache body must be replaced by fresh sync-fallback content"
+    )
+    assert bg_calls == [], (
+        "Sync fallback already produced fresh content — bg spawn would be wasteful"
+    )
 
 
 # v1.0 test_return_visit_pending_no_cache_silent_bg_catchup retired — the

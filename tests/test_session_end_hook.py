@@ -134,7 +134,7 @@ def test_worker_runs_despite_hook_active_env(tmp_path, monkeypatch):
         lambda t, vault=None: refine_called.append(t),
     )
     monkeypatch.setattr(
-        "mnemos.session_end_hook._run_brief_regen", lambda c: None,
+        "mnemos.session_end_hook._run_brief_regen", lambda c, v: None,
     )
     monkeypatch.setattr(
         "mnemos.session_end_hook._run_identity_refresh_if_due", lambda v: None,

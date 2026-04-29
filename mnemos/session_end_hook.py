@@ -376,25 +376,39 @@ def _run_refine(transcript: str, vault: Path | None = None) -> None:
         )
 
 
-def _run_brief_regen(cwd: str) -> None:
-    """Sync brief regen via /mnemos-briefing skill subprocess."""
-    cmd = [
-        "claude", "--print", "--dangerously-skip-permissions",
-        "--model", "sonnet",
-        f"/mnemos-briefing {cwd}",
-    ]
-    subprocess.call(
-        cmd,
-        env=_child_env(),
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+def _run_brief_regen(cwd: str, vault: Path) -> None:
+    """Sync brief regen — writes the briefing body to the cwd-cache file.
+
+    Calls ``recall_briefing.brief_and_cache`` which wraps the
+    `/mnemos-briefing` skill subprocess so its stdout (the actual briefing
+    body) is captured and persisted to
+    ``<vault>/.mnemos-briefings/<cwd-slug>.md``. The earlier impl piped
+    stdout straight to DEVNULL — the skill's output was discarded and the
+    cache was never updated by SessionEnd. The cache then refreshed only
+    via the next SessionStart's bg catchup, which means SessionStart
+    injection always saw a one-session-stale briefing on /exit cycles.
+    """
+    from mnemos.recall_briefing import brief_and_cache
+    brief_and_cache(cwd, vault)
 
 
 def _run_identity_refresh_if_due(vault: Path) -> None:
-    """Fire /mnemos-identity-refresh when delta + min-days gates both pass."""
+    """Fire identity refresh when auto_refresh + min-days gates pass.
+
+    Calls ``mnemos.identity.refresh`` directly. ``refresh()`` uses
+    ``_invoke_claude_print`` (capture_output=True) and writes the
+    refreshed body atomically to ``_identity/L0-identity.md`` plus a
+    timestamped history snapshot — the persistence the
+    `/mnemos-identity-refresh` skill subprocess could never provide
+    when its stdout was piped to DEVNULL.
+
+    ``refresh()`` enforces its own delta + tag-relevance gates; we keep
+    the auto_refresh + min_days gates here because ``refresh()`` does
+    not know about them.
+    """
     from mnemos.config import load_config
+    from mnemos.identity import refresh, IdentityError
+
     cfg = load_config(str(vault))
     if not cfg.identity.auto_refresh:
         return
@@ -405,19 +419,9 @@ def _run_identity_refresh_if_due(vault: Path) -> None:
 
     text = identity_path.read_text(encoding="utf-8", errors="replace")
     import re
-    m = re.search(r"session_count_at_refresh:\s*(\d+)", text)
-    last_count = int(m.group(1)) if m else 0
-    sessions_dir = vault / "Sessions"
-    current_count = (
-        sum(1 for _ in sessions_dir.glob("*.md")) if sessions_dir.exists() else 0
-    )
-    delta = current_count - last_count
-    if delta < cfg.identity.refresh_session_delta:
-        return
 
     m_lr = re.search(r"last_refreshed:\s*(\S+)", text)
     if m_lr:
-        from datetime import datetime, timezone
         try:
             last_refreshed = datetime.fromisoformat(
                 m_lr.group(1).replace("Z", "+00:00")
@@ -430,18 +434,10 @@ def _run_identity_refresh_if_due(vault: Path) -> None:
         except (ValueError, TypeError):
             pass  # Malformed timestamp — proceed; better to refresh than skip
 
-    cmd = [
-        "claude", "--print", "--dangerously-skip-permissions",
-        "--model", "sonnet",
-        "/mnemos-identity-refresh",
-    ]
-    subprocess.call(
-        cmd,
-        env=_child_env(),
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    try:
+        refresh(vault, force=False)
+    except IdentityError:
+        pass  # bootstrap missing or LLM failed — non-fatal
 
 
 def worker_main(argv: list[str]) -> int:
@@ -477,7 +473,7 @@ def worker_main(argv: list[str]) -> int:
         except Exception:
             pass
         try:
-            _run_brief_regen(ns.cwd)
+            _run_brief_regen(ns.cwd, vault)
         except Exception:
             pass
         try:

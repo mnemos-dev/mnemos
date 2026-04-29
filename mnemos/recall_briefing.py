@@ -481,6 +481,27 @@ class HandleOutcome:
     injected_context: str = ""
 
 
+_BOLD_LABEL_RE = re.compile(r"^\*\*[^*\n]+\*\*", re.MULTILINE)
+
+
+def _strip_briefing_preamble(body: str) -> str:
+    """Trim any preamble the LLM emitted before the first bold label.
+
+    The briefing skill prompt instructs "Start directly with
+    ``**Current State:**``", but LLMs occasionally emit conversational
+    preamble like "I have all the layers I need. Let me synthesize the
+    briefing." which then bleeds into the cached body and surfaces as
+    junk in the next SessionStart inject. Defensive scan: strip
+    everything before the first ``**X:**`` bold label found at the start
+    of a line. If no bold label exists (empty-cwd message or unusual
+    output), return the body unchanged so the caller can decide.
+    """
+    m = _BOLD_LABEL_RE.search(body)
+    if m is None:
+        return body
+    return body[m.start():]
+
+
 def brief_and_cache(cwd: str, vault: Path, brief_runner=None) -> bool:
     """Run the briefing skill for `cwd` and persist the result to cache.
 
@@ -499,11 +520,12 @@ def brief_and_cache(cwd: str, vault: Path, brief_runner=None) -> bool:
     result = run_brief_sync(cwd, runner=brief_runner)
     if not result.ok or not result.body.strip():
         return False
+    body = _strip_briefing_preamble(result.body)
     cache_p = cache_path_for(vault, cwd_to_slug(cwd))
     session_n = count_refined_sessions_for_cwd(vault, cwd)
     write_cache(
         cache_p,
-        body=result.body,
+        body=body,
         cwd=cwd,
         session_count=session_n,
         drawer_count=0,
@@ -721,11 +743,16 @@ def handle_session_start(
     cache_p = cache_path_for(vault, slug)
     cache_exists = cache_p.exists()
 
-    # v1.1 Task 6.4: sync fallback when SessionEnd worker missed (pending
-    # JSONLs exist but no cache landed). Refining + briefing here costs the
-    # user a few seconds at session start, but gives them a real briefing
-    # NOW instead of waiting until next session.
-    if pending and not cache_exists:
+    # v1.2.1 Task 5: sync fallback fires whenever pending JSONLs exist —
+    # cache_exists no longer gates this branch. Pre-fix, only the (pending,
+    # no-cache) case triggered sync; (pending, stale-cache) injected the old
+    # body and deferred to bg catchup, which left the user one session
+    # behind on every X-close (or partial-fail SessionEnd) cycle. The
+    # MIN_USER_TURNS filter inside find_unrefined_jsonls_for_cwd already
+    # screens out trivial sessions, so this fallback never fires for noise
+    # — only for real abandoned sessions worth a 1–2 minute SessionStart
+    # delay to refine + brief.
+    if pending:
         capped = pending[-SUB_B2_PENDING_CAP:]
         for jsonl in capped:
             run_refine_sync(jsonl)
