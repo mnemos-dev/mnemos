@@ -517,6 +517,12 @@ def test_pick_recent_jsonls_exclude_path(tmp_path):
     assert self_transcript not in picked
 
 
+@pytest.mark.skipif(
+    os.name != "nt",
+    reason="Cross-separator path normalisation only applies on Windows; "
+    "on POSIX, '\\' is a regular filename character, not a separator, "
+    "so Path() cannot collapse the two forms.",
+)
 def test_pick_recent_jsonls_exclude_normalises_paths(tmp_path):
     """Exclude set must compare via Path() so backslash/slash differences don't leak."""
     from mnemos.auto_refine import pick_recent_jsonls
