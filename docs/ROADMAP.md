@@ -4,7 +4,7 @@
 Older `docs/specs/2026-04-*` and `docs/plans/2026-04-*` files are historical
 archive; if they conflict, this file wins.
 
-**Last updated:** 2026-04-29 (v1.2.1 SessionEnd persistence + X-close coverage hot-fix shipped; PyPI publish next)
+**Last updated:** 2026-05-01 (v1.2.1 published to PyPI — https://pypi.org/project/mnemos-dev/1.2.1/)
 ---
 
 ## Version status
@@ -20,8 +20,8 @@ archive; if they conflict, this file wins.
 | ~~v0.4.0~~ | ~~AI Boost / Phase 1~~ — superseded by v1.0 narrative-first pivot | 🗄️ archived | — |
 | **v1.0.0a1** | **Narrative-first pivot (atomic-fragmentation dropped, Sessions = unit, Identity Layer)** | ✅ shipped 2026-04-26 | ⏸ deferred |
 | **v1.1.0** | **SessionEnd-driven memory (refine+brief+identity-refresh worker, settings TUI, briefing v3, readiness gates, in-session cross-check)** | ✅ shipped 2026-04-27 | ⏸ deferred 24h |
-| **v1.2.0** | **Locale-aware output (EN code+docs, runtime headers match dominant Session language; defaults English when mixed)** | **✅ shipped 2026-04-28** *(empirical smoke green, merge + PyPI pending)* | — |
-| **v1.2.1** | **Hot-fix: refine-pipeline race (per-JSONL filelock + normalize CLI) + identity isolation (env-strip ANTHROPIC_API_KEY, neutral cwd, recall_briefing re-entry guard, strict OUTPUT prompt) + `bootstrap --limit N` pilot mode + stale-OK skip supersede (SessionEnd defense-in-depth) + SessionEnd persistence (brief_regen + identity_refresh wrote to DEVNULL) + X-close coverage hardening (sync fallback now fires on any pending) + LLM preamble strip** | **✅ code shipped 2026-04-29** *(PyPI publish next — [`plan`](plans/2026-04-28-v1.2.1-pypi-publish.md))* | — |
+| **v1.2.0** | **Locale-aware output (EN code+docs, runtime headers match dominant Session language; defaults English when mixed)** | **✅ shipped 2026-04-28** | git-tag only |
+| **v1.2.1** | **Hot-fix: refine-pipeline race (per-JSONL filelock + normalize CLI) + identity isolation (env-strip ANTHROPIC_API_KEY, neutral cwd, recall_briefing re-entry guard, strict OUTPUT prompt) + `bootstrap --limit N` pilot mode + stale-OK skip supersede (SessionEnd defense-in-depth) + SessionEnd persistence (brief_regen + identity_refresh wrote to DEVNULL) + X-close coverage hardening (sync fallback now fires on any pending) + LLM preamble strip** | **✅ shipped 2026-05-01** | **✅ 1.2.1** |
 | v1.3.0 | Polish + LongMemEval benchmark (R@5 ≥ 93% baseline, JSONL-direct identity bootstrap?) | ⏸ | — |
 | v0.5.0 | Automation / Phase 2 — superseded by v1.1 SessionEnd hook | 🗄️ archived | — |
 | v0.6.0 | Community & Ecosystem (Obsidian plugin, multi-language markers, demo video) | ⏸ | — |
